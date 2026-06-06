@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 )
@@ -95,6 +96,13 @@ func TestInitCommandLocalCreatesLocalProject(t *testing.T) {
 	if parsedProject.Projects[0].Kind != project.ProjectKindLocal {
 		t.Fatalf("project kind = %q, want %q", parsedProject.Projects[0].Kind, project.ProjectKindLocal)
 	}
+	indexPath, err := index.Path(parsedProject.Projects[0].ID)
+	if err != nil {
+		t.Fatalf("index.Path() error = %v", err)
+	}
+	if _, err := os.Stat(indexPath); err != nil {
+		t.Fatalf("index file missing: %v", err)
+	}
 }
 
 func TestInitCommandDetachedCreatesDetachedProject(t *testing.T) {
@@ -143,6 +151,13 @@ func TestInitCommandDetachedCreatesDetachedProject(t *testing.T) {
 	}
 	if parsedManifest.Kind != project.ManifestKindDetached {
 		t.Fatalf("manifest kind = %q, want %q", parsedManifest.Kind, project.ManifestKindDetached)
+	}
+	indexPath, err := index.Path(parsedManifest.ProjectID)
+	if err != nil {
+		t.Fatalf("index.Path() error = %v", err)
+	}
+	if _, err := os.Stat(indexPath); err != nil {
+		t.Fatalf("index file missing: %v", err)
 	}
 }
 

@@ -25,6 +25,18 @@ var projectImportCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if !dryRun && len(result.Candidates) > 0 {
+			container, err := mustAppContainer()
+			if err != nil {
+				return err
+			}
+			for _, candidate := range result.Candidates {
+				if err := buildProjectIndex(container.Services.Registry, candidate.ProjectID, candidate.MemoriesPath); err != nil {
+					return err
+				}
+				result.Indexed++
+			}
+		}
 
 		output := projectImportOutput{
 			Path:        result.Path,

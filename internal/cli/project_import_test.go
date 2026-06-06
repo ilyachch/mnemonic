@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 )
@@ -43,8 +44,15 @@ func TestProjectImportCommandDefaultsToDot(t *testing.T) {
 	if got.CopiedFiles != 0 {
 		t.Fatalf("copied_files = %d, want 0", got.CopiedFiles)
 	}
-	if got.Indexed != 0 {
-		t.Fatalf("indexed = %d, want 0", got.Indexed)
+	if got.Indexed != 1 {
+		t.Fatalf("indexed = %d, want 1", got.Indexed)
+	}
+	indexPath, err := index.Path("550e8400-e29b-41d4-a716-446655440000")
+	if err != nil {
+		t.Fatalf("index.Path() error = %v", err)
+	}
+	if _, err := os.Stat(indexPath); err != nil {
+		t.Fatalf("index file missing: %v", err)
 	}
 }
 
@@ -165,8 +173,8 @@ func TestProjectImportCommandNormalizesRelativePath(t *testing.T) {
 	if got.CopiedFiles != 0 {
 		t.Fatalf("copied_files = %d, want 0", got.CopiedFiles)
 	}
-	if got.Indexed != 0 {
-		t.Fatalf("indexed = %d, want 0", got.Indexed)
+	if got.Indexed != 1 {
+		t.Fatalf("indexed = %d, want 1", got.Indexed)
 	}
 }
 
@@ -199,6 +207,9 @@ func seedImportProject(t *testing.T) (string, string) {
 	}
 	if err := project.WriteMnemonicFile(filepath.Join(repoRoot, ".mnemonic"), file); err != nil {
 		t.Fatalf("WriteMnemonicFile() error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".mnemonic-memories", "backend"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(memories) error = %v", err)
 	}
 
 	return repoRoot, subdir

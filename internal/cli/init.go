@@ -72,8 +72,25 @@ var initCmd = &cobra.Command{
 		if detached {
 			input.Mode = project.InitModeDetached
 		}
+		if err := project.InitProject(input); err != nil {
+			return err
+		}
 
-		return project.InitProject(input)
+		slug, err := project.Slugify(args[0])
+		if err != nil {
+			return err
+		}
+
+		container, err := mustAppContainer()
+		if err != nil {
+			return err
+		}
+		record, err := queryProjectBySelector(slug)
+		if err != nil {
+			return err
+		}
+
+		return buildProjectIndex(container.Services.Registry, record.ProjectID, record.Location.memoriesAbs)
 	},
 }
 
