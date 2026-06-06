@@ -1,0 +1,28 @@
+[tools]
+go = "latest"
+"go:golang.org/x/tools/gopls" = "latest"
+
+[tasks.build]
+run = "go build -o ./bin/mnemonic ./cmd/mnemonic"
+
+[tasks.clean]
+run = "rm -rf ./bin"
+
+[tasks.fmt]
+run = "go fmt ./..."
+
+[tasks.test]
+run = "go test ./..."
+
+[tasks.test-race]
+run = "go test -race ./..."
+
+[tasks.vet]
+run = "go vet ./..."
+
+[tasks.collect_content]
+run = "collect_content . --skip-empty --format md --sort dirs-first --ext \".go\"  > mnemonic.md"
+
+[env]
+VISUAL = "nvim"
+EDITOR = "nvim"

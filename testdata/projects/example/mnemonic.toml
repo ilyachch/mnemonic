@@ -1,0 +1,16 @@
+version = 1
+project_id = "7f0a6d73-c3ba-4f0e-85b8-27bccf4370f1"
+name = "research"
+slug = "research"
+kind = "regular"
+markdown_format_version = 1
+created_at = "2026-06-06T09:00:00Z"
+updated_at = "2026-06-06T09:00:00Z"
+
+[layout]
+notes_glob = ["**/*.md"]
+ignore = ["mnemonic.toml", ".trash/**"]
+
+[generator]
+app = "mnemonic"
+app_version = "0.1.0-dev"

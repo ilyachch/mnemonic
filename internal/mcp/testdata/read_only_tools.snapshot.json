@@ -1,0 +1,535 @@
+[
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "openWorldHint": false
+    },
+    "description": "Create a note in the current project",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "description": "optional note body",
+          "type": "string"
+        },
+        "path": {
+          "description": "optional relative note path",
+          "type": "string"
+        },
+        "tags": {
+          "description": "optional note tags",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "title": {
+          "description": "note title",
+          "type": "string"
+        },
+        "type": {
+          "description": "optional note type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "type": "object"
+    },
+    "name": "create_note",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "content_hash": {
+          "type": "string"
+        },
+        "note_id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "slug": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "note_id",
+        "slug",
+        "path",
+        "content_hash"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "openWorldHint": false
+    },
+    "description": "Delete a note in the current project",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "hard_delete": {
+          "description": "delete permanently instead of moving to trash",
+          "type": "boolean"
+        },
+        "identifier": {
+          "description": "note identifier",
+          "type": "string"
+        },
+        "if_match_hash": {
+          "description": "require the current content hash to match",
+          "type": "string"
+        }
+      },
+      "required": [
+        "identifier"
+      ],
+      "type": "object"
+    },
+    "name": "delete_note",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "deleted": {
+          "type": "boolean"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "trash_path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "deleted",
+        "mode"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "openWorldHint": false
+    },
+    "description": "Edit a note in the current project",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "append": {
+          "description": "append text to the note body",
+          "type": "string"
+        },
+        "identifier": {
+          "description": "note identifier",
+          "type": "string"
+        },
+        "if_match_hash": {
+          "description": "require the current content hash to match",
+          "type": "string"
+        },
+        "merge_frontmatter": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "merge frontmatter fields",
+          "type": "object"
+        },
+        "replace_body": {
+          "description": "replace the note body",
+          "type": "string"
+        }
+      },
+      "required": [
+        "identifier"
+      ],
+      "type": "object"
+    },
+    "name": "edit_note",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "content_hash": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "note_id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "note_id",
+        "slug",
+        "path",
+        "content_hash",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "List backlinks for a note",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "identifier": {
+          "description": "note identifier",
+          "type": "string"
+        },
+        "limit": {
+          "description": "maximum number of backlinks to return",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "identifier"
+      ],
+      "type": "object"
+    },
+    "name": "list_backlinks",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "links": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "link_id": {
+                "type": "string"
+              },
+              "note_id": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "relation_type": {
+                "type": "string"
+              },
+              "slug": {
+                "type": "string"
+              },
+              "source_line": {
+                "type": "integer"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "link_id",
+              "note_id",
+              "slug",
+              "title",
+              "path",
+              "relation_type",
+              "source_line"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "links"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "List notes in the current project",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "description": "pagination cursor",
+          "type": "string"
+        },
+        "limit": {
+          "description": "maximum number of notes to return",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "name": "list_notes",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "next_cursor": {
+          "type": "string"
+        },
+        "notes": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "content_hash": {
+                "type": "string"
+              },
+              "note_id": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "slug": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "updated_at": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "note_id",
+              "slug",
+              "title",
+              "path",
+              "updated_at",
+              "content_hash"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "notes"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "List tags in the current project",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "description": "maximum number of tags to return",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "name": "list_tags",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "tags": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "count": {
+                "type": "integer"
+              },
+              "tag": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "tag",
+              "count"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "tags"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Read a note by identifier",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "identifier": {
+          "description": "note identifier",
+          "type": "string"
+        }
+      },
+      "required": [
+        "identifier"
+      ],
+      "type": "object"
+    },
+    "name": "read_note",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "note": {
+          "additionalProperties": false,
+          "properties": {
+            "body": {
+              "type": "string"
+            },
+            "content_hash": {
+              "type": "string"
+            },
+            "frontmatter": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "note_id": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "slug": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "updated_at": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "note_id",
+            "slug",
+            "title",
+            "path",
+            "frontmatter",
+            "body",
+            "content_hash",
+            "updated_at"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "note"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "description": "Search notes in the current project",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "description": "maximum number of hits to return",
+          "type": "integer"
+        },
+        "query": {
+          "description": "full-text search query",
+          "type": "string"
+        },
+        "tag": {
+          "description": "optional tag filter",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "name": "search_notes",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "hits": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "content_hash": {
+                "type": "string"
+              },
+              "note_id": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "score": {
+                "type": "number"
+              },
+              "slug": {
+                "type": "string"
+              },
+              "snippet": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "note_id",
+              "slug",
+              "title",
+              "path",
+              "score",
+              "snippet",
+              "content_hash"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "hits"
+      ],
+      "type": "object"
+    }
+  }
+]
