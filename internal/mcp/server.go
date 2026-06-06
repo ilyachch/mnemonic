@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/app"
@@ -27,6 +28,9 @@ import (
 type Server struct {
 	Project project.ResolvedProject
 	Paths   paths.EffectivePaths
+
+	indexDBMu sync.Mutex
+	indexConn *sql.DB
 }
 
 // NewServer creates a new MCP shell server wrapper.
@@ -36,6 +40,10 @@ func NewServer(resolved project.ResolvedProject, effectivePaths paths.EffectiveP
 
 // Run keeps the shell boundary explicit without exposing any tools yet.
 func (s *Server) Run(ctx context.Context) error {
+	defer func() {
+		_ = s.closeIndexDB()
+	}()
+
 	sdkServer := sdkmcp.NewServer(
 		&sdkmcp.Implementation{Name: "mnemonic", Version: "0.1.0-dev"},
 		&sdkmcp.ServerOptions{
@@ -219,22 +227,10 @@ func registerReadOnlyTools(server *sdkmcp.Server, appServer *Server) {
 			return nil, listTagsOutput{}, fmt.Errorf("server is nil")
 		}
 
-		indexPath, err := index.Path(appServer.Project.Project.ID)
+		tagsDB, err := appServer.indexDB()
 		if err != nil {
 			return nil, listTagsOutput{}, err
 		}
-		if _, err := os.Stat(indexPath); err != nil {
-			if os.IsNotExist(err) {
-				return nil, listTagsOutput{}, app.NewNotFoundError("index missing; run `mnemonic project reindex`", nil)
-			}
-			return nil, listTagsOutput{}, fmt.Errorf("stat index %q: %w", indexPath, err)
-		}
-
-		tagsDB, err := sql.Open("sqlite", indexPath)
-		if err != nil {
-			return nil, listTagsOutput{}, err
-		}
-		defer func() { _ = tagsDB.Close() }()
 
 		tags, err := listTags(tagsDB, input.Limit)
 		if err != nil {
@@ -257,22 +253,10 @@ func registerReadOnlyTools(server *sdkmcp.Server, appServer *Server) {
 			return nil, searchNotesOutput{}, fmt.Errorf("server is nil")
 		}
 
-		indexPath, err := index.Path(appServer.Project.Project.ID)
+		searchDB, err := appServer.indexDB()
 		if err != nil {
 			return nil, searchNotesOutput{}, err
 		}
-		if _, err := os.Stat(indexPath); err != nil {
-			if os.IsNotExist(err) {
-				return nil, searchNotesOutput{}, app.NewNotFoundError("index missing; run `mnemonic project reindex`", nil)
-			}
-			return nil, searchNotesOutput{}, fmt.Errorf("stat index %q: %w", indexPath, err)
-		}
-
-		searchDB, err := sql.Open("sqlite", indexPath)
-		if err != nil {
-			return nil, searchNotesOutput{}, err
-		}
-		defer func() { _ = searchDB.Close() }()
 
 		hits, err := search.Search(searchDB, input.Query, input.Limit, input.Tag)
 		if err != nil {
@@ -332,22 +316,10 @@ func registerReadOnlyTools(server *sdkmcp.Server, appServer *Server) {
 			return nil, listBacklinksOutput{}, fmt.Errorf("server is nil")
 		}
 
-		indexPath, err := index.Path(appServer.Project.Project.ID)
+		linksDB, err := appServer.indexDB()
 		if err != nil {
 			return nil, listBacklinksOutput{}, err
 		}
-		if _, err := os.Stat(indexPath); err != nil {
-			if os.IsNotExist(err) {
-				return nil, listBacklinksOutput{}, app.NewNotFoundError("index missing; run `mnemonic project reindex`", nil)
-			}
-			return nil, listBacklinksOutput{}, fmt.Errorf("stat index %q: %w", indexPath, err)
-		}
-
-		linksDB, err := sql.Open("sqlite", indexPath)
-		if err != nil {
-			return nil, listBacklinksOutput{}, err
-		}
-		defer func() { _ = linksDB.Close() }()
 
 		target, err := queryIndexedNoteByIdentifier(linksDB, input.Identifier)
 		if err != nil {
@@ -462,6 +434,69 @@ func (s *Server) resolveMemoriesRoot() (string, error) {
 		MemoriesHome: s.Paths.MemoriesHome,
 		RepoRoot:     repoRoot,
 	})
+}
+
+func (s *Server) indexDB() (*sql.DB, error) {
+	if s == nil {
+		return nil, fmt.Errorf("server is nil")
+	}
+
+	s.indexDBMu.Lock()
+	defer s.indexDBMu.Unlock()
+
+	if s.indexConn != nil {
+		return s.indexConn, nil
+	}
+
+	indexPath, err := index.Path(s.Project.Project.ID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(indexPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil, app.NewNotFoundError("index missing; run `mnemonic project reindex`", nil)
+		}
+		return nil, fmt.Errorf("stat index %q: %w", indexPath, err)
+	}
+
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(indexPath)+"?mode=ro")
+	if err != nil {
+		return nil, fmt.Errorf("open index database: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("ping index database: %w", err)
+	}
+	if _, err := db.Exec(`PRAGMA busy_timeout = 5000`); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("apply PRAGMA busy_timeout: %w", err)
+	}
+
+	s.indexConn = db
+	return s.indexConn, nil
+}
+
+func (s *Server) closeIndexDB() error {
+	if s == nil {
+		return nil
+	}
+
+	s.indexDBMu.Lock()
+	defer s.indexDBMu.Unlock()
+
+	if s.indexConn == nil {
+		return nil
+	}
+
+	db := s.indexConn
+	s.indexConn = nil
+	if err := db.Close(); err != nil {
+		return fmt.Errorf("close index database: %w", err)
+	}
+	return nil
 }
 
 func listTags(db *sql.DB, limit int) ([]listTagsItem, error) {

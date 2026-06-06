@@ -189,6 +189,50 @@ func TestListTagsReturnsTagsAndRespectsLimit(t *testing.T) {
 	}
 }
 
+func TestServerIndexDBReusesSingleConnection(t *testing.T) {
+	_ = writableMCPEnv(t)
+	projectRoot := t.TempDir()
+	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+
+	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
+	if err := os.MkdirAll(memoryRoot, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	writeTaggedMCPNote(t, filepath.Join(memoryRoot, "auth-one.md"), "550e8400-e29b-41d4-a716-446655440001", "Auth One", "auth-one", []string{"auth"}, "auth one body\n")
+	if _, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot); err != nil {
+		t.Fatalf("RebuildProjectIndex() error = %v", err)
+	}
+
+	resolvedProject, err := project.ResolveProject(project.ResolveProjectInput{
+		CWD:             projectRoot,
+		ProjectSelector: "personal",
+	})
+	if err != nil {
+		t.Fatalf("ResolveProject() error = %v", err)
+	}
+	effectivePaths, err := paths.ResolveEffectivePaths(paths.EffectiveInput{})
+	if err != nil {
+		t.Fatalf("ResolveEffectivePaths() error = %v", err)
+	}
+
+	server := NewServer(resolvedProject, effectivePaths)
+	t.Cleanup(func() {
+		_ = server.closeIndexDB()
+	})
+
+	firstDB, err := server.indexDB()
+	if err != nil {
+		t.Fatalf("indexDB() first error = %v", err)
+	}
+	secondDB, err := server.indexDB()
+	if err != nil {
+		t.Fatalf("indexDB() second error = %v", err)
+	}
+	if firstDB != secondDB {
+		t.Fatal("indexDB() did not reuse the cached database handle")
+	}
+}
+
 func TestListBacklinksReturnsLinksAndRespectsLimit(t *testing.T) {
 	env := writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
