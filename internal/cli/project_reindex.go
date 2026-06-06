@@ -93,18 +93,17 @@ func reindexPendingProjects(db *sql.DB, effectivePaths paths.EffectivePaths) (pr
 	if err != nil {
 		return projectReindexSummary{}, err
 	}
-	defer rows.Close()
+	records, err := loadPendingReindexProjects(rows)
+	if err != nil {
+		return projectReindexSummary{}, err
+	}
 	var summary projectReindexSummary
-	for rows.Next() {
-		var record projectLookupResult
-		var indexPresent, needsReindex int
-		if err := rows.Scan(&record.ProjectID, &record.Name, &record.Slug, &record.Kind, &record.Location.memoriesAbs, &record.Location.sourceKind, &indexPresent, &needsReindex); err != nil {
-			return projectReindexSummary{}, err
-		}
-		if indexPresent == 1 && needsReindex == 0 {
+	for _, pending := range records {
+		if pending.indexPresent && !pending.needsReindex {
 			summary.Skipped++
 			continue
 		}
+		record := pending.projectLookupResult
 		res, err := rebuildProject(record, effectivePaths)
 		if err != nil {
 			summary.Projects = append(summary.Projects, projectReindexProjectResult{ProjectID: record.ProjectID, Slug: record.Slug, Status: "error", Error: err.Error()})
@@ -116,7 +115,7 @@ func reindexPendingProjects(db *sql.DB, effectivePaths paths.EffectivePaths) (pr
 			return summary, err
 		}
 	}
-	return summary, rows.Err()
+	return summary, nil
 }
 
 func reindexAllProjects(db *sql.DB, effectivePaths paths.EffectivePaths) (projectReindexSummary, error) {
@@ -128,13 +127,12 @@ func reindexAllProjects(db *sql.DB, effectivePaths paths.EffectivePaths) (projec
 	if err != nil {
 		return projectReindexSummary{}, err
 	}
-	defer rows.Close()
+	records, err := loadProjectRows(rows)
+	if err != nil {
+		return projectReindexSummary{}, err
+	}
 	var summary projectReindexSummary
-	for rows.Next() {
-		var record projectLookupResult
-		if err := rows.Scan(&record.ProjectID, &record.Name, &record.Slug, &record.Kind, &record.Location.memoriesAbs, &record.Location.sourceKind); err != nil {
-			return projectReindexSummary{}, err
-		}
+	for _, record := range records {
 		res, err := rebuildProject(record, effectivePaths)
 		if err != nil {
 			summary.Projects = append(summary.Projects, projectReindexProjectResult{ProjectID: record.ProjectID, Slug: record.Slug, Status: "error", Error: err.Error()})
@@ -146,7 +144,7 @@ func reindexAllProjects(db *sql.DB, effectivePaths paths.EffectivePaths) (projec
 			return summary, err
 		}
 	}
-	return summary, rows.Err()
+	return summary, nil
 }
 
 func rebuildProject(record projectLookupResult, effectivePaths paths.EffectivePaths) (projectReindexProjectResult, error) {
@@ -174,4 +172,47 @@ func boolToInt(v bool) int {
 		return 1
 	}
 	return 0
+}
+
+type pendingReindexProject struct {
+	projectLookupResult
+	indexPresent bool
+	needsReindex bool
+}
+
+func loadPendingReindexProjects(rows *sql.Rows) ([]pendingReindexProject, error) {
+	defer rows.Close()
+
+	var records []pendingReindexProject
+	for rows.Next() {
+		var record pendingReindexProject
+		var indexPresent, needsReindex int
+		if err := rows.Scan(&record.ProjectID, &record.Name, &record.Slug, &record.Kind, &record.Location.memoriesAbs, &record.Location.sourceKind, &indexPresent, &needsReindex); err != nil {
+			return nil, err
+		}
+		record.indexPresent = indexPresent == 1
+		record.needsReindex = needsReindex == 1
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return records, nil
+}
+
+func loadProjectRows(rows *sql.Rows) ([]projectLookupResult, error) {
+	defer rows.Close()
+
+	var records []projectLookupResult
+	for rows.Next() {
+		var record projectLookupResult
+		if err := rows.Scan(&record.ProjectID, &record.Name, &record.Slug, &record.Kind, &record.Location.memoriesAbs, &record.Location.sourceKind); err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return records, nil
 }

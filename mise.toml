@@ -23,6 +23,9 @@ run = "go vet ./..."
 [tasks.collect_content]
 run = "collect_content . --skip-empty --format md --sort dirs-first --ext \".go\"  > mnemonic.md"
 
+[tasks.install]
+run = "go install ./cmd/mnemonic"
+
 [env]
 VISUAL = "nvim"
 EDITOR = "nvim"

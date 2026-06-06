@@ -14,6 +14,85 @@ import (
 	"github.com/ilyachch/mnemonic/internal/testutil"
 )
 
+func TestProjectReindexBatchModesDoNotHitRegistryBusy(t *testing.T) {
+	projectRoot := testutil.CleanEnvForTest(t)
+
+	restoreClock := project.SetClock(testutil.NewClock(
+		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		"550e8400-e29b-41d4-a716-446655440000",
+		"550e8400-e29b-41d4-a716-446655440001",
+	))
+	defer restoreClock()
+
+	for _, name := range []string{"Personal", "Work"} {
+		if err := project.InitProject(project.InitInput{
+			CWD:          projectRoot,
+			MemoriesHome: filepath.Join(projectRoot, ".mnemonic-memories"),
+			Name:         name,
+			Mode:         project.InitModeLocal,
+		}); err != nil {
+			t.Fatalf("InitProject(%q) error = %v", name, err)
+		}
+	}
+
+	personal, err := queryProjectBySelector("personal")
+	if err != nil {
+		t.Fatalf("queryProjectBySelector(personal) error = %v", err)
+	}
+	work, err := queryProjectBySelector("work")
+	if err != nil {
+		t.Fatalf("queryProjectBySelector(work) error = %v", err)
+	}
+
+	for _, tc := range []struct {
+		rootDir string
+		title   string
+		uuid    string
+	}{
+		{rootDir: personal.Location.memoriesAbs, title: "Personal Note", uuid: "550e8400-e29b-41d4-a716-446655440010"},
+		{rootDir: work.Location.memoriesAbs, title: "Work Note", uuid: "550e8400-e29b-41d4-a716-446655440011"},
+	} {
+		if _, err := notes.Create(notes.CreateInput{
+			RootDir: tc.rootDir,
+			Title:   tc.title,
+			Body:    []byte("body\n"),
+			UUID: func(id string) func() string {
+				return func() string { return id }
+			}(tc.uuid),
+		}); err != nil {
+			t.Fatalf("Create(%q) error = %v", tc.title, err)
+		}
+	}
+
+	container, err := mustAppContainer()
+	if err != nil {
+		t.Fatalf("mustAppContainer() error = %v", err)
+	}
+
+	allSummary, err := reindexAllProjects(container.Services.Registry, container.Paths)
+	if err != nil {
+		t.Fatalf("reindexAllProjects() error = %v", err)
+	}
+	if allSummary.Indexed != 2 {
+		t.Fatalf("reindexAllProjects() indexed = %d, want 2", allSummary.Indexed)
+	}
+
+	if _, err := container.Services.Registry.Exec(`UPDATE project_status SET needs_reindex = 1 WHERE project_id = ?`, personal.ProjectID); err != nil {
+		t.Fatalf("mark personal needs_reindex: %v", err)
+	}
+
+	pendingSummary, err := reindexPendingProjects(container.Services.Registry, container.Paths)
+	if err != nil {
+		t.Fatalf("reindexPendingProjects() error = %v", err)
+	}
+	if pendingSummary.Indexed != 1 {
+		t.Fatalf("reindexPendingProjects() indexed = %d, want 1", pendingSummary.Indexed)
+	}
+	if pendingSummary.Skipped != 1 {
+		t.Fatalf("reindexPendingProjects() skipped = %d, want 1", pendingSummary.Skipped)
+	}
+}
+
 func TestProjectReindexRebuildsIncompatibleIndexWithoutChangingMarkdown(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
