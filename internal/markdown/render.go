@@ -91,8 +91,13 @@ func renderFrontmatterField(buf *bytes.Buffer, key string, value any) error {
 		return fmt.Errorf("render frontmatter %q: %w", key, err)
 	}
 
+	var doc yaml.Node
+	if err := yaml.Unmarshal(rendered, &doc); err != nil {
+		return fmt.Errorf("render frontmatter %q: inspect yaml: %w", key, err)
+	}
+
 	rendered = bytes.TrimSuffix(rendered, []byte("\n"))
-	if bytes.Contains(rendered, []byte("\n")) {
+	if shouldRenderFrontmatterBlock(&doc, rendered) {
 		fmt.Fprintf(buf, "%s:\n", key)
 		for _, line := range bytes.Split(rendered, []byte("\n")) {
 			buf.WriteString("  ")
@@ -104,4 +109,20 @@ func renderFrontmatterField(buf *bytes.Buffer, key string, value any) error {
 
 	fmt.Fprintf(buf, "%s: %s\n", key, rendered)
 	return nil
+}
+
+func shouldRenderFrontmatterBlock(doc *yaml.Node, rendered []byte) bool {
+	if bytes.Contains(rendered, []byte("\n")) {
+		return true
+	}
+	if len(doc.Content) == 0 {
+		return false
+	}
+
+	switch doc.Content[0].Kind {
+	case yaml.MappingNode, yaml.SequenceNode:
+		return true
+	default:
+		return false
+	}
 }

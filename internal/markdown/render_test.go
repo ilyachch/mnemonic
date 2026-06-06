@@ -95,6 +95,38 @@ func TestRenderNoteRoundTripPreservesMetadata(t *testing.T) {
 	}
 }
 
+func TestRenderNoteSingleTagUsesYAMLList(t *testing.T) {
+	t.Parallel()
+
+	note := Note{
+		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440011",
+		Slug:           "single-tag-note",
+		Tags:           []string{"test"},
+		Body:           []byte("body\n"),
+	}
+
+	rendered, err := RenderNote(note)
+	if err != nil {
+		t.Fatalf("RenderNote() error = %v", err)
+	}
+
+	renderedText := string(rendered)
+	if strings.Contains(renderedText, "tags: - test\n") {
+		t.Fatalf("rendered invalid inline sequence: %q", renderedText)
+	}
+	if !strings.Contains(renderedText, "tags:\n  - test\n") {
+		t.Fatalf("rendered note does not use a YAML list for a single tag: %q", renderedText)
+	}
+
+	roundTripped, err := ParseNote(rendered)
+	if err != nil {
+		t.Fatalf("ParseNote() error = %v", err)
+	}
+	if got, want := roundTripped.Tags, note.Tags; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("Tags = %#v, want %#v", got, want)
+	}
+}
+
 func assertOrderedSubstrings(t *testing.T, text string, substrings ...string) {
 	t.Helper()
 

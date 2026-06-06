@@ -93,16 +93,15 @@ func collectVisibleLines(node ast.Node, source []byte, lineForOffset func(int) i
 
 	var walk func(ast.Node)
 	walk = func(n ast.Node) {
-		switch n.(type) {
+		switch n := n.(type) {
 		case *ast.CodeBlock, *ast.FencedCodeBlock, *ast.CodeSpan:
 			return
 		case *ast.Text:
-			textNode := n.(*ast.Text)
-			raw := textNode.Segment.Value(source)
+			raw := n.Segment.Value(source)
 			if len(raw) == 0 {
 				return
 			}
-			offset := textNode.Segment.Start
+			offset := n.Segment.Start
 			for len(raw) > 0 {
 				if currentLine == 0 {
 					currentLine = lineForOffset(offset)
@@ -110,7 +109,7 @@ func collectVisibleLines(node ast.Node, source []byte, lineForOffset func(int) i
 				newline := bytes.IndexByte(raw, '\n')
 				if newline < 0 {
 					buf.Write(raw)
-					if textNode.SoftLineBreak() || textNode.HardLineBreak() {
+					if n.SoftLineBreak() || n.HardLineBreak() {
 						flush()
 					}
 					return
