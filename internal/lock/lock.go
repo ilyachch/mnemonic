@@ -95,23 +95,16 @@ func Acquire(input AcquireInput) (*Guard, error) {
 	}
 }
 
-// Release frees the lock and removes the lock file.
+// Release frees the lock and leaves the lock file on disk.
 func (g *Guard) Release() error {
 	if g == nil {
 		return nil
 	}
-	var closeErr error
 	if g.lock != nil {
-		closeErr = g.lock.Close()
+		if err := g.lock.Close(); err != nil {
+			return fmt.Errorf("close lock file: %w", err)
+		}
 		g.lock = nil
 	}
-	removeErr := os.Remove(g.path)
-	switch {
-	case closeErr != nil:
-		return fmt.Errorf("close lock file: %w", closeErr)
-	case removeErr != nil && !errors.Is(removeErr, os.ErrNotExist):
-		return fmt.Errorf("remove lock file: %w", removeErr)
-	default:
-		return nil
-	}
+	return nil
 }

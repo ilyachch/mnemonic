@@ -71,8 +71,12 @@ func TestReleaseFreesLock(t *testing.T) {
 	if err := first.Release(); err != nil {
 		t.Fatalf("Release() error = %v", err)
 	}
-	if _, err := os.Stat(lockPath); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("lock file stat after release = %v, want not exist", err)
+	info, err := os.Stat(lockPath)
+	if err != nil {
+		t.Fatalf("lock file stat after release = %v", err)
+	}
+	if info.IsDir() {
+		t.Fatalf("lock file stat after release = directory, want file")
 	}
 
 	second, err := Acquire(AcquireInput{ProjectID: "project-1", Name: "write"})
