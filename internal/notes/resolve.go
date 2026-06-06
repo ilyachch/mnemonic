@@ -116,7 +116,7 @@ func resolveFromIndex(root string, selector string) (ResolvedNote, bool, error) 
 	}
 	switch len(matches) {
 	case 0:
-		return ResolvedNote{}, true, app.NewNotFoundError(fmt.Sprintf("note %q not found", selector), nil)
+		return ResolvedNote{}, false, nil
 	case 1:
 		return readResolvedNote(root, matches[0])
 	default:
