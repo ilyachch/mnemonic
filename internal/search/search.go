@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"unicode"
 )
 
 // Result is a single FTS search hit.
@@ -22,6 +23,7 @@ func Search(db *sql.DB, query string, limit int, tag string) ([]Result, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db is required")
 	}
+	query = sanitizeFTSQuery(query)
 	if strings.TrimSpace(query) == "" {
 		return nil, fmt.Errorf("query is required")
 	}
@@ -73,4 +75,13 @@ func Search(db *sql.DB, query string, limit int, tag string) ([]Result, error) {
 	}
 
 	return results, nil
+}
+
+func sanitizeFTSQuery(query string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return r
+		}
+		return ' '
+	}, query)
 }

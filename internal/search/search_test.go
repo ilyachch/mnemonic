@@ -91,6 +91,33 @@ func TestSearchOrdersByScoreAndRespectsLimit(t *testing.T) {
 	}
 }
 
+func TestSearchSanitizesFTSOperators(t *testing.T) {
+	db := mustSearchDB(t)
+
+	_, _ = db.Exec(`INSERT INTO notes(note_id, project_id, slug, rel_path, title, content_hash, created_at, updated_at) VALUES
+		('n1', 'p1', 'alpha', 'alpha.md', 'Alpha Service', 'h1', '2026-06-02T10:00:00Z', '2026-06-02T10:00:00Z'),
+		('n2', 'p1', 'unicode', 'unicode.md', 'Заметка поиска', 'h2', '2026-06-02T10:00:00Z', '2026-06-02T10:00:00Z')`)
+	_, _ = db.Exec(`INSERT INTO notes_fts(rowid, note_id, title, body) VALUES
+		((SELECT rowid FROM notes WHERE note_id='n1'),'n1','Alpha Service','token with punctuation'),
+		((SELECT rowid FROM notes WHERE note_id='n2'),'n2','Заметка поиска','токен с пунктуацией')`)
+
+	hits, err := Search(db, `Alpha-Service:token*"punctuation"`, 10, "")
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(hits) != 1 || hits[0].NoteID != "n1" {
+		t.Fatalf("Search() = %#v", hits)
+	}
+
+	unicodeHits, err := Search(db, `Заметка:"токен"`, 10, "")
+	if err != nil {
+		t.Fatalf("Search(unicode) error = %v", err)
+	}
+	if len(unicodeHits) != 1 || unicodeHits[0].NoteID != "n2" {
+		t.Fatalf("Search(unicode) = %#v", unicodeHits)
+	}
+}
+
 func mustSearchDB(t *testing.T) *sql.DB {
 	t.Helper()
 

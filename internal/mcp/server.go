@@ -365,6 +365,9 @@ func registerWriteTools(server *sdkmcp.Server, appServer *Server) {
 		if err != nil {
 			return nil, createNoteOutput{}, err
 		}
+		if err := appServer.rebuildIndex(root); err != nil {
+			return nil, createNoteOutput{}, err
+		}
 
 		_ = ctx
 		return nil, created, nil
@@ -392,6 +395,9 @@ func registerWriteTools(server *sdkmcp.Server, appServer *Server) {
 		if err != nil {
 			return nil, editNoteOutput{}, err
 		}
+		if err := appServer.rebuildIndex(root); err != nil {
+			return nil, editNoteOutput{}, err
+		}
 
 		_ = ctx
 		return nil, edited, nil
@@ -417,6 +423,9 @@ func registerWriteTools(server *sdkmcp.Server, appServer *Server) {
 
 		deleted, err := deleteNote(root, input)
 		if err != nil {
+			return nil, deleteNoteOutput{}, err
+		}
+		if err := appServer.rebuildIndex(root); err != nil {
 			return nil, deleteNoteOutput{}, err
 		}
 
@@ -495,6 +504,19 @@ func (s *Server) closeIndexDB() error {
 	s.indexConn = nil
 	if err := db.Close(); err != nil {
 		return fmt.Errorf("close index database: %w", err)
+	}
+	return nil
+}
+
+func (s *Server) rebuildIndex(root string) error {
+	if s == nil {
+		return fmt.Errorf("server is nil")
+	}
+	if err := s.closeIndexDB(); err != nil {
+		return err
+	}
+	if _, err := index.RebuildProjectIndex(s.Project.Project.ID, root); err != nil {
+		return err
 	}
 	return nil
 }

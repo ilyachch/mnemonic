@@ -17,10 +17,13 @@ run = "go test ./..."
 [tasks.test-race]
 run = "go test -race ./..."
 
+[tasks.test-integration]
+run = "go run ./scripts/mcp_smoke.go"
+
 [tasks.vet]
 run = "go vet ./..."
 
-[tasks.collect_content]
+[tasks.collect-content]
 run = "collect_content . --skip-empty --format md --sort dirs-first --ext \".go\"  > mnemonic.md"
 
 [tasks.install]

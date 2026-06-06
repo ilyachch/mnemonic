@@ -369,6 +369,96 @@ func TestCreateNoteCreatesReadableNote(t *testing.T) {
 	}
 }
 
+func TestWriteToolsRefreshIndexForReadOnlyTools(t *testing.T) {
+	env := writableMCPEnv(t)
+	repoRoot := repoRootForTest(t)
+	projectRoot := t.TempDir()
+	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+
+	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
+	if err := os.MkdirAll(memoryRoot, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if _, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot); err != nil {
+		t.Fatalf("RebuildProjectIndex() error = %v", err)
+	}
+
+	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
+
+	beforeSearch, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "search_notes",
+		Arguments: map[string]any{"query": "mcp-smoke-token-20260606-224145", "limit": 10},
+	})
+	if err != nil {
+		t.Fatalf("CallTool(search_notes before) error = %v", err)
+	}
+	if beforeSearch.IsError {
+		t.Fatalf("search_notes before returned tool error: text=%q content=%#v", resultText(t, beforeSearch), beforeSearch.Content)
+	}
+
+	alphaResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "create_note",
+		Arguments: map[string]any{
+			"title": "MCP Smoke Alpha",
+			"path":  "mcp-smoke-alpha.md",
+			"body":  "Alpha smoke body.",
+			"tags":  []string{"mcp", "smoke"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool(create_note alpha) error = %v", err)
+	}
+	if alphaResult.IsError {
+		t.Fatalf("create_note alpha returned tool error: text=%q content=%#v", resultText(t, alphaResult), alphaResult.Content)
+	}
+	alpha := decodeCreateNoteOutput(t, alphaResult)
+
+	betaResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "create_note",
+		Arguments: map[string]any{
+			"title": "MCP Smoke Beta",
+			"body":  "Links to [[mcp-smoke-alpha]].\nUnique token: mcp-smoke-token-20260606-224145.",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool(create_note beta) error = %v", err)
+	}
+	if betaResult.IsError {
+		t.Fatalf("create_note beta returned tool error: text=%q content=%#v", resultText(t, betaResult), betaResult.Content)
+	}
+	beta := decodeCreateNoteOutput(t, betaResult)
+
+	searchResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "search_notes",
+		Arguments: map[string]any{"query": `"mcp-smoke-token-20260606-224145"`, "limit": 10},
+	})
+	if err != nil {
+		t.Fatalf("CallTool(search_notes after) error = %v", err)
+	}
+	if searchResult.IsError {
+		t.Fatalf("search_notes after returned tool error: text=%q content=%#v", resultText(t, searchResult), searchResult.Content)
+	}
+	searchOut := decodeSearchNotesOutput(t, searchResult)
+	if len(searchOut.Hits) != 1 || searchOut.Hits[0].NoteID != beta.NoteID {
+		t.Fatalf("search hits = %#v, want beta note %q", searchOut.Hits, beta.NoteID)
+	}
+
+	backlinksResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "list_backlinks",
+		Arguments: map[string]any{"identifier": alpha.NoteID, "limit": 10},
+	})
+	if err != nil {
+		t.Fatalf("CallTool(list_backlinks) error = %v", err)
+	}
+	if backlinksResult.IsError {
+		t.Fatalf("list_backlinks returned tool error: text=%q content=%#v", resultText(t, backlinksResult), backlinksResult.Content)
+	}
+	backlinksOut := decodeListBacklinksOutput(t, backlinksResult)
+	if len(backlinksOut.Links) != 1 || backlinksOut.Links[0].NoteID != beta.NoteID {
+		t.Fatalf("backlinks = %#v, want beta note %q", backlinksOut.Links, beta.NoteID)
+	}
+}
+
 func TestEditNoteSupportsModes(t *testing.T) {
 	env := writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
@@ -985,8 +1075,9 @@ func connectToMCPServerWithEnv(t *testing.T, repoRoot, projectRoot string, env [
 			},
 		},
 	)
-	registerReadOnlyTools(sdkServer, NewServer(resolvedProject, effectivePaths))
-	registerWriteTools(sdkServer, NewServer(resolvedProject, effectivePaths))
+	server := NewServer(resolvedProject, effectivePaths)
+	registerReadOnlyTools(sdkServer, server)
+	registerWriteTools(sdkServer, server)
 
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	serverSession, err := sdkServer.Connect(context.Background(), serverTransport, nil)
