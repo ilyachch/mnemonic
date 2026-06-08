@@ -2,8 +2,18 @@
 go = "latest"
 "go:golang.org/x/tools/gopls" = "latest"
 
+[tasks.build-linux]
+depends = ["check"]
+run = "go build -o ./bin/linux/mnemonic ./cmd/mnemonic"
+env = { GOOS = "linux", GOARCH = "amd64" }
+
+[tasks.build-macos]
+depends = ["check"]
+run = "go build -o ./bin/macos/mnemonic ./cmd/mnemonic"
+env = { GOOS = "darwin", GOARCH = "arm64" }
+
 [tasks.build]
-run = "go build -o ./bin/mnemonic ./cmd/mnemonic"
+depends = ["check", "build-linux", "build-macos"]
 
 [tasks.clean]
 run = "rm -rf ./bin"
@@ -22,6 +32,12 @@ run = "go run ./scripts/mcp_smoke.go"
 
 [tasks.vet]
 run = "go vet ./..."
+
+[tasks.lint]
+depends = ["fmt", "vet"]
+
+[tasks.check]
+depends = ["lint", "test"]
 
 [tasks.collect-content]
 run = "collect_content . --skip-empty --format md --sort dirs-first --ext \".go\"  > mnemonic.md"
