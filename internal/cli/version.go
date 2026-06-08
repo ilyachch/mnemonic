@@ -1,22 +1,21 @@
 package cli
 
 import (
+	"github.com/ilyachch/mnemonic/internal/buildinfo"
 	"github.com/spf13/cobra"
 )
-
-// Version is the current version of mnemonic, defaulted to dev build.
-var Version = "0.1.0-dev"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Prints the version of mnemonic",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		version := buildinfo.Version()
 		data := struct {
 			Version string `json:"version"`
 		}{
-			Version: Version,
+			Version: version,
 		}
-		return PrintOutput(cmd.OutOrStdout(), Version+"\n", data)
+		return PrintOutput(cmd.OutOrStdout(), version+"\n", data)
 	},
 }
 

@@ -101,6 +101,6 @@ jobs:
         run: |
           mkdir -p dist/check
           go build -trimpath \
-            -ldflags="-s -w -X github.com/ilyachch/mnemonic/internal/cli.Version=pr-${GITHUB_SHA::7}" \
+            -ldflags="-s -w -X main.version=pr-${GITHUB_SHA::7}" \
             -o "dist/check/mnemonic-${GOOS}-${GOARCH}${{ matrix.ext }}" \
             ./cmd/mnemonic

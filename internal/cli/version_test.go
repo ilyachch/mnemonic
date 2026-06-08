@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/ilyachch/mnemonic/internal/buildinfo"
 )
 
 func TestVersionCmd(t *testing.T) {
@@ -13,8 +15,8 @@ func TestVersionCmd(t *testing.T) {
 	}
 
 	actual := strings.TrimSpace(res.Stdout)
-	if actual == "" {
-		t.Error("expected non-empty version output")
+	if actual != "dev" {
+		t.Errorf("expected version %q, got %q", "dev", actual)
 	}
 
 	if res.Stderr != "" {
@@ -36,8 +38,8 @@ func TestVersionCmd_JSON(t *testing.T) {
 		t.Fatalf("failed to parse JSON from stdout %q: %v", res.Stdout, err)
 	}
 
-	if parsed.Version != Version {
-		t.Errorf("expected version %q, got %q", Version, parsed.Version)
+	if parsed.Version != buildinfo.Version() {
+		t.Errorf("expected version %q, got %q", buildinfo.Version(), parsed.Version)
 	}
 
 	if res.Stderr != "" {

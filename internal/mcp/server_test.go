@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ilyachch/mnemonic/internal/buildinfo"
 	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/notes"
 	"github.com/ilyachch/mnemonic/internal/paths"
@@ -1068,7 +1069,7 @@ func connectToMCPServerWithEnv(t *testing.T, repoRoot, projectRoot string, env [
 	}
 
 	sdkServer := mcp.NewServer(
-		&mcp.Implementation{Name: "mnemonic", Version: "0.1.0-dev"},
+		&mcp.Implementation{Name: "mnemonic", Version: buildinfo.Version()},
 		&mcp.ServerOptions{
 			Capabilities: &mcp.ServerCapabilities{
 				Tools: &mcp.ToolCapabilities{ListChanged: true},
