@@ -36,14 +36,6 @@ jobs:
             goarch: arm64
             ext: ""
             archive_ext: .tar.gz
-          - goos: windows
-            goarch: amd64
-            ext: .exe
-            archive_ext: .zip
-          - goos: windows
-            goarch: arm64
-            ext: .exe
-            archive_ext: .zip
     steps:
       - name: Check out repository
         uses: actions/checkout@v6.0.3
