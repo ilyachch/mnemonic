@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/buildinfo"
 	mnemonicfs "github.com/ilyachch/mnemonic/internal/fs"
 	"github.com/ilyachch/mnemonic/internal/graph"
 	"github.com/ilyachch/mnemonic/internal/index"
@@ -45,7 +46,7 @@ func (s *Server) Run(ctx context.Context) error {
 	}()
 
 	sdkServer := sdkmcp.NewServer(
-		&sdkmcp.Implementation{Name: "mnemonic", Version: "0.1.0-dev"},
+		&sdkmcp.Implementation{Name: "mnemonic", Version: buildinfo.Version()},
 		&sdkmcp.ServerOptions{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Capabilities: &sdkmcp.ServerCapabilities{

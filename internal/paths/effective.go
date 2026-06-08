@@ -1,10 +1,6 @@
 package paths
 
-import (
-	"fmt"
-	"os"
-	"path/filepath"
-)
+import "os"
 
 // CLIOverrides captures path-related CLI flags that should win over env and config.
 type CLIOverrides struct {
@@ -82,37 +78,37 @@ func ResolveEffectivePaths(input EffectiveInput) (EffectivePaths, error) {
 
 func chooseConfiguredPath(cliValue, configuredValue string) (string, error) {
 	if cliValue != "" {
-		return normalizeAbsolutePath(cliValue)
+		return NormalizeAbsolutePath(cliValue)
 	}
 	if configuredValue != "" {
-		return normalizeAbsolutePath(configuredValue)
+		return NormalizeAbsolutePath(configuredValue)
 	}
 	return "", nil
 }
 
 func choosePath(cliValue, envValue string) (string, error) {
 	if cliValue != "" {
-		return normalizeAbsolutePath(cliValue)
+		return NormalizeAbsolutePath(cliValue)
 	}
 	if envValue != "" {
-		return normalizeAbsolutePath(envValue)
+		return NormalizeAbsolutePath(envValue)
 	}
 	return "", nil
 }
 
 func chooseMemoriesHome(cliValue, configValue, envValue string) (string, string, error) {
 	if cliValue != "" {
-		path, err := normalizeAbsolutePath(cliValue)
+		path, err := NormalizeAbsolutePath(cliValue)
 		return path, "", err
 	}
 
 	if mnemonicValue := os.Getenv("MNEMONIC_MEMORIES_HOME"); mnemonicValue != "" {
-		path, err := normalizeAbsolutePath(mnemonicValue)
+		path, err := NormalizeAbsolutePath(mnemonicValue)
 		return path, "", err
 	}
 
 	if configValue != "" {
-		path, err := normalizeAbsolutePath(configValue)
+		path, err := NormalizeAbsolutePath(configValue)
 		if err != nil {
 			return "", "", err
 		}
@@ -120,25 +116,4 @@ func chooseMemoriesHome(cliValue, configValue, envValue string) (string, string,
 	}
 
 	return envValue, "", nil
-}
-
-func normalizeAbsolutePath(path string) (string, error) {
-	if path == "" {
-		return "", nil
-	}
-
-	expanded, err := ExpandPath(path)
-	if err != nil {
-		return "", err
-	}
-	if filepath.IsAbs(expanded) {
-		return filepath.Clean(expanded), nil
-	}
-
-	abs, err := filepath.Abs(expanded)
-	if err != nil {
-		return "", fmt.Errorf("resolve absolute path %q: %w", path, err)
-	}
-
-	return filepath.Clean(abs), nil
 }

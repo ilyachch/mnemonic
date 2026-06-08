@@ -1,0 +1,33 @@
+version: 2
+
+project_name: mnemonic
+
+builds:
+  - id: mnemonic
+    main: ./cmd/mnemonic
+    binary: mnemonic
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{ .Tag }}
+
+archives:
+  - id: bundles
+    ids:
+      - mnemonic
+    formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
