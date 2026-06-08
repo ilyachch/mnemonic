@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/ilyachch/mnemonic/internal/paths"
 )
 
 // MemoriesRootInput configures absolute memories root resolution for a project.
@@ -43,7 +45,7 @@ func resolveRelativePathWithinBase(baseDir string, relativePath string, fieldNam
 		return "", fmt.Errorf("%s must be relative", fieldName)
 	}
 
-	baseAbs, err := filepath.Abs(baseDir)
+	baseAbs, err := paths.NormalizeAbsolutePath(baseDir)
 	if err != nil {
 		return "", fmt.Errorf("resolve base directory: %w", err)
 	}

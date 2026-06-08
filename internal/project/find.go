@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/paths"
 )
 
 // FindNearestMnemonicFile walks upward from startDir and returns the first .mnemonic file it finds.
@@ -14,7 +15,7 @@ func FindNearestMnemonicFile(startDir string) (string, error) {
 		return "", fmt.Errorf("start directory is required")
 	}
 
-	absStart, err := filepath.Abs(startDir)
+	absStart, err := paths.NormalizeAbsolutePath(startDir)
 	if err != nil {
 		return "", fmt.Errorf("resolve start directory: %w", err)
 	}

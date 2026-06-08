@@ -21,7 +21,7 @@ run = "rm -rf ./bin"
 [tasks.fmt]
 run = "go fmt ./..."
 
-[tasks.test]
+[tasks.test-unit]
 run = "go test ./..."
 
 [tasks.test-race]
@@ -29,6 +29,9 @@ run = "go test -race ./..."
 
 [tasks.test-integration]
 run = "go run ./scripts/mcp_smoke.go"
+
+[tasks.test]
+depends = ["test-unit", "test-race", "test-integration"]
 
 [tasks.vet]
 run = "go vet ./..."

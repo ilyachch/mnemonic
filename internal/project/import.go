@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/paths"
 	"github.com/ilyachch/mnemonic/internal/registry"
 )
 
@@ -45,7 +46,7 @@ func ResolveImportPath(input ImportInput) (string, error) {
 		path = "."
 	}
 
-	absPath, err := filepath.Abs(path)
+	absPath, err := paths.NormalizeAbsolutePath(path)
 	if err != nil {
 		return "", fmt.Errorf("resolve import path: %w", err)
 	}

@@ -66,7 +66,7 @@ func Resolve(root string, selector string) (ResolvedNote, error) {
 }
 
 func resolveFromIndex(root string, selector string) (ResolvedNote, bool, error) {
-	absRoot, err := filepath.Abs(root)
+	absRoot, err := paths.NormalizeAbsolutePath(root)
 	if err != nil {
 		return ResolvedNote{}, false, fmt.Errorf("resolve root %q: %w", root, err)
 	}
