@@ -81,6 +81,43 @@ mnemonic follows XDG directories:
 
 By design, note files live in project memories paths, while indexes/state live under XDG state.
 
+## Project Types
+
+`mnemonic init` creates one of three project types.
+
+### regular
+
+This is the default mode when you run `mnemonic init NAME` without extra flags.
+
+- Creates a `.mnemonic` project marker in the current repository.
+- Stores a `mnemonic.toml` manifest under the shared memories home.
+- Uses the slug as the project memories path.
+- Best fit for repository-centric knowledge bases where the Markdown lives outside the repo tree but is still owned by the project.
+
+### local
+
+Use `--local` when you want the project content to live directly inside the current repository.
+
+- Creates a `.mnemonic` project marker in the current repository.
+- Stores Markdown under `.mnemonic-memories/<slug>` inside the repo.
+- Keeps project data self-contained for local development, demos, or lightweight personal vaults.
+- This is the mode shown in most quick-start examples because it is easy to bootstrap and inspect.
+
+### detached
+
+Use `--detached` for a project that exists primarily as a shared memories directory and is not anchored by a local `.mnemonic` repository marker.
+
+- Creates a `mnemonic.toml` manifest under the memories home.
+- Does not create a repository-local `.mnemonic` file.
+- Is useful when the project is shared or accessed from outside a single working tree.
+- The project is still registered, so it can be discovered, shown, reindexed, and used through the CLI and MCP.
+
+In short:
+
+- default = `regular`
+- `--local` = repo-local markdown storage
+- `--detached` = memories-home-first project without a repo marker
+
 ## CLI Reference
 
 Top-level commands:
