@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"strings"
+	"text/tabwriter"
 
 	"github.com/ilyachch/mnemonic/internal/paths"
 	"github.com/spf13/cobra"
@@ -36,7 +38,7 @@ var projectListCmd = &cobra.Command{
 			output.Projects = []projectListItem{}
 		}
 
-		human := fmt.Sprintf("%d projects\n", len(output.Projects))
+		human := formatProjectListHuman(output.Projects)
 		return PrintOutput(cmd.OutOrStdout(), human, output)
 	},
 }
@@ -95,4 +97,21 @@ func loadProjectList(db *sql.DB, effectivePaths paths.EffectivePaths) ([]project
 	}
 
 	return projects, nil
+}
+
+func formatProjectListHuman(projects []projectListItem) string {
+	if len(projects) == 0 {
+		return "0 projects\n"
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "%d projects\n", len(projects))
+	w := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintln(w, "NAME\tSLUG\tTYPE\tPATH\tINDEX")
+	for _, p := range projects {
+		status := fmt.Sprintf("present=%t needs_reindex=%t", p.IndexPresent, p.NeedsReindex)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", p.Name, p.Slug, p.Kind, p.MemoriesPath, status)
+	}
+	_ = w.Flush()
+	return b.String()
 }

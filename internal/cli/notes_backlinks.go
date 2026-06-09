@@ -91,6 +91,7 @@ var notesBacklinksCmd = &cobra.Command{
 
 func init() {
 	notesBacklinksCmd.Flags().String("project", "", "select a project")
+	mustRegisterProjectFlagCompletion(notesBacklinksCmd, "project")
 	notesCmd.AddCommand(notesBacklinksCmd)
 }
 

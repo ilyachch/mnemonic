@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -115,5 +116,53 @@ func TestProjectListCommandReturnsSeededProject(t *testing.T) {
 	}
 	if project.IndexPresent {
 		t.Fatal("index_present = true, want false")
+	}
+}
+
+func TestProjectListCommandHumanOutputIncludesProjectDetails(t *testing.T) {
+	cwd := testutil.CleanEnvForTest(t)
+
+	db, err := registry.OpenDB()
+	if err != nil {
+		t.Fatalf("OpenDB() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = db.Close()
+	})
+
+	now := time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
+	if err := registry.RegisterProject(db, registry.RegisterProjectInput{
+		ProjectID: "550e8400-e29b-41d4-a716-446655440000",
+		Name:      "backend",
+		Slug:      "backend",
+		Kind:      registry.ProjectKindLocal,
+		CreatedAt: now,
+		UpdatedAt: now,
+		SeenAt:    now,
+		Location: registry.ProjectLocationInput{
+			MnemonicFileAbs: filepath.Join(cwd, ".mnemonic"),
+			RepoRootAbs:     cwd,
+			MemoriesAbs:     filepath.Join(cwd, ".mnemonic-memories", "backend"),
+			SourceKind:      registry.ProjectSourceKindInit,
+		},
+	}); err != nil {
+		t.Fatalf("RegisterProject() error = %v", err)
+	}
+
+	result := executeCommand("project", "list")
+	if result.Err != nil {
+		t.Fatalf("project list returned error: %v\nstderr: %s", result.Err, result.Stderr)
+	}
+	if !strings.Contains(result.Stdout, "1 projects") {
+		t.Fatalf("stdout missing project count: %q", result.Stdout)
+	}
+	if !strings.Contains(result.Stdout, "NAME") || !strings.Contains(result.Stdout, "SLUG") || !strings.Contains(result.Stdout, "TYPE") {
+		t.Fatalf("stdout missing table headers: %q", result.Stdout)
+	}
+	if !strings.Contains(result.Stdout, "backend") {
+		t.Fatalf("stdout missing project row: %q", result.Stdout)
+	}
+	if !strings.Contains(result.Stdout, "present=false needs_reindex=true") {
+		t.Fatalf("stdout missing index status: %q", result.Stdout)
 	}
 }

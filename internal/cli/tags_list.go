@@ -76,6 +76,7 @@ var tagsListCmd = &cobra.Command{
 
 func init() {
 	tagsListCmd.Flags().String("project", "", "select a project")
+	mustRegisterProjectFlagCompletion(tagsListCmd, "project")
 	tagsCmd.AddCommand(tagsListCmd)
 	RootCmd.AddCommand(tagsCmd)
 }

@@ -16,9 +16,10 @@ import (
 )
 
 var projectDoctorCmd = &cobra.Command{
-	Use:   "doctor [NAME_OR_UUID]",
-	Short: "Run project health checks",
-	Args:  cobra.MaximumNArgs(1),
+	Use:               "doctor [NAME_OR_UUID]",
+	Short:             "Run project health checks",
+	Args:              cobra.MaximumNArgs(1),
+	ValidArgsFunction: completeProjectNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		projectSelector := ""
 		if len(args) == 1 {

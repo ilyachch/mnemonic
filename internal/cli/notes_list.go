@@ -42,6 +42,7 @@ var notesListCmd = &cobra.Command{
 
 func init() {
 	notesListCmd.Flags().String("project", "", "select a project")
+	mustRegisterProjectFlagCompletion(notesListCmd, "project")
 	notesCmd.AddCommand(notesListCmd)
 	RootCmd.AddCommand(notesCmd)
 }
