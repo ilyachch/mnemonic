@@ -10,8 +10,9 @@ import (
 )
 
 var projectReindexCmd = &cobra.Command{
-	Use:   "reindex [NAME_OR_UUID]",
-	Short: "Rebuild project indexes",
+	Use:               "reindex [NAME_OR_UUID]",
+	Short:             "Rebuild project indexes",
+	ValidArgsFunction: completeProjectNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		all, err := cmd.Flags().GetBool("all")
 		if err != nil {

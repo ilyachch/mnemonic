@@ -65,6 +65,7 @@ var notesSearchCmd = &cobra.Command{
 
 func init() {
 	notesSearchCmd.Flags().String("project", "", "select a project")
+	mustRegisterProjectFlagCompletion(notesSearchCmd, "project")
 	notesSearchCmd.Flags().String("tag", "", "filter by tag")
 	notesSearchCmd.Flags().Int("limit", 20, "maximum number of hits")
 	notesCmd.AddCommand(notesSearchCmd)

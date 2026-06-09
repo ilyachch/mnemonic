@@ -51,6 +51,7 @@ var notesDeleteCmd = &cobra.Command{
 
 func init() {
 	notesDeleteCmd.Flags().String("project", "", "select a project")
+	mustRegisterProjectFlagCompletion(notesDeleteCmd, "project")
 	notesDeleteCmd.Flags().Bool("dry-run", false, "show the deletion result without changing files")
 	notesDeleteCmd.Flags().Bool("hard", false, "delete the note permanently")
 	notesDeleteCmd.Flags().Bool("yes", false, "confirm a hard delete")

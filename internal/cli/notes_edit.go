@@ -90,6 +90,7 @@ var notesEditCmd = &cobra.Command{
 
 func init() {
 	notesEditCmd.Flags().String("project", "", "select a project")
+	mustRegisterProjectFlagCompletion(notesEditCmd, "project")
 	notesEditCmd.Flags().String("append", "", "append text to the note body")
 	notesEditCmd.Flags().String("body-file", "", "replace the note body from a file")
 	notesEditCmd.Flags().String("if-match", "", "require the current content hash to match")

@@ -84,6 +84,7 @@ var notesCreateCmd = &cobra.Command{
 
 func init() {
 	notesCreateCmd.Flags().String("project", "", "select a project")
+	mustRegisterProjectFlagCompletion(notesCreateCmd, "project")
 	notesCreateCmd.Flags().String("title", "", "note title")
 	notesCreateCmd.Flags().Bool("stdin", false, "read the note body from stdin")
 	notesCreateCmd.Flags().String("body-file", "", "read the note body from a file")

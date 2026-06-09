@@ -1,21 +1,31 @@
 # mnemonic
 
-`mnemonic` is a local-first personal knowledge base, indexer, and search engine. It operates as both a command-line interface (CLI) and a Model Context Protocol (MCP) server, designed to parse Markdown notes, track wiki-links, catalog metadata, and offer fast search capabilities using an embedded SQLite database.
+mnemonic is a local-first knowledge base and search tool for Markdown notes.
 
-## Key Features
+It provides:
+- a CLI for project and note lifecycle management,
+- a disposable per-project SQLite index for search/backlinks/tags,
+- an MCP stdio server for AI-tool integrations.
 
-- **Local-First Markdown Indexing**: Automatically scans directories for Markdown notes, parses structured YAML frontmatter, and updates a local relational SQLite database.
-- **Model Context Protocol (MCP) Support**: Exposes read and write capabilities (`list_notes`, `read_note`, `search_notes`, `create_note`, `edit_note`, etc.) to LLM environments (such as Claude Desktop) using standard JSON-RPC over `stdio`.
-- **Relational Graph & Backlinks**: Extracts standard wiki-links (`[[Target Note]]`) and typed relations (e.g., `depends_on`, `relates_to` listed under a `## Relations` section) to build a graph of your notes.
-- **Deduplicated Tagging & Observations**: Indexes tags from frontmatter YAML, inline hashtags (e.g., `#tag`), and categorizes structured observations (e.g., `- [decision] Description #tag`).
-- **Full-Text Search (FTS5)**: Leverages SQLite FTS5 with unicode61 tokenization for responsive, query-based search of note contents, titles, and tags.
-- **Data Integrity & Safety**: Uses flock-based file locking, atomic file staging to prevent corruption on partial writes, and SQLite WAL (Write-Ahead Logging) mode.
+## Principles
 
----
+- Markdown files are the source of truth.
+- Index databases are disposable and can be rebuilt.
+- Project operations are explicit and path-safe.
+- Human-readable output is friendly; `--json` is automation-friendly.
+
+## Feature Highlights
+
+- Project registry with slug/UUID addressing.
+- Multiple project layouts (`regular`, `local`, `detached`).
+- Full-text search via SQLite FTS5.
+- Backlinks graph from indexed notes.
+- Safe note editing with conditional update (`--if-match`).
+- App-agnostic MCP adapter over stdio.
 
 ## Installation
 
-To build `mnemonic` from source, ensure you have Go (1.21 or later) installed:
+Build from source:
 
 ```bash
 git clone https://github.com/ilyachch/mnemonic.git
@@ -23,141 +33,317 @@ cd mnemonic
 go build ./cmd/mnemonic
 ```
 
-To install directly to your `$GOPATH/bin`:
+Install binary into Go bin:
 
 ```bash
 go install github.com/ilyachch/mnemonic/cmd/mnemonic@latest
 ```
 
----
+## Quick Start
 
-## Getting Started
-
-### 1. Initialize a Project
-Create a new project in your current directory. Choosing `--local` places your markdown files in a hidden directory (`.mnemonic-memories/<project-name>`) inside your current folder:
+1. Initialize a project (local layout):
 
 ```bash
 mnemonic init my-notes --local
 ```
 
-### 2. Create Your First Note
-Create a note with a title and optional tags:
+2. Create a note:
 
 ```bash
-mnemonic notes create --project my-notes --title "System Architecture" --tag "design" --tag "ops"
+mnemonic notes create --project my-notes --title "System Architecture" --tag design --tag ops
 ```
 
-You can also pass content via standard input or from a file:
+3. Build or refresh index:
 
 ```bash
-echo -e "## Summary\nThis outlines the database structure." | mnemonic notes create --project my-notes --title "Database Schema" --stdin
+mnemonic project reindex my-notes
 ```
 
-### 3. Rebuild the Search Index
-`mnemonic` decouples indexing from editing to optimize CLI operations. Run `reindex` to sync your directory changes with the SQLite search database:
+4. Search notes:
 
 ```bash
-mnemonic project reindex
+mnemonic notes search "architecture" --project my-notes
 ```
 
-### 4. Search and Inspect Notes
-Once indexed, you can perform full-text queries:
+5. Show note content:
 
 ```bash
-mnemonic notes search "database structure" --project my-notes
+mnemonic notes show system-architecture --project my-notes
 ```
 
-Show a note's complete contents:
+## Data Model and Paths
+
+mnemonic follows XDG directories:
+
+- Config: `$XDG_CONFIG_HOME/mnemonic/`
+- Registry DB: `$XDG_DATA_HOME/mnemonic/registry.sqlite`
+- Per-project state/index: `$XDG_STATE_HOME/mnemonic/projects/<PROJECT_ID>/`
+
+By design, note files live in project memories paths, while indexes/state live under XDG state.
+
+## Project Types
+
+`mnemonic init` creates one of three project types.
+
+### regular
+
+This is the default mode when you run `mnemonic init NAME` without extra flags.
+
+- Creates a `.mnemonic` project marker in the current repository.
+- Stores a `mnemonic.toml` manifest under the shared memories home.
+- Uses the slug as the project memories path.
+- Best fit for repository-centric knowledge bases where the Markdown lives outside the repo tree but is still owned by the project.
+
+### local
+
+Use `--local` when you want the project content to live directly inside the current repository.
+
+- Creates a `.mnemonic` project marker in the current repository.
+- Stores Markdown under `.mnemonic-memories/<slug>` inside the repo.
+- Keeps project data self-contained for local development, demos, or lightweight personal vaults.
+- This is the mode shown in most quick-start examples because it is easy to bootstrap and inspect.
+
+### detached
+
+Use `--detached` for a project that exists primarily as a shared memories directory and is not anchored by a local `.mnemonic` repository marker.
+
+- Creates a `mnemonic.toml` manifest under the memories home.
+- Does not create a repository-local `.mnemonic` file.
+- Is useful when the project is shared or accessed from outside a single working tree.
+- The project is still registered, so it can be discovered, shown, reindexed, and used through the CLI and MCP.
+
+In short:
+
+- default = `regular`
+- `--local` = repo-local markdown storage
+- `--detached` = memories-home-first project without a repo marker
+
+## CLI Reference
+
+Top-level commands:
+
+- `completion`: generate shell completion scripts.
+- `config`: inspect effective config.
+- `init`: initialize a project.
+- `mcp`: run MCP stdio adapter.
+- `notes`: note operations.
+- `project`: project operations.
+- `tags`: tag listing.
+- `version`: print build version.
+
+All commands support `--json` global output mode.
+
+### init
+
+Create a project from the current working directory.
 
 ```bash
-mnemonic notes show "system-architecture" --project my-notes
+mnemonic init NAME [--local | --detached]
 ```
 
----
+- default mode creates a regular project.
+- `--local` stores notes under `.mnemonic-memories/<slug>` in repo.
+- `--detached` creates a detached project layout.
 
-## CLI Usage
+### project commands
 
-`mnemonic` commands generally offer both human-readable and `--json` structured outputs.
+#### project list
 
-### Project Management
-- `mnemonic project list`: Lists all registered projects along with their disk paths, index states, and configuration info.
-- `mnemonic project show <NAME_OR_UUID>`: Shows metadata details for a registered project.
-- `mnemonic project doctor`: Runs structural integrity diagnostic checks on the registry, project manifests, SQLite schemas, notes, and temporary file states.
-- `mnemonic project discover`: Scans your global memories directory for standalone project configurations and registers them.
-- `mnemonic project import <PATH>`: Registers an existing project found at the specified path.
-- `mnemonic project remove <NAME_OR_UUID>`: Safely unregisters a project. Pass `--delete-markdown` to also purge the associated text notes.
+```bash
+mnemonic project list
+```
 
-### Note Management
-- `mnemonic notes list`: Lists note metadata in the current project (excluding trashed items).
-- `mnemonic notes show <SELECTOR>`: Displays note metadata, frontmatter, and contents. Selectors can be a UUID, slug, path, or title.
-- `mnemonic notes edit <SELECTOR>`: Appends body text or updates specific frontmatter fields safely.
-- `mnemonic notes delete <SELECTOR>`: Moves a note to the project's `.trash` directory or permanently deletes it with `--hard --yes`.
-- `mnemonic notes backlinks <SELECTOR>`: Queries the database to list all other notes referencing the targeted note.
-- `mnemonic tags list`: Groups and counts note tags.
+Human output includes project count and table columns:
+- name,
+- slug,
+- type,
+- memories path,
+- index status (`present`, `needs_reindex`).
 
----
+#### project show
 
-## Model Context Protocol (MCP) Server
+```bash
+mnemonic project show NAME_OR_UUID
+```
 
-You can configure `mnemonic` as an assistant tool for LLMs. The server communicates via standard I/O (stdio).
+Prints detailed project metadata, location info, and index status.
 
-### Run the Server
-Select your active project to start serving:
+#### project reindex
+
+```bash
+mnemonic project reindex [NAME_OR_UUID]
+mnemonic project reindex --all
+```
+
+- with selector: rebuild one project.
+- with `--all`: rebuild all active projects.
+- without args and without `--all`: rebuild pending projects.
+
+#### project doctor
+
+```bash
+mnemonic project doctor [NAME_OR_UUID]
+```
+
+Runs health checks for registry, manifests, index presence/schema, and note integrity diagnostics.
+
+#### project discover
+
+```bash
+mnemonic project discover
+```
+
+Scans discoverable project manifests and registers them.
+
+#### project import
+
+```bash
+mnemonic project import PATH
+```
+
+Imports an existing project by path.
+
+#### project remove
+
+```bash
+mnemonic project remove NAME_OR_UUID
+mnemonic project remove --hard NAME_OR_UUID
+mnemonic project remove --delete-markdown NAME_OR_UUID
+mnemonic project remove --wipe NAME_OR_UUID
+```
+
+Behavior matrix:
+
+| Command | Registry | Index/state markers | Markdown files |
+|---|---|---|---|
+| `remove` | soft-delete | keep | keep |
+| `remove --hard` | soft-delete | delete | keep |
+| `remove --delete-markdown` | keep active | delete | delete |
+| `remove --wipe` | soft-delete | delete | delete |
+
+Notes:
+- `--hard` and `--delete-markdown` are mutually exclusive.
+- If you need full cleanup in one step, use `--wipe`.
+- `--delete-markdown` intentionally keeps registry entry and project marker file, but removes markdown and invalid index artifacts.
+
+### notes commands
+
+#### notes list
+
+```bash
+mnemonic notes list --project PROJECT
+```
+
+Lists notes in selected project.
+
+#### notes show
+
+```bash
+mnemonic notes show SELECTOR --project PROJECT
+```
+
+Shows resolved note (selector can be UUID/slug/path/title depending on command semantics).
+
+#### notes create
+
+```bash
+mnemonic notes create --project PROJECT --title "Title" [--tag TAG ...]
+mnemonic notes create --project PROJECT --title "Title" --stdin
+mnemonic notes create --project PROJECT --title "Title" --body-file body.md
+```
+
+#### notes edit
+
+```bash
+mnemonic notes edit SELECTOR --project PROJECT --append "text"
+mnemonic notes edit SELECTOR --project PROJECT --body-file body.md
+mnemonic notes edit SELECTOR --project PROJECT --set key=value
+mnemonic notes edit SELECTOR --project PROJECT --if-match <content_hash> --append "text"
+```
+
+#### notes delete
+
+```bash
+mnemonic notes delete SELECTOR --project PROJECT
+mnemonic notes delete SELECTOR --project PROJECT --dry-run
+mnemonic notes delete SELECTOR --project PROJECT --hard --yes
+```
+
+By default, deletion follows configured safe behavior (trash/permanent policy).
+
+#### notes search
+
+```bash
+mnemonic notes search QUERY --project PROJECT [--tag TAG] [--limit N]
+```
+
+#### notes backlinks
+
+```bash
+mnemonic notes backlinks SELECTOR --project PROJECT
+```
+
+### tags commands
+
+```bash
+mnemonic tags list --project PROJECT
+```
+
+Returns aggregated tag counts from index.
+
+## Shell Completion
+
+Generate completion scripts:
+
+```bash
+mnemonic completion bash
+mnemonic completion zsh
+mnemonic completion fish
+mnemonic completion powershell
+```
+
+Project-aware completion is available for:
+
+- `project show/remove/reindex/doctor` positional selectors,
+- `--project` flag in notes and tags commands.
+
+## MCP Server (App-Agnostic)
+
+mnemonic provides an MCP stdio adapter and can be integrated with any MCP-compatible client.
+
+Run server for a project:
 
 ```bash
 mnemonic mcp --project my-notes
 ```
 
-### Integration with Claude Desktop
-To interface `mnemonic` with Claude Desktop, add the tool configuration to your `claude_desktop_config.json` (typically located in `%APPDATA%\Claude` on Windows or `~/Library/Application Support/Claude` on macOS):
-
-```json
-{
-  "mcpServers": {
-    "mnemonic": {
-      "command": "mnemonic",
-      "args": ["mcp", "--project", "my-notes"],
-      "env": {
-        "MNEMONIC_MEMORIES_HOME": "/path/to/your/memories/home"
-      }
-    }
-  }
-}
-```
-
-### Available MCP Tools
-Once connected, the client gains access to the following tools:
-- `list_notes`: Retrieve paginated note listings.
-- `read_note`: Query a note's metadata and body using a selector.
-- `search_notes`: Run full-text FTS5 search queries.
-- `list_backlinks`: Map references pointing back to a note.
-- `list_tags`: Lists tags with their document counts.
-- `create_note`: Writes a new note to disk.
-- `edit_note`: Safely performs appends, body replacements, or frontmatter edits.
-- `delete_note`: Soft-trashes or hard-deletes files.
-
----
+Client-side wiring is intentionally not tied to any specific app in this README. Use your MCP client's generic stdio server configuration and point command to `mnemonic mcp --project <slug>`.
 
 ## Configuration
 
-`mnemonic` follows the XDG Base Directory Specification. It determines configuration files using the following precedence order:
+Use:
 
-1. Explicit command line flag: `--config <path>`
-2. Environment Variable: `MNEMONIC_CONFIG_FILE`
-3. Environment Variable: `MNEMONIC_CONFIG_HOME/mnemonic/config.toml`
-4. Standard XDG config path: `$XDG_CONFIG_HOME/mnemonic/config.toml` (defaulting to `~/.config/mnemonic/config.toml`)
+```bash
+mnemonic config show
+```
 
-An example `config.toml` file:
+to inspect effective config and resolved paths.
+
+Typical config file location:
+
+```text
+$XDG_CONFIG_HOME/mnemonic/config.toml
+```
+
+Example:
 
 ```toml
 version = 1
 
 [paths]
-# Explicitly direct where your non-local notes reside
 memories_home = "~/.mnemonic"
 
 [notes]
-# Options: "trash" (default) or "delete"
 delete_behavior = "trash"
 trash_dir_name = ".trash"
 
@@ -171,4 +357,25 @@ json_pretty = true
 
 [logging]
 level = "info"
+```
+
+## Typical Workflows
+
+Index refresh after external file changes:
+
+```bash
+mnemonic project reindex
+```
+
+Rebuild all projects:
+
+```bash
+mnemonic project reindex --all
+```
+
+Safe note edit with optimistic concurrency:
+
+```bash
+mnemonic notes show my-note --project my-notes --json
+mnemonic notes edit my-note --project my-notes --if-match <hash> --append "\nUpdate"
 ```
