@@ -525,11 +525,21 @@ func TestEditNoteSupportsModes(t *testing.T) {
 		}
 		created := decodeCreateNoteOutput(t, createResult)
 
+		readResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+			Name:      "read_note",
+			Arguments: map[string]any{"identifier": created.NoteID},
+		})
+		if err != nil {
+			t.Fatalf("CallTool(read_note) error = %v", err)
+		}
+		initialRead := decodeReadNoteOutput(t, readResult)
+
 		editResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 			Name: "edit_note",
 			Arguments: map[string]any{
-				"identifier":   created.NoteID,
-				"replace_body": "Replacement body\n",
+				"identifier":    created.NoteID,
+				"replace_body":  "Replacement body\n",
+				"if_match_hash": initialRead.Note.ContentHash,
 			},
 		})
 		if err != nil {
@@ -539,16 +549,16 @@ func TestEditNoteSupportsModes(t *testing.T) {
 			t.Fatalf("edit_note replace_body returned tool error: text=%q content=%#v", resultText(t, editResult), editResult.Content)
 		}
 
-		readResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		readResult, err = session.CallTool(context.Background(), &mcp.CallToolParams{
 			Name:      "read_note",
 			Arguments: map[string]any{"identifier": created.NoteID},
 		})
 		if err != nil {
 			t.Fatalf("CallTool(read_note) error = %v", err)
 		}
-		read := decodeReadNoteOutput(t, readResult)
-		if read.Note.Body != "Replacement body\n" {
-			t.Fatalf("body = %q, want %q", read.Note.Body, "Replacement body\n")
+		finalRead := decodeReadNoteOutput(t, readResult)
+		if finalRead.Note.Body != "Replacement body\n" {
+			t.Fatalf("body = %q, want %q", finalRead.Note.Body, "Replacement body\n")
 		}
 	})
 
@@ -669,6 +679,56 @@ func TestEditNoteRejectsStaleHashWithoutChangingFile(t *testing.T) {
 	}
 }
 
+func TestEditNoteReplaceBodyRequiresIfMatchHash(t *testing.T) {
+	env := writableMCPEnv(t)
+	repoRoot := repoRootForTest(t)
+	projectRoot := t.TempDir()
+	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+
+	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
+
+	createResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "create_note",
+		Arguments: map[string]any{
+			"title": "Replace Protected",
+			"body":  "Original body\n",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool(create_note) error = %v", err)
+	}
+	created := decodeCreateNoteOutput(t, createResult)
+
+	editResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "edit_note",
+		Arguments: map[string]any{
+			"identifier":   created.NoteID,
+			"replace_body": "Replacement body\n",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool(edit_note replace_body) error = %v", err)
+	}
+	if !editResult.IsError {
+		t.Fatal("edit_note replace_body without hash IsError = false, want true")
+	}
+	if got := resultText(t, editResult); !strings.Contains(got, "replace_body requires if_match_hash from read_note") {
+		t.Fatalf("replace_body error text = %q", got)
+	}
+
+	readResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "read_note",
+		Arguments: map[string]any{"identifier": created.NoteID},
+	})
+	if err != nil {
+		t.Fatalf("CallTool(read_note) error = %v", err)
+	}
+	read := decodeReadNoteOutput(t, readResult)
+	if read.Note.Body != "Original body\n" {
+		t.Fatalf("body after rejected replace = %q, want %q", read.Note.Body, "Original body\n")
+	}
+}
+
 func TestDeleteNoteDefaultsToTrash(t *testing.T) {
 	env := writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
@@ -741,11 +801,21 @@ func TestDeleteNoteHardDeleteRemovesFile(t *testing.T) {
 	}
 	created := decodeCreateNoteOutput(t, createResult)
 
+	readResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "read_note",
+		Arguments: map[string]any{"identifier": created.NoteID},
+	})
+	if err != nil {
+		t.Fatalf("CallTool(read_note) error = %v", err)
+	}
+	read := decodeReadNoteOutput(t, readResult)
+
 	deleteResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "delete_note",
 		Arguments: map[string]any{
-			"identifier":  created.NoteID,
-			"hard_delete": true,
+			"identifier":    created.NoteID,
+			"hard_delete":   true,
+			"if_match_hash": read.Note.ContentHash,
 		},
 	})
 	if err != nil {
@@ -764,6 +834,65 @@ func TestDeleteNoteHardDeleteRemovesFile(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(projectRoot, ".mnemonic-memories", "personal", "hard-delete.md")); !os.IsNotExist(err) {
 		t.Fatalf("source note stat = %v, want not exist", err)
+	}
+}
+
+func TestDeleteNoteHardDeleteRequiresIfMatchHash(t *testing.T) {
+	env := writableMCPEnv(t)
+	repoRoot := repoRootForTest(t)
+	projectRoot := t.TempDir()
+	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+
+	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
+
+	createResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "create_note",
+		Arguments: map[string]any{
+			"title": "Hard Delete Protected",
+			"body":  "body\n",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool(create_note) error = %v", err)
+	}
+	created := decodeCreateNoteOutput(t, createResult)
+
+	deleteResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "delete_note",
+		Arguments: map[string]any{
+			"identifier":  created.NoteID,
+			"hard_delete": true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool(delete_note hard) error = %v", err)
+	}
+	if !deleteResult.IsError {
+		t.Fatal("delete_note hard without hash IsError = false, want true")
+	}
+	if got := resultText(t, deleteResult); !strings.Contains(got, "hard delete requires if_match_hash from read_note") {
+		t.Fatalf("hard delete error text = %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(projectRoot, ".mnemonic-memories", "personal", "hard-delete-protected.md")); err != nil {
+		t.Fatalf("source note stat after rejected hard delete = %v, want exists", err)
+	}
+}
+
+func TestEnsurePathInsideRoot(t *testing.T) {
+	root := t.TempDir()
+
+	inside := filepath.Join(root, "nested", "note.md")
+	if err := ensurePathInsideRoot(root, inside); err != nil {
+		t.Fatalf("ensurePathInsideRoot(inside) error = %v", err)
+	}
+
+	outside := filepath.Join(root, "..", "outside.md")
+	err := ensurePathInsideRoot(root, outside)
+	if err == nil {
+		t.Fatal("ensurePathInsideRoot(outside) error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "note path must stay inside the project memories root") {
+		t.Fatalf("ensurePathInsideRoot(outside) error = %v", err)
 	}
 }
 

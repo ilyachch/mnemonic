@@ -62,8 +62,8 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 type listNotesInput struct {
-	Limit  int    `json:"limit,omitempty" jsonschema:"maximum number of notes to return"`
-	Cursor string `json:"cursor,omitempty" jsonschema:"pagination cursor"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"Maximum number of notes to return. Use a small value for orientation and pagination for broader inspection."`
+	Cursor string `json:"cursor,omitempty" jsonschema:"Pagination cursor returned by a previous list_notes call."`
 }
 
 type listNotesOutput struct {
@@ -72,7 +72,7 @@ type listNotesOutput struct {
 }
 
 type listTagsInput struct {
-	Limit int `json:"limit,omitempty" jsonschema:"maximum number of tags to return"`
+	Limit int `json:"limit,omitempty" jsonschema:"Maximum number of tags to return. Use this to inspect common project memory topics."`
 }
 
 type listTagsOutput struct {
@@ -85,9 +85,9 @@ type listTagsItem struct {
 }
 
 type searchNotesInput struct {
-	Query string `json:"query" jsonschema:"full-text search query"`
-	Limit int    `json:"limit,omitempty" jsonschema:"maximum number of hits to return"`
-	Tag   string `json:"tag,omitempty" jsonschema:"optional tag filter"`
+	Query string `json:"query" jsonschema:"Natural language query or keywords for project memory search. Include project-specific entities such as feature names, bugs, decisions, file paths, modules, APIs, services, integrations, tickets, people, or architecture concepts."`
+	Limit int    `json:"limit,omitempty" jsonschema:"Maximum number of hits to return. Use 5-10 for focused searches and higher values for broad exploration."`
+	Tag   string `json:"tag,omitempty" jsonschema:"Optional tag filter when the relevant project memory topic is known."`
 }
 
 type searchNotesOutput struct {
@@ -95,7 +95,7 @@ type searchNotesOutput struct {
 }
 
 type readNoteInput struct {
-	Identifier string `json:"identifier" jsonschema:"note identifier"`
+	Identifier string `json:"identifier" jsonschema:"Note identifier from search/list results. Can be note_id, slug, relative path, or exact title."`
 }
 
 type readNoteOutput struct {
@@ -114,8 +114,8 @@ type readNoteItem struct {
 }
 
 type listBacklinksInput struct {
-	Identifier string `json:"identifier" jsonschema:"note identifier"`
-	Limit      int    `json:"limit,omitempty" jsonschema:"maximum number of backlinks to return"`
+	Identifier string `json:"identifier" jsonschema:"Note identifier from search/list/read results. Can be note_id, slug, relative path, or exact title."`
+	Limit      int    `json:"limit,omitempty" jsonschema:"Maximum number of backlinks to return."`
 }
 
 type listBacklinksOutput struct {
@@ -123,11 +123,11 @@ type listBacklinksOutput struct {
 }
 
 type createNoteInput struct {
-	Title string   `json:"title" jsonschema:"note title"`
-	Body  string   `json:"body,omitempty" jsonschema:"optional note body"`
-	Path  string   `json:"path,omitempty" jsonschema:"optional relative note path"`
-	Tags  []string `json:"tags,omitempty" jsonschema:"optional note tags"`
-	Type  string   `json:"type,omitempty" jsonschema:"optional note type"`
+	Title string   `json:"title" jsonschema:"Clear, specific title for durable project knowledge, such as a decision, convention, architecture note, debugging finding, setup step, or task outcome."`
+	Body  string   `json:"body,omitempty" jsonschema:"Markdown body containing verified durable project knowledge. Include context, evidence/source, current status, and links to related notes when useful. Do not include secrets, credentials, guesses, or temporary chat details."`
+	Path  string   `json:"path,omitempty" jsonschema:"Optional relative note path under the project memory root. Use a stable, descriptive path. Do not use absolute paths or paths outside the memory root."`
+	Tags  []string `json:"tags,omitempty" jsonschema:"Optional project memory tags. Prefer consistent tags discovered with list_tags, such as architecture, decision, convention, bug, setup, api, integration, task-outcome."`
+	Type  string   `json:"type,omitempty" jsonschema:"Optional note type, for example decision, convention, architecture, bug, setup, api, integration, task-outcome, finding."`
 }
 
 type createNoteOutput struct {
@@ -138,11 +138,11 @@ type createNoteOutput struct {
 }
 
 type editNoteInput struct {
-	Identifier       string            `json:"identifier" jsonschema:"note identifier"`
-	Append           string            `json:"append,omitempty" jsonschema:"append text to the note body"`
-	ReplaceBody      string            `json:"replace_body,omitempty" jsonschema:"replace the note body"`
-	MergeFrontmatter map[string]string `json:"merge_frontmatter,omitempty" jsonschema:"merge frontmatter fields"`
-	IfMatchHash      string            `json:"if_match_hash,omitempty" jsonschema:"require the current content hash to match"`
+	Identifier       string            `json:"identifier" jsonschema:"Existing note identifier. Read the note first when possible and use its content_hash as if_match_hash."`
+	Append           string            `json:"append,omitempty" jsonschema:"Markdown text to append when adding new durable information, task outcomes, confirmations, or follow-up findings without replacing existing context."`
+	ReplaceBody      string            `json:"replace_body,omitempty" jsonschema:"Full replacement body. Use only when rewriting the note is safer than appending. Preserve important context and avoid deleting useful history accidentally."`
+	MergeFrontmatter map[string]string `json:"merge_frontmatter,omitempty" jsonschema:"Frontmatter fields to merge, such as status, type, or summary. Prefer explicit, stable metadata."`
+	IfMatchHash      string            `json:"if_match_hash,omitempty" jsonschema:"Content hash returned by read_note. Use it to avoid overwriting changes made since the note was read."`
 }
 
 type editNoteOutput struct {
@@ -155,9 +155,9 @@ type editNoteOutput struct {
 }
 
 type deleteNoteInput struct {
-	Identifier  string `json:"identifier" jsonschema:"note identifier"`
-	HardDelete  bool   `json:"hard_delete,omitempty" jsonschema:"delete permanently instead of moving to trash"`
-	IfMatchHash string `json:"if_match_hash,omitempty" jsonschema:"require the current content hash to match"`
+	Identifier  string `json:"identifier" jsonschema:"Existing note identifier. Read the note first and verify deletion is safer than editing or merging."`
+	HardDelete  bool   `json:"hard_delete,omitempty" jsonschema:"Delete permanently instead of moving to trash. Use only when explicitly requested or when the note must not remain in memory."`
+	IfMatchHash string `json:"if_match_hash,omitempty" jsonschema:"Content hash returned by read_note. Use it to avoid deleting a note that changed since it was inspected."`
 }
 
 type deleteNoteOutput struct {
@@ -170,7 +170,7 @@ type deleteNoteOutput struct {
 func registerReadOnlyTools(server *sdkmcp.Server, appServer *Server) {
 	sdkmcp.AddTool(server, &sdkmcp.Tool{
 		Name:        "list_notes",
-		Description: "List notes in the current project",
+		Description: listNotesDescription,
 		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input listNotesInput) (*sdkmcp.CallToolResult, listNotesOutput, error) {
 		if appServer == nil {
@@ -221,7 +221,7 @@ func registerReadOnlyTools(server *sdkmcp.Server, appServer *Server) {
 
 	sdkmcp.AddTool(server, &sdkmcp.Tool{
 		Name:        "list_tags",
-		Description: "List tags in the current project",
+		Description: listTagsDescription,
 		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input listTagsInput) (*sdkmcp.CallToolResult, listTagsOutput, error) {
 		if appServer == nil {
@@ -247,7 +247,7 @@ func registerReadOnlyTools(server *sdkmcp.Server, appServer *Server) {
 
 	sdkmcp.AddTool(server, &sdkmcp.Tool{
 		Name:        "search_notes",
-		Description: "Search notes in the current project",
+		Description: searchNotesDescription,
 		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input searchNotesInput) (*sdkmcp.CallToolResult, searchNotesOutput, error) {
 		if appServer == nil {
@@ -270,7 +270,7 @@ func registerReadOnlyTools(server *sdkmcp.Server, appServer *Server) {
 
 	sdkmcp.AddTool(server, &sdkmcp.Tool{
 		Name:        "read_note",
-		Description: "Read a note by identifier",
+		Description: readNoteDescription,
 		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input readNoteInput) (*sdkmcp.CallToolResult, readNoteOutput, error) {
 		if appServer == nil {
@@ -310,7 +310,7 @@ func registerReadOnlyTools(server *sdkmcp.Server, appServer *Server) {
 
 	sdkmcp.AddTool(server, &sdkmcp.Tool{
 		Name:        "list_backlinks",
-		Description: "List backlinks for a note",
+		Description: listBacklinksDescription,
 		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input listBacklinksInput) (*sdkmcp.CallToolResult, listBacklinksOutput, error) {
 		if appServer == nil {
@@ -346,7 +346,7 @@ func registerReadOnlyTools(server *sdkmcp.Server, appServer *Server) {
 func registerWriteTools(server *sdkmcp.Server, appServer *Server) {
 	sdkmcp.AddTool(server, &sdkmcp.Tool{
 		Name:        "create_note",
-		Description: "Create a note in the current project",
+		Description: createNoteDescription,
 		Annotations: &sdkmcp.ToolAnnotations{
 			ReadOnlyHint:    false,
 			DestructiveHint: boolPtr(false),
@@ -376,7 +376,7 @@ func registerWriteTools(server *sdkmcp.Server, appServer *Server) {
 
 	sdkmcp.AddTool(server, &sdkmcp.Tool{
 		Name:        "edit_note",
-		Description: "Edit a note in the current project",
+		Description: editNoteDescription,
 		Annotations: &sdkmcp.ToolAnnotations{
 			ReadOnlyHint:    false,
 			DestructiveHint: boolPtr(true),
@@ -406,7 +406,7 @@ func registerWriteTools(server *sdkmcp.Server, appServer *Server) {
 
 	sdkmcp.AddTool(server, &sdkmcp.Tool{
 		Name:        "delete_note",
-		Description: "Delete a note in the current project",
+		Description: deleteNoteDescription,
 		Annotations: &sdkmcp.ToolAnnotations{
 			ReadOnlyHint:    false,
 			DestructiveHint: boolPtr(true),
@@ -598,6 +598,9 @@ func createNote(root string, input createNoteInput) (createNoteOutput, error) {
 	}
 
 	absPath := filepath.Join(root, filepath.FromSlash(relPath))
+	if err := ensurePathInsideRoot(root, absPath); err != nil {
+		return createNoteOutput{}, err
+	}
 	if _, err := os.Stat(absPath); err == nil {
 		return createNoteOutput{}, app.NewAmbiguousError(fmt.Sprintf("note path %q already exists", relPath), nil)
 	} else if !os.IsNotExist(err) {
@@ -650,6 +653,24 @@ func createNotePath(slug, requestedPath string) (string, error) {
 	return cleaned, nil
 }
 
+func ensurePathInsideRoot(root, target string) error {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return fmt.Errorf("resolve memories root path: %w", err)
+	}
+
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		return fmt.Errorf("resolve note path: %w", err)
+	}
+
+	if absTarget != absRoot && !strings.HasPrefix(absTarget, absRoot+string(os.PathSeparator)) {
+		return app.NewCLIUsageError("note path must stay inside the project memories root", nil)
+	}
+
+	return nil
+}
+
 func dedupeTags(tags []string) []string {
 	if len(tags) == 0 {
 		return nil
@@ -692,6 +713,9 @@ func editNote(root string, input editNoteInput) (editNoteOutput, error) {
 	if modeCount > 1 {
 		return editNoteOutput{}, app.NewCLIUsageError("edit modes append, replace_body, and merge_frontmatter are mutually exclusive", nil)
 	}
+	if input.ReplaceBody != "" && input.IfMatchHash == "" {
+		return editNoteOutput{}, app.NewUnsafeError("replace_body requires if_match_hash from read_note", nil)
+	}
 
 	editInput := notes.EditInput{
 		RootDir:  root,
@@ -725,6 +749,9 @@ func editNote(root string, input editNoteInput) (editNoteOutput, error) {
 func deleteNote(root string, input deleteNoteInput) (deleteNoteOutput, error) {
 	if input.Identifier == "" {
 		return deleteNoteOutput{}, app.NewCLIUsageError("note identifier is required", nil)
+	}
+	if input.HardDelete && input.IfMatchHash == "" {
+		return deleteNoteOutput{}, app.NewUnsafeError("hard delete requires if_match_hash from read_note", nil)
 	}
 
 	if input.IfMatchHash != "" {
