@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRenderNoteRoundTripPreservesMetadata(t *testing.T) {
@@ -27,17 +29,11 @@ func TestRenderNoteRoundTripPreservesMetadata(t *testing.T) {
 	}
 
 	rendered, err := RenderNote(note)
-	if err != nil {
-		t.Fatalf("RenderNote() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	renderedText := string(rendered)
-	if strings.Contains(renderedText, "permalink:") {
-		t.Fatalf("rendered note contains permalink field: %q", renderedText)
-	}
-	if !strings.Contains(renderedText, "tags:\n  - django\n  - auth\n") {
-		t.Fatalf("rendered note does not use a YAML list for tags: %q", renderedText)
-	}
+	require.NotContains(t, renderedText, "permalink:")
+	require.Contains(t, renderedText, "tags:\n  - django\n  - auth\n")
 	assertOrderedSubstrings(t, renderedText,
 		"mnemonic_note_id:",
 		"title:",
@@ -48,51 +44,22 @@ func TestRenderNoteRoundTripPreservesMetadata(t *testing.T) {
 		"type:",
 		"extra_field:",
 	)
-	if !strings.HasSuffix(renderedText, string(body)) {
-		t.Fatalf("rendered body = %q, want suffix %q", renderedText, body)
-	}
+	require.True(t, strings.HasSuffix(renderedText, string(body)))
 
 	roundTripped, err := ParseNote(rendered)
-	if err != nil {
-		t.Fatalf("ParseNote() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	if roundTripped.MnemonicNoteID != note.MnemonicNoteID {
-		t.Fatalf("MnemonicNoteID = %q, want %q", roundTripped.MnemonicNoteID, note.MnemonicNoteID)
-	}
-	if roundTripped.Title != note.Title {
-		t.Fatalf("Title = %q, want %q", roundTripped.Title, note.Title)
-	}
-	if roundTripped.Slug != note.Slug {
-		t.Fatalf("Slug = %q, want %q", roundTripped.Slug, note.Slug)
-	}
-	if got, want := roundTripped.Tags, note.Tags; len(got) != len(want) {
-		t.Fatalf("Tags = %#v, want %#v", got, want)
-	} else {
-		for i := range want {
-			if got[i] != want[i] {
-				t.Fatalf("Tags = %#v, want %#v", got, want)
-			}
-		}
-	}
-	if !roundTripped.CreatedAt.Equal(note.CreatedAt) {
-		t.Fatalf("CreatedAt = %s, want %s", roundTripped.CreatedAt, note.CreatedAt)
-	}
-	if !roundTripped.UpdatedAt.Equal(note.UpdatedAt) {
-		t.Fatalf("UpdatedAt = %s, want %s", roundTripped.UpdatedAt, note.UpdatedAt)
-	}
-	if roundTripped.Type != note.Type {
-		t.Fatalf("Type = %q, want %q", roundTripped.Type, note.Type)
-	}
-	if got := roundTripped.Frontmatter["extra_field"]; got != "keep-me" {
-		t.Fatalf("Frontmatter[extra_field] = %#v, want %q", got, "keep-me")
-	}
-	if _, ok := roundTripped.Frontmatter["permalink"]; ok {
-		t.Fatalf("Frontmatter unexpectedly preserved permalink: %#v", roundTripped.Frontmatter)
-	}
-	if !bytes.Equal(roundTripped.Body, body) {
-		t.Fatalf("Body = %q, want %q", roundTripped.Body, body)
-	}
+	require.Equal(t, note.MnemonicNoteID, roundTripped.MnemonicNoteID)
+	require.Equal(t, note.Title, roundTripped.Title)
+	require.Equal(t, note.Slug, roundTripped.Slug)
+	require.Equal(t, note.Tags, roundTripped.Tags)
+	require.True(t, roundTripped.CreatedAt.Equal(note.CreatedAt))
+	require.True(t, roundTripped.UpdatedAt.Equal(note.UpdatedAt))
+	require.Equal(t, note.Type, roundTripped.Type)
+	require.Equal(t, "keep-me", roundTripped.Frontmatter["extra_field"])
+	_, ok := roundTripped.Frontmatter["permalink"]
+	require.False(t, ok)
+	require.True(t, bytes.Equal(roundTripped.Body, body))
 }
 
 func TestRenderNoteSingleTagUsesYAMLList(t *testing.T) {
@@ -106,25 +73,15 @@ func TestRenderNoteSingleTagUsesYAMLList(t *testing.T) {
 	}
 
 	rendered, err := RenderNote(note)
-	if err != nil {
-		t.Fatalf("RenderNote() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	renderedText := string(rendered)
-	if strings.Contains(renderedText, "tags: - test\n") {
-		t.Fatalf("rendered invalid inline sequence: %q", renderedText)
-	}
-	if !strings.Contains(renderedText, "tags:\n  - test\n") {
-		t.Fatalf("rendered note does not use a YAML list for a single tag: %q", renderedText)
-	}
+	require.NotContains(t, renderedText, "tags: - test\n")
+	require.Contains(t, renderedText, "tags:\n  - test\n")
 
 	roundTripped, err := ParseNote(rendered)
-	if err != nil {
-		t.Fatalf("ParseNote() error = %v", err)
-	}
-	if got, want := roundTripped.Tags, note.Tags; len(got) != len(want) || got[0] != want[0] {
-		t.Fatalf("Tags = %#v, want %#v", got, want)
-	}
+	require.NoError(t, err)
+	require.Equal(t, note.Tags, roundTripped.Tags)
 }
 
 func assertOrderedSubstrings(t *testing.T, text string, substrings ...string) {
@@ -133,12 +90,8 @@ func assertOrderedSubstrings(t *testing.T, text string, substrings ...string) {
 	last := -1
 	for _, substring := range substrings {
 		idx := strings.Index(text, substring)
-		if idx < 0 {
-			t.Fatalf("rendered text missing %q: %q", substring, text)
-		}
-		if idx <= last {
-			t.Fatalf("substring %q appears out of order in %q", substring, text)
-		}
+		require.GreaterOrEqual(t, idx, 0, "rendered text missing %q: %q", substring, text)
+		require.Greater(t, idx, last, "substring %q appears out of order in %q", substring, text)
 		last = idx
 	}
 }

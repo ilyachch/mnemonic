@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"github.com/ilyachch/mnemonic/internal/app"
 )
 
@@ -17,12 +18,8 @@ func TestResolveProjectExplicitSelectorWinsOverEnv(t *testing.T) {
 		ProjectSelector:  "backend",
 		EnvironmentValue: "infra",
 	})
-	if err != nil {
-		t.Fatalf("ResolveProject() error = %v", err)
-	}
-	if got.Project.Slug != "backend" {
-		t.Fatalf("ResolveProject() slug = %q, want backend", got.Project.Slug)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "backend", got.Project.Slug)
 }
 
 func TestResolveProjectEnvWinsOverNearest(t *testing.T) {
@@ -33,12 +30,8 @@ func TestResolveProjectEnvWinsOverNearest(t *testing.T) {
 		CWD:              cwd,
 		EnvironmentValue: "infra",
 	})
-	if err != nil {
-		t.Fatalf("ResolveProject() error = %v", err)
-	}
-	if got.Project.Slug != "infra" {
-		t.Fatalf("ResolveProject() slug = %q, want infra", got.Project.Slug)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "infra", got.Project.Slug)
 }
 
 func TestResolveProjectSingleProjectWithoutSelector(t *testing.T) {
@@ -46,12 +39,8 @@ func TestResolveProjectSingleProjectWithoutSelector(t *testing.T) {
 	writeTestMnemonicFile(t, filepath.Join(cwd, ".mnemonic"), "backend")
 
 	got, err := ResolveProject(ResolveProjectInput{CWD: cwd})
-	if err != nil {
-		t.Fatalf("ResolveProject() error = %v", err)
-	}
-	if got.Project.Slug != "backend" {
-		t.Fatalf("ResolveProject() slug = %q, want backend", got.Project.Slug)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "backend", got.Project.Slug)
 }
 
 func TestResolveProjectAmbiguousWithoutSelector(t *testing.T) {
@@ -59,12 +48,8 @@ func TestResolveProjectAmbiguousWithoutSelector(t *testing.T) {
 	writeResolvableMnemonicFile(t, filepath.Join(cwd, ".mnemonic"))
 
 	_, err := ResolveProject(ResolveProjectInput{CWD: cwd})
-	if err == nil {
-		t.Fatal("ResolveProject() error = nil, want ambiguous")
-	}
-	if code := appErrorCode(err); code != app.CodeAmbiguous {
-		t.Fatalf("ResolveProject() code = %v, want %v", code, app.CodeAmbiguous)
-	}
+	require.Error(t, err)
+	require.Equal(t, app.CodeAmbiguous, appErrorCode(err))
 }
 
 func TestResolveProjectDetachedManifestDoesNotCountAsFallback(t *testing.T) {
@@ -81,29 +66,19 @@ func TestResolveProjectDetachedManifestDoesNotCountAsFallback(t *testing.T) {
 	manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
 	manifest.UpdatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
 	manifest.Generator.App = "mnemonic"
-	if err := WriteMnemonicManifest(manifestPath, manifest); err != nil {
-		t.Fatalf("WriteMnemonicManifest() error = %v", err)
-	}
+	require.NoError(t, WriteMnemonicManifest(manifestPath, manifest))
 
 	_, err := ResolveProject(ResolveProjectInput{CWD: cwd})
-	if err == nil {
-		t.Fatal("ResolveProject() error = nil, want not found")
-	}
-	if code := appErrorCode(err); code != app.CodeNotFound {
-		t.Fatalf("ResolveProject() code = %v, want %v", code, app.CodeNotFound)
-	}
+	require.Error(t, err)
+	require.Equal(t, app.CodeNotFound, appErrorCode(err))
 }
 
 func TestResolveProjectMissingEverythingReturnsNotFound(t *testing.T) {
 	cwd := t.TempDir()
 
 	_, err := ResolveProject(ResolveProjectInput{CWD: cwd})
-	if err == nil {
-		t.Fatal("ResolveProject() error = nil, want not found")
-	}
-	if code := appErrorCode(err); code != app.CodeNotFound {
-		t.Fatalf("ResolveProject() code = %v, want %v", code, app.CodeNotFound)
-	}
+	require.Error(t, err)
+	require.Equal(t, app.CodeNotFound, appErrorCode(err))
 }
 
 func writeResolvableMnemonicFile(t *testing.T, path string) {
@@ -136,9 +111,7 @@ func writeResolvableMnemonicFile(t *testing.T, path string) {
 			},
 		},
 	}
-	if err := WriteMnemonicFile(path, file); err != nil {
-		t.Fatalf("WriteMnemonicFile() error = %v", err)
-	}
+	require.NoError(t, WriteMnemonicFile(path, file))
 }
 
 func appErrorCode(err error) app.ErrCode {

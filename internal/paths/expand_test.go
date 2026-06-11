@@ -3,6 +3,9 @@ package paths
 import (
 	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestExpandPath(t *testing.T) {
@@ -56,21 +59,13 @@ func TestExpandPath(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ExpandPath(tt.input)
 			if tt.errCheck != nil {
-				if err == nil {
-					t.Fatalf("expected error for %q, got nil", tt.input)
-				}
-				if !tt.errCheck(err) {
-					t.Fatalf("unexpected error for %q: %v", tt.input, err)
-				}
+				require.Error(t, err, "expected error for %q", tt.input)
+				assert.True(t, tt.errCheck(err), "unexpected error for %q: %v", tt.input, err)
 				return
 			}
 
-			if err != nil {
-				t.Fatalf("unexpected error for %q: %v", tt.input, err)
-			}
-			if got != tt.want {
-				t.Fatalf("ExpandPath(%q) = %q, want %q", tt.input, got, tt.want)
-			}
+			require.NoError(t, err, "unexpected error for %q: %v", tt.input, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -79,10 +74,6 @@ func TestExpandTilde(t *testing.T) {
 	t.Setenv("HOME", "/home/alice")
 
 	got, err := ExpandTilde("~/notes")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got != "/home/alice/notes" {
-		t.Fatalf("ExpandTilde returned %q, want %q", got, "/home/alice/notes")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "/home/alice/notes", got)
 }

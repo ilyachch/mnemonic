@@ -3,43 +3,31 @@ package cli
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
+	"github.com/stretchr/testify/require"
 )
 
 func TestInitCommandRequiresName(t *testing.T) {
 	result := executeCommand("init")
-	if result.Err == nil {
-		t.Fatalf("expected init without NAME to fail")
-	}
-	if got := ExitCodeForError(result.Err); got != 2 {
-		t.Fatalf("exit code = %d, want 2", got)
-	}
+	require.Error(t, result.Err, "expected init without NAME to fail")
+	require.Equal(t, 2, ExitCodeForError(result.Err))
 }
 
 func TestInitCommandRejectsMultipleNames(t *testing.T) {
 	result := executeCommand("init", "one", "two")
-	if result.Err == nil {
-		t.Fatalf("expected init with multiple NAME args to fail")
-	}
-	if got := ExitCodeForError(result.Err); got != 2 {
-		t.Fatalf("exit code = %d, want 2", got)
-	}
+	require.Error(t, result.Err, "expected init with multiple NAME args to fail")
+	require.Equal(t, 2, ExitCodeForError(result.Err))
 }
 
 func TestInitCommandRejectsLocalAndDetachedTogether(t *testing.T) {
 	result := executeCommand("init", "demo", "--local", "--detached")
-	if result.Err == nil {
-		t.Fatalf("expected init with incompatible flags to fail")
-	}
-	if got := ExitCodeForError(result.Err); got != 2 {
-		t.Fatalf("exit code = %d, want 2", got)
-	}
+	require.Error(t, result.Err, "expected init with incompatible flags to fail")
+	require.Equal(t, 2, ExitCodeForError(result.Err))
 }
 
 func TestInitCommandLocalCreatesLocalProject(t *testing.T) {
@@ -50,12 +38,9 @@ func TestInitCommandLocalCreatesLocalProject(t *testing.T) {
 	t.Setenv("MNEMONIC_MEMORIES_HOME", memoriesHome)
 
 	originalWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd() error = %v", err)
-	}
-	if err := os.Chdir(cwd); err != nil {
-		t.Fatalf("Chdir() error = %v", err)
-	}
+	require.NoError(t, err)
+	err = os.Chdir(cwd)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = os.Chdir(originalWD)
 	})
@@ -64,45 +49,30 @@ func TestInitCommandLocalCreatesLocalProject(t *testing.T) {
 	t.Cleanup(restore)
 
 	result := executeCommand("init", "backend", "--local")
-	if result.Err != nil {
-		t.Fatalf("init returned error: %v\nstderr: %s", result.Err, result.Stderr)
-	}
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 
 	projectPath := filepath.Join(cwd, ".mnemonic")
 	localPath := filepath.Join(cwd, ".mnemonic-memories", "backend")
 	manifestPath := filepath.Join(memoriesHome, "backend", "mnemonic.toml")
 
-	if _, err := os.Stat(projectPath); err != nil {
-		t.Fatalf("project file missing: %v", err)
-	}
-	if _, err := os.Stat(localPath); err != nil {
-		t.Fatalf("local memories directory missing: %v", err)
-	}
-	if _, err := os.Stat(manifestPath); !os.IsNotExist(err) {
-		t.Fatalf("unexpected detached-style manifest: %v", err)
-	}
+	_, err = os.Stat(projectPath)
+	require.NoError(t, err, "project file missing")
+	_, err = os.Stat(localPath)
+	require.NoError(t, err, "local memories directory missing")
+	_, err = os.Stat(manifestPath)
+	require.True(t, os.IsNotExist(err), "unexpected detached-style manifest")
 
 	projectData, err := os.ReadFile(projectPath)
-	if err != nil {
-		t.Fatalf("ReadFile(project) error = %v", err)
-	}
+	require.NoError(t, err)
 	parsedProject, err := project.ParseMnemonicFile(projectData)
-	if err != nil {
-		t.Fatalf("ParseMnemonicFile() error = %v", err)
-	}
-	if got, want := len(parsedProject.Projects), 1; got != want {
-		t.Fatalf("len(projects) = %d, want %d", got, want)
-	}
-	if parsedProject.Projects[0].Kind != project.ProjectKindLocal {
-		t.Fatalf("project kind = %q, want %q", parsedProject.Projects[0].Kind, project.ProjectKindLocal)
-	}
+	require.NoError(t, err)
+	require.Len(t, parsedProject.Projects, 1)
+	require.Equal(t, project.ProjectKindLocal, parsedProject.Projects[0].Kind)
+
 	indexPath, err := index.Path(parsedProject.Projects[0].ID)
-	if err != nil {
-		t.Fatalf("index.Path() error = %v", err)
-	}
-	if _, err := os.Stat(indexPath); err != nil {
-		t.Fatalf("index file missing: %v", err)
-	}
+	require.NoError(t, err)
+	_, err = os.Stat(indexPath)
+	require.NoError(t, err, "index file missing")
 }
 
 func TestInitCommandDetachedCreatesDetachedProject(t *testing.T) {
@@ -113,12 +83,9 @@ func TestInitCommandDetachedCreatesDetachedProject(t *testing.T) {
 	t.Setenv("MNEMONIC_MEMORIES_HOME", memoriesHome)
 
 	originalWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd() error = %v", err)
-	}
-	if err := os.Chdir(cwd); err != nil {
-		t.Fatalf("Chdir() error = %v", err)
-	}
+	require.NoError(t, err)
+	err = os.Chdir(cwd)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = os.Chdir(originalWD)
 	})
@@ -127,38 +94,27 @@ func TestInitCommandDetachedCreatesDetachedProject(t *testing.T) {
 	t.Cleanup(restore)
 
 	result := executeCommand("init", "personal", "--detached")
-	if result.Err != nil {
-		t.Fatalf("init returned error: %v\nstderr: %s", result.Err, result.Stderr)
-	}
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 
 	projectPath := filepath.Join(cwd, ".mnemonic")
 	manifestPath := filepath.Join(memoriesHome, "personal", "mnemonic.toml")
 
-	if _, err := os.Stat(projectPath); !os.IsNotExist(err) {
-		t.Fatalf(".mnemonic exists or stat failed unexpectedly: %v", err)
-	}
-	if _, err := os.Stat(manifestPath); err != nil {
-		t.Fatalf("manifest file missing: %v", err)
-	}
+	_, err = os.Stat(projectPath)
+	require.True(t, os.IsNotExist(err), ".mnemonic exists or stat failed unexpectedly")
+
+	_, err = os.Stat(manifestPath)
+	require.NoError(t, err, "manifest file missing")
 
 	manifestData, err := os.ReadFile(manifestPath)
-	if err != nil {
-		t.Fatalf("ReadFile(manifest) error = %v", err)
-	}
+	require.NoError(t, err)
 	parsedManifest, err := project.ParseMnemonicManifest(manifestData)
-	if err != nil {
-		t.Fatalf("ParseMnemonicManifest() error = %v", err)
-	}
-	if parsedManifest.Kind != project.ManifestKindDetached {
-		t.Fatalf("manifest kind = %q, want %q", parsedManifest.Kind, project.ManifestKindDetached)
-	}
+	require.NoError(t, err)
+	require.Equal(t, project.ManifestKindDetached, parsedManifest.Kind)
+
 	indexPath, err := index.Path(parsedManifest.ProjectID)
-	if err != nil {
-		t.Fatalf("index.Path() error = %v", err)
-	}
-	if _, err := os.Stat(indexPath); err != nil {
-		t.Fatalf("index file missing: %v", err)
-	}
+	require.NoError(t, err)
+	_, err = os.Stat(indexPath)
+	require.NoError(t, err, "index file missing")
 }
 
 func TestInitCommandRejectsDuplicateSlug(t *testing.T) {
@@ -168,12 +124,9 @@ func TestInitCommandRejectsDuplicateSlug(t *testing.T) {
 	t.Setenv("MNEMONIC_MEMORIES_HOME", memoriesHome)
 
 	originalWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd() error = %v", err)
-	}
-	if err := os.Chdir(cwd); err != nil {
-		t.Fatalf("Chdir() error = %v", err)
-	}
+	require.NoError(t, err)
+	err = os.Chdir(cwd)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = os.Chdir(originalWD)
 	})
@@ -182,20 +135,12 @@ func TestInitCommandRejectsDuplicateSlug(t *testing.T) {
 	t.Cleanup(restore)
 
 	first := executeCommand("init", "backend", "--local")
-	if first.Err != nil {
-		t.Fatalf("first init returned error: %v\nstderr: %s", first.Err, first.Stderr)
-	}
+	require.NoError(t, first.Err, "stderr: %s", first.Stderr)
 
 	result := executeCommand("init", "Backend", "--local")
-	if result.Err == nil {
-		t.Fatal("second init error = nil, want duplicate slug rejection")
-	}
-	if got := ExitCodeForError(result.Err); got != 4 {
-		t.Fatalf("exit code = %d, want 4", got)
-	}
-	if !strings.Contains(result.Stderr, `project slug "backend" already exists`) {
-		t.Fatalf("stderr = %q, want duplicate slug message", result.Stderr)
-	}
+	require.Error(t, result.Err, "second init error = nil, want duplicate slug rejection")
+	require.Equal(t, 4, ExitCodeForError(result.Err))
+	require.Contains(t, result.Stderr, `project slug "backend" already exists`)
 }
 
 func projectClockForCLI() project.Clock {

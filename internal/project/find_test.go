@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestFindNearestMnemonicFileInCwd(t *testing.T) {
@@ -12,41 +14,28 @@ func TestFindNearestMnemonicFileInCwd(t *testing.T) {
 	writeTestMnemonicFile(t, filepath.Join(cwd, ".mnemonic"), "backend")
 
 	got, err := FindNearestMnemonicFile(cwd)
-	if err != nil {
-		t.Fatalf("FindNearestMnemonicFile() error = %v", err)
-	}
-	if got != filepath.Join(cwd, ".mnemonic") {
-		t.Fatalf("FindNearestMnemonicFile() = %q, want %q", got, filepath.Join(cwd, ".mnemonic"))
-	}
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(cwd, ".mnemonic"), got)
 }
 
 func TestFindNearestMnemonicFileInParent(t *testing.T) {
 	root := t.TempDir()
 	child := filepath.Join(root, "sub", "dir")
-	if err := os.MkdirAll(child, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(child, 0o755))
 	writeTestMnemonicFile(t, filepath.Join(root, ".mnemonic"), "backend")
 
 	got, err := FindNearestMnemonicFile(child)
-	if err != nil {
-		t.Fatalf("FindNearestMnemonicFile() error = %v", err)
-	}
-	if got != filepath.Join(root, ".mnemonic") {
-		t.Fatalf("FindNearestMnemonicFile() = %q, want %q", got, filepath.Join(root, ".mnemonic"))
-	}
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(root, ".mnemonic"), got)
 }
 
 func TestFindNearestMnemonicFileStopsAtRoot(t *testing.T) {
 	cwd := filepath.Join(t.TempDir(), "repo", "sub", "dir")
-	if err := os.MkdirAll(cwd, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(cwd, 0o755))
 
 	got, err := FindNearestMnemonicFile(cwd)
-	if err == nil {
-		t.Fatalf("FindNearestMnemonicFile() error = nil, want not found path %q", got)
-	}
+	require.Error(t, err)
+	_ = got
 }
 
 func writeTestMnemonicFile(t *testing.T, path string, slug string) {
@@ -69,7 +58,5 @@ func writeTestMnemonicFile(t *testing.T, path string, slug string) {
 			},
 		},
 	}
-	if err := WriteMnemonicFile(path, file); err != nil {
-		t.Fatalf("WriteMnemonicFile() error = %v", err)
-	}
+	require.NoError(t, WriteMnemonicFile(path, file))
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
+	"github.com/stretchr/testify/require"
 )
 
 func TestProjectDiscoverCommandRegistersDirectChildrenOnly(t *testing.T) {
@@ -16,56 +17,37 @@ func TestProjectDiscoverCommandRegistersDirectChildrenOnly(t *testing.T) {
 	memoriesHome := filepath.Join(cwd, "memories")
 	t.Setenv("MNEMONIC_MEMORIES_HOME", memoriesHome)
 
-	if err := os.MkdirAll(memoriesHome, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := writeDiscoverCommandManifest(t, filepath.Join(memoriesHome, "backend"), "backend", project.ManifestKindRegular); err != nil {
-		t.Fatalf("writeDiscoverCommandManifest() error = %v", err)
-	}
-	if err := writeDiscoverCommandManifest(t, filepath.Join(memoriesHome, "personal"), "personal", project.ManifestKindDetached); err != nil {
-		t.Fatalf("writeDiscoverCommandManifest() error = %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(memoriesHome, "ignored", "nested"), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := writeDiscoverCommandManifest(t, filepath.Join(memoriesHome, "ignored", "nested"), "nested", project.ManifestKindRegular); err != nil {
-		t.Fatalf("writeDiscoverCommandManifest() error = %v", err)
-	}
+	err := os.MkdirAll(memoriesHome, 0o755)
+	require.NoError(t, err)
+	err = writeDiscoverCommandManifest(t, filepath.Join(memoriesHome, "backend"), "backend", project.ManifestKindRegular)
+	require.NoError(t, err)
+	err = writeDiscoverCommandManifest(t, filepath.Join(memoriesHome, "personal"), "personal", project.ManifestKindDetached)
+	require.NoError(t, err)
+	err = os.MkdirAll(filepath.Join(memoriesHome, "ignored", "nested"), 0o755)
+	require.NoError(t, err)
+	err = writeDiscoverCommandManifest(t, filepath.Join(memoriesHome, "ignored", "nested"), "nested", project.ManifestKindRegular)
+	require.NoError(t, err)
 
 	result := executeCommand("project", "discover", "--json")
-	if result.Err != nil {
-		t.Fatalf("project discover returned error: %v\nstderr: %s", result.Err, result.Stderr)
-	}
+	require.NoError(t, result.Err, "project discover returned error\nstderr: %s", result.Stderr)
 
 	var got projectDiscoverOutput
-	if err := json.Unmarshal([]byte(result.Stdout), &got); err != nil {
-		t.Fatalf("failed to decode JSON: %v\nstdout: %s", err, result.Stdout)
-	}
-	if got.MemoriesHome != memoriesHome {
-		t.Fatalf("memories_home = %q, want %q", got.MemoriesHome, memoriesHome)
-	}
-	if got.Discovered != 2 {
-		t.Fatalf("discovered = %d, want 2", got.Discovered)
-	}
+	err = json.Unmarshal([]byte(result.Stdout), &got)
+	require.NoError(t, err, "failed to decode JSON\nstdout: %s", result.Stdout)
+	require.Equal(t, memoriesHome, got.MemoriesHome)
+	require.Equal(t, 2, got.Discovered)
 
 	listResult := executeCommand("project", "list", "--json")
-	if listResult.Err != nil {
-		t.Fatalf("project list returned error: %v\nstderr: %s", listResult.Err, listResult.Stderr)
-	}
+	require.NoError(t, listResult.Err, "project list returned error\nstderr: %s", listResult.Stderr)
 	var listOutput projectListOutput
-	if err := json.Unmarshal([]byte(listResult.Stdout), &listOutput); err != nil {
-		t.Fatalf("failed to decode list JSON: %v\nstdout: %s", err, listResult.Stdout)
-	}
-	if len(listOutput.Projects) != 2 {
-		t.Fatalf("project list length = %d, want 2", len(listOutput.Projects))
-	}
+	err = json.Unmarshal([]byte(listResult.Stdout), &listOutput)
+	require.NoError(t, err, "failed to decode list JSON\nstdout: %s", listResult.Stdout)
+	require.Len(t, listOutput.Projects, 2)
 
-	if _, err := os.Stat(filepath.Join(memoriesHome, "backend", "index.sqlite")); !os.IsNotExist(err) {
-		t.Fatalf("backend index.sqlite exists or stat failed unexpectedly: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(memoriesHome, "personal", "index.sqlite")); !os.IsNotExist(err) {
-		t.Fatalf("personal index.sqlite exists or stat failed unexpectedly: %v", err)
-	}
+	_, err = os.Stat(filepath.Join(memoriesHome, "backend", "index.sqlite"))
+	require.True(t, os.IsNotExist(err), "backend index.sqlite exists or stat failed unexpectedly: %v", err)
+	_, err = os.Stat(filepath.Join(memoriesHome, "personal", "index.sqlite"))
+	require.True(t, os.IsNotExist(err), "personal index.sqlite exists or stat failed unexpectedly: %v", err)
 }
 
 func TestProjectDiscoverCommandDryRunReportsInvalidManifests(t *testing.T) {
@@ -73,49 +55,30 @@ func TestProjectDiscoverCommandDryRunReportsInvalidManifests(t *testing.T) {
 	memoriesHome := filepath.Join(cwd, "memories")
 	t.Setenv("MNEMONIC_MEMORIES_HOME", memoriesHome)
 
-	if err := os.MkdirAll(memoriesHome, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := writeDiscoverCommandManifest(t, filepath.Join(memoriesHome, "backend"), "backend", project.ManifestKindRegular); err != nil {
-		t.Fatalf("writeDiscoverCommandManifest() error = %v", err)
-	}
-	if err := writeInvalidDiscoverCommandManifest(filepath.Join(memoriesHome, "broken"), "broken"); err != nil {
-		t.Fatalf("writeInvalidDiscoverCommandManifest() error = %v", err)
-	}
+	err := os.MkdirAll(memoriesHome, 0o755)
+	require.NoError(t, err)
+	err = writeDiscoverCommandManifest(t, filepath.Join(memoriesHome, "backend"), "backend", project.ManifestKindRegular)
+	require.NoError(t, err)
+	err = writeInvalidDiscoverCommandManifest(filepath.Join(memoriesHome, "broken"), "broken")
+	require.NoError(t, err)
 
 	result := executeCommand("project", "discover", "--dry-run", "--json")
-	if result.Err != nil {
-		t.Fatalf("project discover returned error: %v\nstderr: %s", result.Err, result.Stderr)
-	}
+	require.NoError(t, result.Err, "project discover returned error\nstderr: %s", result.Stderr)
 
 	var got projectDiscoverOutput
-	if err := json.Unmarshal([]byte(result.Stdout), &got); err != nil {
-		t.Fatalf("failed to decode JSON: %v\nstdout: %s", err, result.Stdout)
-	}
-	if got.MemoriesHome != memoriesHome {
-		t.Fatalf("memories_home = %q, want %q", got.MemoriesHome, memoriesHome)
-	}
-	if got.Discovered != 1 {
-		t.Fatalf("discovered = %d, want 1", got.Discovered)
-	}
-	if len(got.Errors) != 1 {
-		t.Fatalf("errors = %d, want 1", len(got.Errors))
-	}
-	if got.Errors[0].Path != filepath.Join(memoriesHome, "broken", "mnemonic.toml") {
-		t.Fatalf("error path = %q, want %q", got.Errors[0].Path, filepath.Join(memoriesHome, "broken", "mnemonic.toml"))
-	}
+	err = json.Unmarshal([]byte(result.Stdout), &got)
+	require.NoError(t, err, "failed to decode JSON\nstdout: %s", result.Stdout)
+	require.Equal(t, memoriesHome, got.MemoriesHome)
+	require.Equal(t, 1, got.Discovered)
+	require.Len(t, got.Errors, 1)
+	require.Equal(t, filepath.Join(memoriesHome, "broken", "mnemonic.toml"), got.Errors[0].Path)
 
 	listResult := executeCommand("project", "list", "--json")
-	if listResult.Err != nil {
-		t.Fatalf("project list returned error: %v\nstderr: %s", listResult.Err, listResult.Stderr)
-	}
+	require.NoError(t, listResult.Err, "project list returned error\nstderr: %s", listResult.Stderr)
 	var listOutput projectListOutput
-	if err := json.Unmarshal([]byte(listResult.Stdout), &listOutput); err != nil {
-		t.Fatalf("failed to decode list JSON: %v\nstdout: %s", err, listResult.Stdout)
-	}
-	if len(listOutput.Projects) != 0 {
-		t.Fatalf("project list length = %d, want 0", len(listOutput.Projects))
-	}
+	err = json.Unmarshal([]byte(listResult.Stdout), &listOutput)
+	require.NoError(t, err, "failed to decode list JSON\nstdout: %s", listResult.Stdout)
+	require.Len(t, listOutput.Projects, 0)
 }
 
 func writeDiscoverCommandManifest(t *testing.T, projectRoot, name string, kind project.ManifestKind) error {

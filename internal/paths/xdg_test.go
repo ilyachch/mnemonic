@@ -3,6 +3,8 @@ package paths
 import (
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestGetXDGPaths(t *testing.T) {
@@ -29,18 +31,10 @@ func TestGetXDGPaths(t *testing.T) {
 	os.Setenv("HOME", "/myhome") // Set HOME to control user home dir behavior in test
 
 	paths := GetXDGPaths()
-	if paths.ConfigHome != "/myhome/.config" {
-		t.Errorf("expected config_home to be /myhome/.config, got %q", paths.ConfigHome)
-	}
-	if paths.DataHome != "/myhome/.local/share" {
-		t.Errorf("expected data_home to be /myhome/.local/share, got %q", paths.DataHome)
-	}
-	if paths.StateHome != "/myhome/.local/state" {
-		t.Errorf("expected state_home to be /myhome/.local/state, got %q", paths.StateHome)
-	}
-	if paths.CacheHome != "/myhome/.cache" {
-		t.Errorf("expected cache_home to be /myhome/.cache, got %q", paths.CacheHome)
-	}
+	assert.Equal(t, "/myhome/.config", paths.ConfigHome)
+	assert.Equal(t, "/myhome/.local/share", paths.DataHome)
+	assert.Equal(t, "/myhome/.local/state", paths.StateHome)
+	assert.Equal(t, "/myhome/.cache", paths.CacheHome)
 
 	// Test 2: Absolute env variables are respected
 	os.Setenv("XDG_CONFIG_HOME", "/custom/config")
@@ -49,18 +43,10 @@ func TestGetXDGPaths(t *testing.T) {
 	os.Setenv("XDG_CACHE_HOME", "/custom/cache")
 
 	paths = GetXDGPaths()
-	if paths.ConfigHome != "/custom/config" {
-		t.Errorf("expected /custom/config, got %q", paths.ConfigHome)
-	}
-	if paths.DataHome != "/custom/data" {
-		t.Errorf("expected /custom/data, got %q", paths.DataHome)
-	}
-	if paths.StateHome != "/custom/state" {
-		t.Errorf("expected /custom/state, got %q", paths.StateHome)
-	}
-	if paths.CacheHome != "/custom/cache" {
-		t.Errorf("expected /custom/cache, got %q", paths.CacheHome)
-	}
+	assert.Equal(t, "/custom/config", paths.ConfigHome)
+	assert.Equal(t, "/custom/data", paths.DataHome)
+	assert.Equal(t, "/custom/state", paths.StateHome)
+	assert.Equal(t, "/custom/cache", paths.CacheHome)
 
 	// Test 3: Relative env variables are ignored and fallback to default
 	os.Setenv("XDG_CONFIG_HOME", "relative/config")
@@ -69,16 +55,8 @@ func TestGetXDGPaths(t *testing.T) {
 	os.Setenv("XDG_CACHE_HOME", "relative/cache")
 
 	paths = GetXDGPaths()
-	if paths.ConfigHome != "/myhome/.config" {
-		t.Errorf("expected fallback /myhome/.config, got %q", paths.ConfigHome)
-	}
-	if paths.DataHome != "/myhome/.local/share" {
-		t.Errorf("expected fallback /myhome/.local/share, got %q", paths.DataHome)
-	}
-	if paths.StateHome != "/myhome/.local/state" {
-		t.Errorf("expected fallback /myhome/.local/state, got %q", paths.StateHome)
-	}
-	if paths.CacheHome != "/myhome/.cache" {
-		t.Errorf("expected fallback /myhome/.cache, got %q", paths.CacheHome)
-	}
+	assert.Equal(t, "/myhome/.config", paths.ConfigHome)
+	assert.Equal(t, "/myhome/.local/share", paths.DataHome)
+	assert.Equal(t, "/myhome/.local/state", paths.StateHome)
+	assert.Equal(t, "/myhome/.cache", paths.CacheHome)
 }

@@ -3,6 +3,8 @@ package cli
 import (
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func writeTaggedNote(t *testing.T, path, noteID, title, slug string, tags []string, body string) {
@@ -23,7 +25,6 @@ func writeTaggedNote(t *testing.T, path, noteID, title, slug string, tags []stri
 	content += "---\n"
 	content += body
 
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("WriteFile(%q) error = %v", path, err)
-	}
+	err := os.WriteFile(path, []byte(content), 0o644)
+	require.NoError(t, err)
 }

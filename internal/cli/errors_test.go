@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestExitCodeForError(t *testing.T) {
@@ -52,9 +53,7 @@ func TestExitCodeForError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := ExitCodeForError(tt.err); got != tt.want {
-				t.Errorf("ExitCodeForError() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, ExitCodeForError(tt.err))
 		})
 	}
 }

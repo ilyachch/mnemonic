@@ -3,9 +3,11 @@ package notes
 import (
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWalkFindsMarkdownNotes(t *testing.T) {
@@ -21,9 +23,7 @@ func TestWalkFindsMarkdownNotes(t *testing.T) {
 	writeFile(t, root, filepath.Join("dir", "note.txt"), "skip")
 
 	got, err := Walk(root)
-	if err != nil {
-		t.Fatalf("Walk() error = %v", err)
-	}
+	require.NoError(t, err)
 	sort.Strings(got)
 
 	want := []string{
@@ -31,9 +31,7 @@ func TestWalkFindsMarkdownNotes(t *testing.T) {
 		"dir/b.md",
 		"dir/sub/c.md",
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("Walk() = %#v, want %#v", got, want)
-	}
+	assert.Equal(t, want, got)
 }
 
 func TestWalkReturnsSlashRelativePaths(t *testing.T) {
@@ -41,24 +39,14 @@ func TestWalkReturnsSlashRelativePaths(t *testing.T) {
 	writeFile(t, root, filepath.Join("dir", "note.md"), "note")
 
 	got, err := Walk(root)
-	if err != nil {
-		t.Fatalf("Walk() error = %v", err)
-	}
-	if len(got) != 1 {
-		t.Fatalf("Walk() len = %d, want 1", len(got))
-	}
-	if got[0] != "dir/note.md" {
-		t.Fatalf("Walk() path = %q, want %q", got[0], "dir/note.md")
-	}
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "dir/note.md", got[0])
 }
 
 func writeFile(t *testing.T, root, rel, content string) {
 	t.Helper()
 	path := filepath.Join(root, rel)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) error = %v", path, err)
-	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("WriteFile(%q) error = %v", path, err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
 }

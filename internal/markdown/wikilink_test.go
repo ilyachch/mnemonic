@@ -1,6 +1,10 @@
 package markdown
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func TestParseWikiLinksExtractsTargetAliasAndLineNumber(t *testing.T) {
 	t.Parallel()
@@ -10,17 +14,11 @@ func TestParseWikiLinksExtractsTargetAliasAndLineNumber(t *testing.T) {
 		"Tail [[Some Note|Display Text]]\n")
 
 	links := ParseWikiLinks(input)
-	if got, want := len(links), 4; got != want {
-		t.Fatalf("len(links) = %d, want %d", got, want)
-	}
+	require.Len(t, links, 4)
 
 	assertWikiLink := func(idx int, want WikiLink) {
 		t.Helper()
-
-		got := links[idx]
-		if got != want {
-			t.Fatalf("links[%d] = %#v, want %#v", idx, got, want)
-		}
+		require.Equal(t, want, links[idx])
 	}
 
 	assertWikiLink(0, WikiLink{Target: "Some Note", Line: 1})
@@ -38,16 +36,10 @@ func TestParseWikiLinksIgnoresEscapedAndMalformedLinks(t *testing.T) {
 		"prefix \\\\[[Still Valid]]\n")
 
 	links := ParseWikiLinks(input)
-	if got, want := len(links), 2; got != want {
-		t.Fatalf("len(links) = %d, want %d", got, want)
-	}
+	require.Len(t, links, 2)
 
-	if links[0] != (WikiLink{Target: "Valid Note", Line: 3}) {
-		t.Fatalf("links[0] = %#v, want valid link on line 3", links[0])
-	}
-	if links[1] != (WikiLink{Target: "Still Valid", Line: 4}) {
-		t.Fatalf("links[1] = %#v, want valid link on line 4", links[1])
-	}
+	require.Equal(t, WikiLink{Target: "Valid Note", Line: 3}, links[0])
+	require.Equal(t, WikiLink{Target: "Still Valid", Line: 4}, links[1])
 }
 
 func TestParseWikiLinksSkipsInlineCodeAndKeepsBlockquotes(t *testing.T) {
@@ -57,22 +49,15 @@ func TestParseWikiLinksSkipsInlineCodeAndKeepsBlockquotes(t *testing.T) {
 		"> quoted [[Quoted Note|Alias]]\n")
 
 	links := ParseWikiLinks(input)
-	if got, want := len(links), 2; got != want {
-		t.Fatalf("len(links) = %d, want %d", got, want)
-	}
+	require.Len(t, links, 2)
 
-	if links[0] != (WikiLink{Target: "Visible Note", Line: 1}) {
-		t.Fatalf("links[0] = %#v, want visible note on line 1", links[0])
-	}
-	if links[1] != (WikiLink{Target: "Quoted Note", Alias: "Alias", Line: 2}) {
-		t.Fatalf("links[1] = %#v, want quoted note on line 2", links[1])
-	}
+	require.Equal(t, WikiLink{Target: "Visible Note", Line: 1}, links[0])
+	require.Equal(t, WikiLink{Target: "Quoted Note", Alias: "Alias", Line: 2}, links[1])
 }
 
 func TestParseWikiLinksHandlesEmptyInput(t *testing.T) {
 	t.Parallel()
 
-	if links := ParseWikiLinks(nil); len(links) != 0 {
-		t.Fatalf("ParseWikiLinks(nil) = %#v, want empty", links)
-	}
+	links := ParseWikiLinks(nil)
+	require.Empty(t, links)
 }

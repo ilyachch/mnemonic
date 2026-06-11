@@ -2,8 +2,9 @@ package project
 
 import (
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestResolveMemoriesRootForRegularProject(t *testing.T) {
@@ -14,14 +15,10 @@ func TestResolveMemoriesRootForRegularProject(t *testing.T) {
 		MemoriesHome: base,
 		MemoriesPath: "research",
 	})
-	if err != nil {
-		t.Fatalf("ResolveMemoriesRoot() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	want := filepath.Join(base, "research")
-	if got != want {
-		t.Fatalf("ResolveMemoriesRoot() = %q, want %q", got, want)
-	}
+	require.Equal(t, want, got)
 }
 
 func TestResolveMemoriesRootForDetachedProject(t *testing.T) {
@@ -32,14 +29,10 @@ func TestResolveMemoriesRootForDetachedProject(t *testing.T) {
 		MemoriesHome: base,
 		Slug:         "backend",
 	})
-	if err != nil {
-		t.Fatalf("ResolveMemoriesRoot() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	want := filepath.Join(base, "backend")
-	if got != want {
-		t.Fatalf("ResolveMemoriesRoot() = %q, want %q", got, want)
-	}
+	require.Equal(t, want, got)
 }
 
 func TestResolveMemoriesRootForLocalProject(t *testing.T) {
@@ -50,14 +43,10 @@ func TestResolveMemoriesRootForLocalProject(t *testing.T) {
 		RepoRoot:     repoRoot,
 		MemoriesPath: ".mnemonic-memories/backend",
 	})
-	if err != nil {
-		t.Fatalf("ResolveMemoriesRoot() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	want := filepath.Join(repoRoot, ".mnemonic-memories", "backend")
-	if got != want {
-		t.Fatalf("ResolveMemoriesRoot() = %q, want %q", got, want)
-	}
+	require.Equal(t, want, got)
 }
 
 func TestResolveMemoriesRootRejectsTraversal(t *testing.T) {
@@ -68,10 +57,6 @@ func TestResolveMemoriesRootRejectsTraversal(t *testing.T) {
 		RepoRoot:     repoRoot,
 		MemoriesPath: "../escape",
 	})
-	if err == nil {
-		t.Fatal("ResolveMemoriesRoot() error = nil, want traversal rejection")
-	}
-	if !strings.Contains(err.Error(), "escapes base directory") {
-		t.Fatalf("ResolveMemoriesRoot() error = %v, want traversal rejection", err)
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "escapes base directory")
 }

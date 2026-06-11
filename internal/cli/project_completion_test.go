@@ -8,15 +8,14 @@ import (
 	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCompleteProjectNamesReturnsActiveSlugMatches(t *testing.T) {
 	cwd := testutil.CleanEnvForTest(t)
 
 	db, err := registry.OpenDB()
-	if err != nil {
-		t.Fatalf("OpenDB() error = %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = db.Close()
 	})
@@ -54,35 +53,21 @@ func TestCompleteProjectNamesReturnsActiveSlugMatches(t *testing.T) {
 			},
 		},
 	} {
-		if err := registry.RegisterProject(db, p); err != nil {
-			t.Fatalf("RegisterProject(%s) error = %v", p.Slug, err)
-		}
+		err := registry.RegisterProject(db, p)
+		require.NoError(t, err, "RegisterProject(%s) error = %v", p.Slug, err)
 	}
 
-	if _, err := db.Exec(`UPDATE projects SET removed_at = ? WHERE slug = ?`, now.UTC().Format(time.RFC3339), "personal"); err != nil {
-		t.Fatalf("remove personal project: %v", err)
-	}
+	_, err = db.Exec(`UPDATE projects SET removed_at = ? WHERE slug = ?`, now.UTC().Format(time.RFC3339), "personal")
+	require.NoError(t, err, "remove personal project")
 
 	got, directive := completeProjectNames(nil, nil, "ba")
-	if directive != cobra.ShellCompDirectiveNoFileComp {
-		t.Fatalf("directive = %d, want %d", directive, cobra.ShellCompDirectiveNoFileComp)
-	}
-	if len(got) != 1 || got[0] != "backend" {
-		t.Fatalf("completion = %#v, want [backend]", got)
-	}
+	require.Equal(t, cobra.ShellCompDirectiveNoFileComp, directive)
+	require.Equal(t, []string{"backend"}, got)
 }
 
 func TestProjectCommandsHaveProjectCompletion(t *testing.T) {
-	if projectShowCmd.ValidArgsFunction == nil {
-		t.Fatal("project show missing ValidArgsFunction")
-	}
-	if projectRemoveCmd.ValidArgsFunction == nil {
-		t.Fatal("project remove missing ValidArgsFunction")
-	}
-	if projectReindexCmd.ValidArgsFunction == nil {
-		t.Fatal("project reindex missing ValidArgsFunction")
-	}
-	if projectDoctorCmd.ValidArgsFunction == nil {
-		t.Fatal("project doctor missing ValidArgsFunction")
-	}
+	require.NotNil(t, projectShowCmd.ValidArgsFunction, "project show missing ValidArgsFunction")
+	require.NotNil(t, projectRemoveCmd.ValidArgsFunction, "project remove missing ValidArgsFunction")
+	require.NotNil(t, projectReindexCmd.ValidArgsFunction, "project reindex missing ValidArgsFunction")
+	require.NotNil(t, projectDoctorCmd.ValidArgsFunction, "project doctor missing ValidArgsFunction")
 }

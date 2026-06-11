@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/ilyachch/mnemonic/internal/testutil"
 )
 
@@ -13,12 +15,8 @@ func TestDiscoverConfigFile(t *testing.T) {
 		clearConfigDiscoveryEnv(t)
 
 		got, err := DiscoverConfigFile("")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if got != "" {
-			t.Fatalf("DiscoverConfigFile() = %q, want empty path when no config exists", got)
-		}
+		require.NoError(t, err)
+		require.Equal(t, "", got)
 	})
 
 	t.Run("precedence order", func(t *testing.T) {
@@ -30,12 +28,8 @@ func TestDiscoverConfigFile(t *testing.T) {
 			clearDiscoverySelectionEnv(t)
 
 			got, err := DiscoverConfigFile("")
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != homeConfigPath {
-				t.Fatalf("DiscoverConfigFile() = %q, want home default path %q", got, homeConfigPath)
-			}
+			require.NoError(t, err)
+			require.Equal(t, homeConfigPath, got)
 		})
 
 		t.Run("level 4 xdg config home beats home default", func(t *testing.T) {
@@ -45,12 +39,8 @@ func TestDiscoverConfigFile(t *testing.T) {
 			xdgPath := mustConfigFile(t, filepath.Join(xdgRoot, "mnemonic", configFileName))
 
 			got, err := DiscoverConfigFile("")
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != xdgPath {
-				t.Fatalf("DiscoverConfigFile() = %q, want xdg path %q", got, xdgPath)
-			}
+			require.NoError(t, err)
+			require.Equal(t, xdgPath, got)
 		})
 
 		t.Run("level 3 mnemonic config home beats xdg", func(t *testing.T) {
@@ -63,12 +53,8 @@ func TestDiscoverConfigFile(t *testing.T) {
 			mustConfigFile(t, filepath.Join(xdgRoot, "mnemonic", configFileName))
 
 			got, err := DiscoverConfigFile("")
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != mnemonicPath {
-				t.Fatalf("DiscoverConfigFile() = %q, want mnemonic config home path %q", got, mnemonicPath)
-			}
+			require.NoError(t, err)
+			require.Equal(t, mnemonicPath, got)
 		})
 
 		t.Run("level 2 mnemonic config file beats config home", func(t *testing.T) {
@@ -84,12 +70,8 @@ func TestDiscoverConfigFile(t *testing.T) {
 			mustConfigFile(t, filepath.Join(xdgRoot, "mnemonic", configFileName))
 
 			got, err := DiscoverConfigFile("")
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != envPath {
-				t.Fatalf("DiscoverConfigFile() = %q, want env config path %q", got, envPath)
-			}
+			require.NoError(t, err)
+			require.Equal(t, envPath, got)
 		})
 
 		t.Run("level 1 explicit config beats env", func(t *testing.T) {
@@ -105,12 +87,8 @@ func TestDiscoverConfigFile(t *testing.T) {
 			mustConfigFile(t, filepath.Join(xdgRoot, "mnemonic", configFileName))
 
 			got, err := DiscoverConfigFile(explicitPath)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != explicitPath {
-				t.Fatalf("DiscoverConfigFile() = %q, want explicit path %q", got, explicitPath)
-			}
+			require.NoError(t, err)
+			require.Equal(t, explicitPath, got)
 		})
 	})
 }
@@ -133,12 +111,8 @@ func clearDiscoverySelectionEnv(t *testing.T) {
 func mustConfigFile(t *testing.T, path string) string {
 	t.Helper()
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("failed to create config directory for %q: %v", path, err)
-	}
-	if err := os.WriteFile(path, []byte("version = 1\n"), 0o644); err != nil {
-		t.Fatalf("failed to create config file %q: %v", path, err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, []byte("version = 1\n"), 0o644))
 
 	return path
 }

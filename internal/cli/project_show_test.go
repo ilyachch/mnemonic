@@ -6,8 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/ilyachch/mnemonic/internal/testutil"
+	"github.com/stretchr/testify/require"
 )
 
 type projectShowJSON struct {
@@ -38,15 +40,13 @@ func TestProjectShowCommandFindsProjectBySlugAndUUID(t *testing.T) {
 	cwd := t.TempDir()
 
 	db, err := registry.OpenDB()
-	if err != nil {
-		t.Fatalf("OpenDB() error = %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = db.Close()
 	})
 
 	now := time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
-	if err := registry.RegisterProject(db, registry.RegisterProjectInput{
+	err = registry.RegisterProject(db, registry.RegisterProjectInput{
 		ProjectID: "550e8400-e29b-41d4-a716-446655440000",
 		Name:      "backend",
 		Slug:      "backend",
@@ -60,19 +60,16 @@ func TestProjectShowCommandFindsProjectBySlugAndUUID(t *testing.T) {
 			MemoriesAbs:     filepath.Join(cwd, ".mnemonic-memories", "backend"),
 			SourceKind:      registry.ProjectSourceKindInit,
 		},
-	}); err != nil {
-		t.Fatalf("RegisterProject() error = %v", err)
-	}
+	})
+	require.NoError(t, err)
 
 	bySlug := executeCommand("project", "show", "backend", "--json")
-	if bySlug.Err != nil {
-		t.Fatalf("project show by slug returned error: %v\nstderr: %s", bySlug.Err, bySlug.Stderr)
-	}
+	require.NoError(t, bySlug.Err, "project show by slug returned error\nstderr: %s", bySlug.Stderr)
 	var got projectShowJSON
-	if err := json.Unmarshal([]byte(bySlug.Stdout), &got); err != nil {
-		t.Fatalf("failed to decode JSON by slug: %v\nstdout: %s", err, bySlug.Stdout)
-	}
-	assertProjectShowJSON(t, got, projectShowJSON{
+	err = json.Unmarshal([]byte(bySlug.Stdout), &got)
+	require.NoError(t, err, "failed to decode JSON by slug\nstdout: %s", bySlug.Stdout)
+
+	want := projectShowJSON{
 		ProjectID: "550e8400-e29b-41d4-a716-446655440000",
 		Name:      "backend",
 		Slug:      "backend",
@@ -104,54 +101,22 @@ func TestProjectShowCommandFindsProjectBySlugAndUUID(t *testing.T) {
 			IndexPresent:       false,
 			NeedsReindex:       true,
 		},
-	})
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Fatalf("project show by slug mismatch (-want +got):\n%s", diff)
+	}
 
 	byUUID := executeCommand("project", "show", "550e8400-e29b-41d4-a716-446655440000", "--json")
-	if byUUID.Err != nil {
-		t.Fatalf("project show by UUID returned error: %v\nstderr: %s", byUUID.Err, byUUID.Stderr)
-	}
-	if err := json.Unmarshal([]byte(byUUID.Stdout), &got); err != nil {
-		t.Fatalf("failed to decode JSON by UUID: %v\nstdout: %s", err, byUUID.Stdout)
-	}
-	if got.ProjectID != "550e8400-e29b-41d4-a716-446655440000" {
-		t.Fatalf("project_id = %q, want %q", got.ProjectID, "550e8400-e29b-41d4-a716-446655440000")
-	}
+	require.NoError(t, byUUID.Err, "project show by UUID returned error\nstderr: %s", byUUID.Stderr)
+	err = json.Unmarshal([]byte(byUUID.Stdout), &got)
+	require.NoError(t, err, "failed to decode JSON by UUID\nstdout: %s", byUUID.Stdout)
+	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", got.ProjectID)
 }
 
 func TestProjectShowCommandMissingProject(t *testing.T) {
 	testutil.CleanEnvForTest(t)
 
 	result := executeCommand("project", "show", "missing", "--json")
-	if result.Err == nil {
-		t.Fatal("project show error = nil, want not-found")
-	}
-	if got := ExitCodeForError(result.Err); got != 3 {
-		t.Fatalf("exit code = %d, want 3", got)
-	}
-}
-
-func assertProjectShowJSON(t *testing.T, got, want projectShowJSON) {
-	t.Helper()
-
-	if got.ProjectID != want.ProjectID {
-		t.Fatalf("project_id = %q, want %q", got.ProjectID, want.ProjectID)
-	}
-	if got.Name != want.Name {
-		t.Fatalf("name = %q, want %q", got.Name, want.Name)
-	}
-	if got.Slug != want.Slug {
-		t.Fatalf("slug = %q, want %q", got.Slug, want.Slug)
-	}
-	if got.Kind != want.Kind {
-		t.Fatalf("kind = %q, want %q", got.Kind, want.Kind)
-	}
-	if got.StatePath != want.StatePath {
-		t.Fatalf("state_path = %q, want %q", got.StatePath, want.StatePath)
-	}
-	if got.Location != want.Location {
-		t.Fatalf("location = %#v, want %#v", got.Location, want.Location)
-	}
-	if got.Status != want.Status {
-		t.Fatalf("status = %#v, want %#v", got.Status, want.Status)
-	}
+	require.Error(t, result.Err, "project show error = nil, want not-found")
+	require.Equal(t, 3, ExitCodeForError(result.Err))
 }

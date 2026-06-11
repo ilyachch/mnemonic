@@ -1,23 +1,27 @@
 package paths
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/google/go-cmp/cmp"
+	"github.com/stretchr/testify/require"
+)
 
 func TestGetMnemonicPaths(t *testing.T) {
 	t.Run("defaults", func(t *testing.T) {
 		setDefaultEnv(t)
 
 		paths, err := GetMnemonicPaths()
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		require.NoError(t, err)
 
-		assertPaths(t, paths, wantPaths{
-			configHome:   "/myhome/.config",
-			dataHome:     "/myhome/.local/share",
-			stateHome:    "/myhome/.local/state",
-			cacheHome:    "/myhome/.cache",
-			memoriesHome: "/myhome/.mnemonic",
-		})
+		want := MnemonicPaths{
+			ConfigHome:   "/myhome/.config",
+			DataHome:     "/myhome/.local/share",
+			StateHome:    "/myhome/.local/state",
+			CacheHome:    "/myhome/.cache",
+			MemoriesHome: "/myhome/.mnemonic",
+		}
+		require.Empty(t, cmp.Diff(want, paths))
 	})
 
 	t.Run("absolute overrides", func(t *testing.T) {
@@ -32,13 +36,14 @@ func TestGetMnemonicPaths(t *testing.T) {
 				envKey:   "MNEMONIC_CONFIG_HOME",
 				envValue: "/mconfig",
 				assertion: func(t *testing.T, got MnemonicPaths) {
-					assertPaths(t, got, wantPaths{
-						configHome:   "/mconfig",
-						dataHome:     "/xdg/data",
-						stateHome:    "/xdg/state",
-						cacheHome:    "/xdg/cache",
-						memoriesHome: "/myhome/.mnemonic",
-					})
+					want := MnemonicPaths{
+						ConfigHome:   "/mconfig",
+						DataHome:     "/xdg/data",
+						StateHome:    "/xdg/state",
+						CacheHome:    "/xdg/cache",
+						MemoriesHome: "/myhome/.mnemonic",
+					}
+					require.Empty(t, cmp.Diff(want, got))
 				},
 			},
 			{
@@ -46,13 +51,14 @@ func TestGetMnemonicPaths(t *testing.T) {
 				envKey:   "MNEMONIC_DATA_HOME",
 				envValue: "/mdata",
 				assertion: func(t *testing.T, got MnemonicPaths) {
-					assertPaths(t, got, wantPaths{
-						configHome:   "/xdg/config",
-						dataHome:     "/mdata",
-						stateHome:    "/xdg/state",
-						cacheHome:    "/xdg/cache",
-						memoriesHome: "/myhome/.mnemonic",
-					})
+					want := MnemonicPaths{
+						ConfigHome:   "/xdg/config",
+						DataHome:     "/mdata",
+						StateHome:    "/xdg/state",
+						CacheHome:    "/xdg/cache",
+						MemoriesHome: "/myhome/.mnemonic",
+					}
+					require.Empty(t, cmp.Diff(want, got))
 				},
 			},
 			{
@@ -60,13 +66,14 @@ func TestGetMnemonicPaths(t *testing.T) {
 				envKey:   "MNEMONIC_STATE_HOME",
 				envValue: "/mstate",
 				assertion: func(t *testing.T, got MnemonicPaths) {
-					assertPaths(t, got, wantPaths{
-						configHome:   "/xdg/config",
-						dataHome:     "/xdg/data",
-						stateHome:    "/mstate",
-						cacheHome:    "/xdg/cache",
-						memoriesHome: "/myhome/.mnemonic",
-					})
+					want := MnemonicPaths{
+						ConfigHome:   "/xdg/config",
+						DataHome:     "/xdg/data",
+						StateHome:    "/mstate",
+						CacheHome:    "/xdg/cache",
+						MemoriesHome: "/myhome/.mnemonic",
+					}
+					require.Empty(t, cmp.Diff(want, got))
 				},
 			},
 			{
@@ -74,13 +81,14 @@ func TestGetMnemonicPaths(t *testing.T) {
 				envKey:   "MNEMONIC_CACHE_HOME",
 				envValue: "/mcache",
 				assertion: func(t *testing.T, got MnemonicPaths) {
-					assertPaths(t, got, wantPaths{
-						configHome:   "/xdg/config",
-						dataHome:     "/xdg/data",
-						stateHome:    "/xdg/state",
-						cacheHome:    "/mcache",
-						memoriesHome: "/myhome/.mnemonic",
-					})
+					want := MnemonicPaths{
+						ConfigHome:   "/xdg/config",
+						DataHome:     "/xdg/data",
+						StateHome:    "/xdg/state",
+						CacheHome:    "/mcache",
+						MemoriesHome: "/myhome/.mnemonic",
+					}
+					require.Empty(t, cmp.Diff(want, got))
 				},
 			},
 			{
@@ -88,13 +96,14 @@ func TestGetMnemonicPaths(t *testing.T) {
 				envKey:   "MNEMONIC_MEMORIES_HOME",
 				envValue: "/mmemories",
 				assertion: func(t *testing.T, got MnemonicPaths) {
-					assertPaths(t, got, wantPaths{
-						configHome:   "/xdg/config",
-						dataHome:     "/xdg/data",
-						stateHome:    "/xdg/state",
-						cacheHome:    "/xdg/cache",
-						memoriesHome: "/mmemories",
-					})
+					want := MnemonicPaths{
+						ConfigHome:   "/xdg/config",
+						DataHome:     "/xdg/data",
+						StateHome:    "/xdg/state",
+						CacheHome:    "/xdg/cache",
+						MemoriesHome: "/mmemories",
+					}
+					require.Empty(t, cmp.Diff(want, got))
 				},
 			},
 		}
@@ -106,9 +115,7 @@ func TestGetMnemonicPaths(t *testing.T) {
 				t.Setenv(tt.envKey, tt.envValue)
 
 				paths, err := GetMnemonicPaths()
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
+				require.NoError(t, err)
 
 				tt.assertion(t, paths)
 			})
@@ -120,9 +127,7 @@ func TestGetMnemonicPaths(t *testing.T) {
 		t.Setenv("MNEMONIC_MEMORIES_HOME", "relative/memories")
 
 		_, err := GetMnemonicPaths()
-		if err == nil {
-			t.Fatal("expected validation error for relative MNEMONIC_MEMORIES_HOME")
-		}
+		require.Error(t, err, "expected validation error for relative MNEMONIC_MEMORIES_HOME")
 	})
 
 	t.Run("relative overrides fall back to xdg", func(t *testing.T) {
@@ -135,52 +140,56 @@ func TestGetMnemonicPaths(t *testing.T) {
 				name:   "config",
 				envKey: "MNEMONIC_CONFIG_HOME",
 				want: func(t *testing.T, got MnemonicPaths) {
-					assertPaths(t, got, wantPaths{
-						configHome:   "/xdg/config",
-						dataHome:     "/xdg/data",
-						stateHome:    "/xdg/state",
-						cacheHome:    "/xdg/cache",
-						memoriesHome: "/myhome/.mnemonic",
-					})
+					want := MnemonicPaths{
+						ConfigHome:   "/xdg/config",
+						DataHome:     "/xdg/data",
+						StateHome:    "/xdg/state",
+						CacheHome:    "/xdg/cache",
+						MemoriesHome: "/myhome/.mnemonic",
+					}
+					require.Empty(t, cmp.Diff(want, got))
 				},
 			},
 			{
 				name:   "data",
 				envKey: "MNEMONIC_DATA_HOME",
 				want: func(t *testing.T, got MnemonicPaths) {
-					assertPaths(t, got, wantPaths{
-						configHome:   "/xdg/config",
-						dataHome:     "/xdg/data",
-						stateHome:    "/xdg/state",
-						cacheHome:    "/xdg/cache",
-						memoriesHome: "/myhome/.mnemonic",
-					})
+					want := MnemonicPaths{
+						ConfigHome:   "/xdg/config",
+						DataHome:     "/xdg/data",
+						StateHome:    "/xdg/state",
+						CacheHome:    "/xdg/cache",
+						MemoriesHome: "/myhome/.mnemonic",
+					}
+					require.Empty(t, cmp.Diff(want, got))
 				},
 			},
 			{
 				name:   "state",
 				envKey: "MNEMONIC_STATE_HOME",
 				want: func(t *testing.T, got MnemonicPaths) {
-					assertPaths(t, got, wantPaths{
-						configHome:   "/xdg/config",
-						dataHome:     "/xdg/data",
-						stateHome:    "/xdg/state",
-						cacheHome:    "/xdg/cache",
-						memoriesHome: "/myhome/.mnemonic",
-					})
+					want := MnemonicPaths{
+						ConfigHome:   "/xdg/config",
+						DataHome:     "/xdg/data",
+						StateHome:    "/xdg/state",
+						CacheHome:    "/xdg/cache",
+						MemoriesHome: "/myhome/.mnemonic",
+					}
+					require.Empty(t, cmp.Diff(want, got))
 				},
 			},
 			{
 				name:   "cache",
 				envKey: "MNEMONIC_CACHE_HOME",
 				want: func(t *testing.T, got MnemonicPaths) {
-					assertPaths(t, got, wantPaths{
-						configHome:   "/xdg/config",
-						dataHome:     "/xdg/data",
-						stateHome:    "/xdg/state",
-						cacheHome:    "/xdg/cache",
-						memoriesHome: "/myhome/.mnemonic",
-					})
+					want := MnemonicPaths{
+						ConfigHome:   "/xdg/config",
+						DataHome:     "/xdg/data",
+						StateHome:    "/xdg/state",
+						CacheHome:    "/xdg/cache",
+						MemoriesHome: "/myhome/.mnemonic",
+					}
+					require.Empty(t, cmp.Diff(want, got))
 				},
 			},
 		}
@@ -192,22 +201,12 @@ func TestGetMnemonicPaths(t *testing.T) {
 				t.Setenv(tt.envKey, "relative/"+tt.name)
 
 				paths, err := GetMnemonicPaths()
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
+				require.NoError(t, err)
 
 				tt.want(t, paths)
 			})
 		}
 	})
-}
-
-type wantPaths struct {
-	configHome   string
-	dataHome     string
-	stateHome    string
-	cacheHome    string
-	memoriesHome string
 }
 
 func setDefaultEnv(t *testing.T) {
@@ -238,24 +237,4 @@ func setXDGEnv(t *testing.T) {
 	t.Setenv("MNEMONIC_STATE_HOME", "")
 	t.Setenv("MNEMONIC_CACHE_HOME", "")
 	t.Setenv("MNEMONIC_MEMORIES_HOME", "")
-}
-
-func assertPaths(t *testing.T, got MnemonicPaths, want wantPaths) {
-	t.Helper()
-
-	if got.ConfigHome != want.configHome {
-		t.Fatalf("config_home: want %q, got %q", want.configHome, got.ConfigHome)
-	}
-	if got.DataHome != want.dataHome {
-		t.Fatalf("data_home: want %q, got %q", want.dataHome, got.DataHome)
-	}
-	if got.StateHome != want.stateHome {
-		t.Fatalf("state_home: want %q, got %q", want.stateHome, got.StateHome)
-	}
-	if got.CacheHome != want.cacheHome {
-		t.Fatalf("cache_home: want %q, got %q", want.cacheHome, got.CacheHome)
-	}
-	if got.MemoriesHome != want.memoriesHome {
-		t.Fatalf("memories_home: want %q, got %q", want.memoriesHome, got.MemoriesHome)
-	}
 }

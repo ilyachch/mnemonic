@@ -1,7 +1,6 @@
 package notes
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +12,8 @@ import (
 	"github.com/ilyachch/mnemonic/internal/markdown"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestEditAppendsBodyAndUpdatesTimestamps(t *testing.T) {
@@ -28,9 +29,7 @@ func TestEditAppendsBodyAndUpdatesTimestamps(t *testing.T) {
 		Title:   "Auth migration",
 		Body:    []byte("## Summary\n"),
 	})
-	if err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	restoreEditClock := project.SetClock(testutil.NewClock(time.Date(2026, time.June, 2, 12, 35, 56, 0, time.UTC)))
 	defer restoreEditClock()
@@ -40,30 +39,16 @@ func TestEditAppendsBodyAndUpdatesTimestamps(t *testing.T) {
 		Selector: created.Slug,
 		Append:   []byte("Next step"),
 	})
-	if err != nil {
-		t.Fatalf("Edit() error = %v", err)
-	}
-	if edited.ContentHash == created.ContentHash {
-		t.Fatalf("ContentHash = %q, want change", edited.ContentHash)
-	}
+	require.NoError(t, err)
+	assert.NotEqual(t, created.ContentHash, edited.ContentHash)
 
 	data, err := os.ReadFile(filepath.Join(root, "auth-migration.md"))
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
+	require.NoError(t, err)
 	note, err := markdown.ParseNote(data)
-	if err != nil {
-		t.Fatalf("ParseNote() error = %v", err)
-	}
-	if string(note.Body) != "## Summary\nNext step" {
-		t.Fatalf("Body = %q", note.Body)
-	}
-	if note.CreatedAt.UTC().Format(time.RFC3339) != "2026-06-02T12:34:56Z" {
-		t.Fatalf("CreatedAt = %s", note.CreatedAt)
-	}
-	if note.UpdatedAt.UTC().Format(time.RFC3339) != "2026-06-02T12:35:56Z" {
-		t.Fatalf("UpdatedAt = %s", note.UpdatedAt)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "## Summary\nNext step", string(note.Body))
+	assert.Equal(t, "2026-06-02T12:34:56Z", note.CreatedAt.UTC().Format(time.RFC3339))
+	assert.Equal(t, "2026-06-02T12:35:56Z", note.UpdatedAt.UTC().Format(time.RFC3339))
 }
 
 func TestEditSetsFrontmatterField(t *testing.T) {
@@ -79,34 +64,25 @@ func TestEditSetsFrontmatterField(t *testing.T) {
 		Title:   "Auth migration",
 		Body:    []byte("## Summary\n"),
 	})
-	if err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	restoreEditClock := project.SetClock(testutil.NewClock(time.Date(2026, time.June, 2, 12, 35, 56, 0, time.UTC)))
 	defer restoreEditClock()
 
-	if _, err := Edit(EditInput{
+	_, err = Edit(EditInput{
 		RootDir:  root,
 		Selector: "auth-migration",
 		Set: map[string]string{
 			"type": "decision",
 		},
-	}); err != nil {
-		t.Fatalf("Edit() error = %v", err)
-	}
+	})
+	require.NoError(t, err)
 
 	data, err := os.ReadFile(filepath.Join(root, "auth-migration.md"))
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
+	require.NoError(t, err)
 	note, err := markdown.ParseNote(data)
-	if err != nil {
-		t.Fatalf("ParseNote() error = %v", err)
-	}
-	if note.Type != "decision" {
-		t.Fatalf("Type = %q, want %q", note.Type, "decision")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "decision", note.Type)
 }
 
 func TestEditRejectsProtectedFrontmatterField(t *testing.T) {
@@ -121,9 +97,7 @@ func TestEditRejectsProtectedFrontmatterField(t *testing.T) {
 		RootDir: root,
 		Title:   "Auth migration",
 	})
-	if err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	_, err = Edit(EditInput{
 		RootDir:  root,
@@ -132,13 +106,10 @@ func TestEditRejectsProtectedFrontmatterField(t *testing.T) {
 			"created_at": "2026-06-02T12:00:00Z",
 		},
 	})
-	if err == nil {
-		t.Fatal("Edit() error = nil, want unsafe error")
-	}
+	require.Error(t, err)
 	var appErr *app.AppError
-	if !errors.As(err, &appErr) || appErr.Code != app.CodeUnsafe {
-		t.Fatalf("Edit() error = %v, want unsafe error", err)
-	}
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, app.CodeUnsafe, appErr.Code)
 }
 
 func TestEditRejectsContentHashMismatch(t *testing.T) {
@@ -153,9 +124,7 @@ func TestEditRejectsContentHashMismatch(t *testing.T) {
 		RootDir: root,
 		Title:   "Auth migration",
 	})
-	if err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	_, err = Edit(EditInput{
 		RootDir:  root,
@@ -163,24 +132,16 @@ func TestEditRejectsContentHashMismatch(t *testing.T) {
 		IfMatch:  "deadbeef",
 		Append:   []byte("Next step"),
 	})
-	if err == nil {
-		t.Fatal("Edit() error = nil, want unsafe error")
-	}
+	require.Error(t, err)
 	var appErr *app.AppError
-	if !errors.As(err, &appErr) || appErr.Code != app.CodeUnsafe {
-		t.Fatalf("Edit() error = %v, want unsafe error", err)
-	}
-	data, readErr := os.ReadFile(filepath.Join(root, "auth-migration.md"))
-	if readErr != nil {
-		t.Fatalf("ReadFile() error = %v", readErr)
-	}
-	note, parseErr := markdown.ParseNote(data)
-	if parseErr != nil {
-		t.Fatalf("ParseNote() error = %v", parseErr)
-	}
-	if string(note.Body) != "" {
-		t.Fatalf("Body = %q, want unchanged", note.Body)
-	}
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, app.CodeUnsafe, appErr.Code)
+
+	data, err := os.ReadFile(filepath.Join(root, "auth-migration.md"))
+	require.NoError(t, err)
+	note, err := markdown.ParseNote(data)
+	require.NoError(t, err)
+	assert.Empty(t, string(note.Body))
 }
 
 func TestEditReturnsBusyErrorWhenWriteLockHeld(t *testing.T) {
@@ -195,18 +156,12 @@ func TestEditReturnsBusyErrorWhenWriteLockHeld(t *testing.T) {
 		RootDir: root,
 		Title:   "Auth migration",
 	})
-	if err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	guard, err := acquireWriteLock(root)
-	if err != nil {
-		t.Fatalf("acquireWriteLock() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer func() {
-		if err := guard.Release(); err != nil {
-			t.Fatalf("Release() error = %v", err)
-		}
+		require.NoError(t, guard.Release())
 	}()
 
 	_, err = Edit(EditInput{
@@ -214,14 +169,11 @@ func TestEditReturnsBusyErrorWhenWriteLockHeld(t *testing.T) {
 		Selector: created.Slug,
 		Append:   []byte("blocked"),
 	})
-	if err == nil {
-		t.Fatal("Edit() error = nil, want busy error")
-	}
+	require.Error(t, err)
 
 	var appErr *app.AppError
-	if !errors.As(err, &appErr) || appErr.Code != app.CodeUnsafe {
-		t.Fatalf("Edit() error = %v, want unsafe error", err)
-	}
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, app.CodeUnsafe, appErr.Code)
 }
 
 func TestConcurrentEditWithSameHashAllowsOnlyOneSuccess(t *testing.T) {
@@ -237,9 +189,7 @@ func TestConcurrentEditWithSameHashAllowsOnlyOneSuccess(t *testing.T) {
 		Title:   "Auth migration",
 		Body:    []byte("## Summary\n"),
 	})
-	if err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	type outcome struct {
 		result EditResult
@@ -279,33 +229,21 @@ func TestConcurrentEditWithSameHashAllowsOnlyOneSuccess(t *testing.T) {
 			continue
 		}
 		var appErr *app.AppError
-		if !errors.As(result.err, &appErr) || appErr.Code != app.CodeUnsafe || !strings.Contains(result.err.Error(), "content hash mismatch") {
-			t.Fatalf("Edit() error = %v, want content hash mismatch unsafe error", result.err)
-		}
+		require.ErrorAs(t, result.err, &appErr)
+		assert.Equal(t, app.CodeUnsafe, appErr.Code)
+		require.Contains(t, result.err.Error(), "content hash mismatch")
 		preconditionFailures++
 	}
 
-	if successes != 1 {
-		t.Fatalf("successes = %d, want 1", successes)
-	}
-	if preconditionFailures != 1 {
-		t.Fatalf("preconditionFailures = %d, want 1", preconditionFailures)
-	}
+	assert.Equal(t, 1, successes)
+	assert.Equal(t, 1, preconditionFailures)
 
 	data, err := os.ReadFile(filepath.Join(root, "auth-migration.md"))
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
+	require.NoError(t, err)
 	note, err := markdown.ParseNote(data)
-	if err != nil {
-		t.Fatalf("ParseNote() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	body := string(note.Body)
-	if strings.Contains(body, "First change\nSecond change\n") || strings.Contains(body, "Second change\nFirst change\n") {
-		t.Fatalf("Body = %q, want exactly one applied change", body)
-	}
-	if body != "## Summary\nFirst change\n" && body != "## Summary\nSecond change\n" {
-		t.Fatalf("Body = %q, want one winning change", body)
-	}
+	assert.False(t, strings.Contains(body, "First change\nSecond change\n") || strings.Contains(body, "Second change\nFirst change\n"))
+	assert.True(t, body == "## Summary\nFirst change\n" || body == "## Summary\nSecond change\n")
 }

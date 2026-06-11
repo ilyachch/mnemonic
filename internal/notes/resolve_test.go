@@ -2,7 +2,6 @@ package notes
 
 import (
 	"database/sql"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,6 +12,8 @@ import (
 	"github.com/ilyachch/mnemonic/internal/paths"
 	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/ilyachch/mnemonic/internal/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 )
 
@@ -70,12 +71,8 @@ func TestResolveFollowsSelectorPrecedence(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := Resolve(root, tc.selector)
-			if err != nil {
-				t.Fatalf("Resolve() error = %v", err)
-			}
-			if got.Path != tc.wantPath {
-				t.Fatalf("Resolve().Path = %q, want %q", got.Path, tc.wantPath)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantPath, got.Path)
 		})
 	}
 }
@@ -98,13 +95,10 @@ func TestResolveReturnsAmbiguousError(t *testing.T) {
 	})
 
 	_, err := Resolve(root, "Duplicate Title")
-	if err == nil {
-		t.Fatal("Resolve() error = nil, want ambiguous error")
-	}
+	require.Error(t, err)
 	var appErr *app.AppError
-	if !errors.As(err, &appErr) || appErr.Code != app.CodeAmbiguous {
-		t.Fatalf("Resolve() error = %v, want ambiguous error", err)
-	}
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, app.CodeAmbiguous, appErr.Code)
 }
 
 func TestResolveReturnsNotFoundError(t *testing.T) {
@@ -118,20 +112,15 @@ func TestResolveReturnsNotFoundError(t *testing.T) {
 	})
 
 	_, err := Resolve(root, "missing")
-	if err == nil {
-		t.Fatal("Resolve() error = nil, want not found error")
-	}
+	require.Error(t, err)
 	var appErr *app.AppError
-	if !errors.As(err, &appErr) || appErr.Code != app.CodeNotFound {
-		t.Fatalf("Resolve() error = %v, want not found error", err)
-	}
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, app.CodeNotFound, appErr.Code)
 }
 
 func TestResolveUsesProjectIndexWhenAvailable(t *testing.T) {
 	projectRoot := filepath.Join(testutil.CleanEnvForTest(t), "project")
-	if err := os.MkdirAll(projectRoot, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(projectRoot, 0o755))
 
 	writeResolvedNote(t, projectRoot, "indexed.md", markdown.Note{
 		MnemonicNoteID: "66666666-6666-6666-6666-666666666666",
@@ -142,14 +131,10 @@ func TestResolveUsesProjectIndexWhenAvailable(t *testing.T) {
 	})
 
 	db, err := registry.OpenDB()
-	if err != nil {
-		t.Fatalf("OpenDB() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
-	if err := registry.ApplySchema(db); err != nil {
-		t.Fatalf("ApplySchema() error = %v", err)
-	}
-	if err := registry.RegisterProject(db, registry.RegisterProjectInput{
+	require.NoError(t, registry.ApplySchema(db))
+	require.NoError(t, registry.RegisterProject(db, registry.RegisterProjectInput{
 		ProjectID: "550e8400-e29b-41d4-a716-446655440000",
 		Name:      "project",
 		Slug:      "project",
@@ -161,25 +146,17 @@ func TestResolveUsesProjectIndexWhenAvailable(t *testing.T) {
 			MemoriesAbs: projectRoot,
 			SourceKind:  registry.ProjectSourceKindInit,
 		},
-	}); err != nil {
-		t.Fatalf("RegisterProject() error = %v", err)
-	}
+	}))
 
 	mnemonicPaths, err := paths.GetMnemonicPaths()
-	if err != nil {
-		t.Fatalf("GetMnemonicPaths() error = %v", err)
-	}
+	require.NoError(t, err)
 	indexPath := filepath.Join(mnemonicPaths.StateHome, "mnemonic", "projects", "550e8400-e29b-41d4-a716-446655440000", "index.sqlite")
-	if err := os.MkdirAll(filepath.Dir(indexPath), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(indexPath), 0o755))
 
 	indexDB, err := sql.Open("sqlite", indexPath)
-	if err != nil {
-		t.Fatalf("sql.Open() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer func() { _ = indexDB.Close() }()
-	if _, err := indexDB.Exec(`CREATE TABLE notes (
+	_, err = indexDB.Exec(`CREATE TABLE notes (
 		note_id TEXT PRIMARY KEY,
 		project_id TEXT NOT NULL,
 		slug TEXT NOT NULL UNIQUE,
@@ -188,10 +165,9 @@ func TestResolveUsesProjectIndexWhenAvailable(t *testing.T) {
 		content_hash TEXT NOT NULL,
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
-	)`); err != nil {
-		t.Fatalf("CREATE TABLE notes error = %v", err)
-	}
-	if _, err := indexDB.Exec(`INSERT INTO notes(note_id, project_id, slug, rel_path, title, content_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+	)`)
+	require.NoError(t, err)
+	_, err = indexDB.Exec(`INSERT INTO notes(note_id, project_id, slug, rel_path, title, content_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		"66666666-6666-6666-6666-666666666666",
 		"550e8400-e29b-41d4-a716-446655440000",
 		"indexed-note",
@@ -200,24 +176,17 @@ func TestResolveUsesProjectIndexWhenAvailable(t *testing.T) {
 		"content-hash",
 		noteTime().UTC().Format(time.RFC3339),
 		noteTime().UTC().Format(time.RFC3339),
-	); err != nil {
-		t.Fatalf("INSERT note error = %v", err)
-	}
+	)
+	require.NoError(t, err)
 
 	got, err := Resolve(projectRoot, "indexed-note")
-	if err != nil {
-		t.Fatalf("Resolve() error = %v", err)
-	}
-	if got.Path != "indexed.md" {
-		t.Fatalf("Resolve().Path = %q, want indexed.md", got.Path)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "indexed.md", got.Path)
 }
 
 func TestResolveFallsBackToDiskWhenIndexIsStale(t *testing.T) {
 	projectRoot := filepath.Join(testutil.CleanEnvForTest(t), "project")
-	if err := os.MkdirAll(projectRoot, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(projectRoot, 0o755))
 
 	writeResolvedNote(t, projectRoot, "indexed.md", markdown.Note{
 		MnemonicNoteID: "66666666-6666-6666-6666-666666666666",
@@ -235,14 +204,10 @@ func TestResolveFallsBackToDiskWhenIndexIsStale(t *testing.T) {
 	})
 
 	db, err := registry.OpenDB()
-	if err != nil {
-		t.Fatalf("OpenDB() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
-	if err := registry.ApplySchema(db); err != nil {
-		t.Fatalf("ApplySchema() error = %v", err)
-	}
-	if err := registry.RegisterProject(db, registry.RegisterProjectInput{
+	require.NoError(t, registry.ApplySchema(db))
+	require.NoError(t, registry.RegisterProject(db, registry.RegisterProjectInput{
 		ProjectID: "550e8400-e29b-41d4-a716-446655440000",
 		Name:      "project",
 		Slug:      "project",
@@ -254,25 +219,17 @@ func TestResolveFallsBackToDiskWhenIndexIsStale(t *testing.T) {
 			MemoriesAbs: projectRoot,
 			SourceKind:  registry.ProjectSourceKindInit,
 		},
-	}); err != nil {
-		t.Fatalf("RegisterProject() error = %v", err)
-	}
+	}))
 
 	mnemonicPaths, err := paths.GetMnemonicPaths()
-	if err != nil {
-		t.Fatalf("GetMnemonicPaths() error = %v", err)
-	}
+	require.NoError(t, err)
 	indexPath := filepath.Join(mnemonicPaths.StateHome, "mnemonic", "projects", "550e8400-e29b-41d4-a716-446655440000", "index.sqlite")
-	if err := os.MkdirAll(filepath.Dir(indexPath), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(indexPath), 0o755))
 
 	indexDB, err := sql.Open("sqlite", indexPath)
-	if err != nil {
-		t.Fatalf("sql.Open() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer func() { _ = indexDB.Close() }()
-	if _, err := indexDB.Exec(`CREATE TABLE notes (
+	_, err = indexDB.Exec(`CREATE TABLE notes (
 		note_id TEXT PRIMARY KEY,
 		project_id TEXT NOT NULL,
 		slug TEXT NOT NULL UNIQUE,
@@ -281,10 +238,9 @@ func TestResolveFallsBackToDiskWhenIndexIsStale(t *testing.T) {
 		content_hash TEXT NOT NULL,
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
-	)`); err != nil {
-		t.Fatalf("CREATE TABLE notes error = %v", err)
-	}
-	if _, err := indexDB.Exec(`INSERT INTO notes(note_id, project_id, slug, rel_path, title, content_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+	)`)
+	require.NoError(t, err)
+	_, err = indexDB.Exec(`INSERT INTO notes(note_id, project_id, slug, rel_path, title, content_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		"66666666-6666-6666-6666-666666666666",
 		"550e8400-e29b-41d4-a716-446655440000",
 		"indexed-note",
@@ -293,33 +249,22 @@ func TestResolveFallsBackToDiskWhenIndexIsStale(t *testing.T) {
 		"content-hash",
 		noteTime().UTC().Format(time.RFC3339),
 		noteTime().UTC().Format(time.RFC3339),
-	); err != nil {
-		t.Fatalf("INSERT note error = %v", err)
-	}
+	)
+	require.NoError(t, err)
 
 	got, err := Resolve(projectRoot, "77777777-7777-7777-7777-777777777777")
-	if err != nil {
-		t.Fatalf("Resolve() error = %v", err)
-	}
-	if got.Path != "fresh.md" {
-		t.Fatalf("Resolve().Path = %q, want fresh.md", got.Path)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "fresh.md", got.Path)
 }
 
 func writeResolvedNote(t *testing.T, root, relPath string, note markdown.Note) {
 	t.Helper()
 
 	rendered, err := markdown.RenderNote(note)
-	if err != nil {
-		t.Fatalf("RenderNote() error = %v", err)
-	}
+	require.NoError(t, err)
 	path := filepath.Join(root, relPath)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(path, rendered, 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, rendered, 0o644))
 }
 
 func noteTime() time.Time {

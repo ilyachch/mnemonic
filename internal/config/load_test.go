@@ -3,8 +3,9 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -31,37 +32,17 @@ level = "debug"
 `)
 
 		cfg, err := LoadConfig(path)
-		if err != nil {
-			t.Fatalf("LoadConfig() returned error: %v", err)
-		}
+		require.NoError(t, err)
 
-		if cfg.Version != 1 {
-			t.Fatalf("Version = %d, want 1", cfg.Version)
-		}
-		if cfg.Paths.MemoriesHome != "/tmp/mnemonic" {
-			t.Fatalf("Paths.MemoriesHome = %q, want %q", cfg.Paths.MemoriesHome, "/tmp/mnemonic")
-		}
-		if cfg.Notes.DeleteBehavior != "delete" {
-			t.Fatalf("Notes.DeleteBehavior = %q, want %q", cfg.Notes.DeleteBehavior, "delete")
-		}
-		if cfg.Notes.TrashDirName != ".deleted" {
-			t.Fatalf("Notes.TrashDirName = %q, want %q", cfg.Notes.TrashDirName, ".deleted")
-		}
-		if cfg.Index.FTS {
-			t.Fatalf("Index.FTS = true, want false")
-		}
-		if cfg.Index.WAL {
-			t.Fatalf("Index.WAL = true, want false")
-		}
-		if cfg.Index.BusyTimeoutMs != 2500 {
-			t.Fatalf("Index.BusyTimeoutMs = %d, want 2500", cfg.Index.BusyTimeoutMs)
-		}
-		if !cfg.Output.JSONPretty {
-			t.Fatalf("Output.JSONPretty = false, want true")
-		}
-		if cfg.Logging.Level != "debug" {
-			t.Fatalf("Logging.Level = %q, want %q", cfg.Logging.Level, "debug")
-		}
+		require.Equal(t, 1, cfg.Version)
+		require.Equal(t, "/tmp/mnemonic", cfg.Paths.MemoriesHome)
+		require.Equal(t, "delete", cfg.Notes.DeleteBehavior)
+		require.Equal(t, ".deleted", cfg.Notes.TrashDirName)
+		require.False(t, cfg.Index.FTS)
+		require.False(t, cfg.Index.WAL)
+		require.Equal(t, 2500, cfg.Index.BusyTimeoutMs)
+		require.True(t, cfg.Output.JSONPretty)
+		require.Equal(t, "debug", cfg.Logging.Level)
 	})
 
 	t.Run("requires version one when file exists", func(t *testing.T) {
@@ -71,12 +52,8 @@ delete_behavior = "delete"
 `)
 
 		_, err := LoadConfig(path)
-		if err == nil {
-			t.Fatal("LoadConfig() error = nil, want missing version error")
-		}
-		if !strings.Contains(err.Error(), "version = 1") {
-			t.Fatalf("LoadConfig() error = %q, want mention of version = 1", err)
-		}
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "version = 1")
 	})
 
 	t.Run("rejects unsupported version with clear error", func(t *testing.T) {
@@ -84,12 +61,8 @@ delete_behavior = "delete"
 `)
 
 		_, err := LoadConfig(path)
-		if err == nil {
-			t.Fatal("LoadConfig() error = nil, want unsupported version error")
-		}
-		if !strings.Contains(err.Error(), "unsupported config version 999") {
-			t.Fatalf("LoadConfig() error = %q, want unsupported config version 999", err)
-		}
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "unsupported config version 999")
 	})
 
 	t.Run("rejects unknown fields", func(t *testing.T) {
@@ -98,12 +71,8 @@ unknown = "value"
 `)
 
 		_, err := LoadConfig(path)
-		if err == nil {
-			t.Fatal("LoadConfig() error = nil, want unknown-field error")
-		}
-		if !strings.Contains(err.Error(), "unknown key") {
-			t.Fatalf("LoadConfig() error = %q, want unknown key message", err)
-		}
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "unknown key")
 	})
 
 	t.Run("returns clear error for invalid toml", func(t *testing.T) {
@@ -113,12 +82,8 @@ delete_behavior = "delete"
 `)
 
 		_, err := LoadConfig(path)
-		if err == nil {
-			t.Fatal("LoadConfig() error = nil, want syntax error")
-		}
-		if !strings.Contains(err.Error(), "config syntax error") {
-			t.Fatalf("LoadConfig() error = %q, want config syntax error", err)
-		}
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "config syntax error")
 	})
 }
 
@@ -127,9 +92,7 @@ func writeConfigFile(t *testing.T, contents string) string {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
-	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
-		t.Fatalf("failed to write config file: %v", err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(contents), 0o644))
 
 	return path
 }
