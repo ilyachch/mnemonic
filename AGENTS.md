@@ -10,6 +10,11 @@ This document defines the constraints, invariants, and style guidelines for AI a
 - **YAML/TOML Parsing**: `gopkg.in/yaml.v3` (for frontmatter) and `github.com/pelletier/go-toml/v2` (for config/manifests).
 - **Database**: Pure Go SQLite (`modernc.org/sqlite`) used for both the global registry and per-project search indexes.
 
+## Workflows
+
+- **Use mise as tasks runner**: For running tests, linters, and other tasks, use `mise`.
+- **Memory first**: Before starting any work, check project memory for relevant facts.
+
 ## Core Architectural Invariants
 
 1. **Markdown is the Source of Truth**: Never store canonical note content exclusively in SQLite. Databases (indexes) are fully disposable and can be rebuilt via `project reindex`.

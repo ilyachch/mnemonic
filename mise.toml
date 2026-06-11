@@ -24,6 +24,12 @@ run = "go fmt ./..."
 [tasks.test-unit]
 run = "go test ./..."
 
+[tasks.coverage]
+run = "go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out -o coverage.html"
+
+[tasks.coverage-report]
+run = "go test -coverprofile=coverage.out ./... && go tool cover -func=coverage.out"
+
 [tasks.test-race]
 run = "go test -race ./..."
 
