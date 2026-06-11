@@ -62,8 +62,8 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 type listNotesInput struct {
-	Limit  int    `json:"limit,omitempty" jsonschema:"Maximum number of notes to return. Use a small value for orientation and pagination for broader inspection."`
-	Cursor string `json:"cursor,omitempty" jsonschema:"Pagination cursor returned by a previous list_notes call."`
+	Limit  int    `json:"limit,omitempty" jsonschema:"Maximum notes to return."`
+	Cursor string `json:"cursor,omitempty" jsonschema:"Pagination cursor from a previous list_notes call."`
 }
 
 type listNotesOutput struct {
@@ -72,7 +72,7 @@ type listNotesOutput struct {
 }
 
 type listTagsInput struct {
-	Limit int `json:"limit,omitempty" jsonschema:"Maximum number of tags to return. Use this to inspect common project memory topics."`
+	Limit int `json:"limit,omitempty" jsonschema:"Maximum tags to return."`
 }
 
 type listTagsOutput struct {
@@ -85,9 +85,9 @@ type listTagsItem struct {
 }
 
 type searchNotesInput struct {
-	Query string `json:"query" jsonschema:"Natural language query or keywords for project memory search. Include project-specific entities such as feature names, bugs, decisions, file paths, modules, APIs, services, integrations, tickets, people, or architecture concepts."`
-	Limit int    `json:"limit,omitempty" jsonschema:"Maximum number of hits to return. Use 5-10 for focused searches and higher values for broad exploration."`
-	Tag   string `json:"tag,omitempty" jsonschema:"Optional tag filter when the relevant project memory topic is known."`
+	Query string `json:"query" jsonschema:"Natural language query or keywords. Include project entities such as features, bugs, decisions, files, modules, APIs, services, tickets, or architecture concepts."`
+	Limit int    `json:"limit,omitempty" jsonschema:"Maximum hits to return. Use 5-10 for focused searches."`
+	Tag   string `json:"tag,omitempty" jsonschema:"Optional tag filter when the topic is known."`
 }
 
 type searchNotesOutput struct {
@@ -95,7 +95,7 @@ type searchNotesOutput struct {
 }
 
 type readNoteInput struct {
-	Identifier string `json:"identifier" jsonschema:"Note identifier from search/list results. Can be note_id, slug, relative path, or exact title."`
+	Identifier string `json:"identifier" jsonschema:"Note id, slug, relative path, or exact title."`
 }
 
 type readNoteOutput struct {
@@ -114,8 +114,8 @@ type readNoteItem struct {
 }
 
 type listBacklinksInput struct {
-	Identifier string `json:"identifier" jsonschema:"Note identifier from search/list/read results. Can be note_id, slug, relative path, or exact title."`
-	Limit      int    `json:"limit,omitempty" jsonschema:"Maximum number of backlinks to return."`
+	Identifier string `json:"identifier" jsonschema:"Note id, slug, relative path, or exact title."`
+	Limit      int    `json:"limit,omitempty" jsonschema:"Maximum backlinks to return."`
 }
 
 type listBacklinksOutput struct {
@@ -123,11 +123,11 @@ type listBacklinksOutput struct {
 }
 
 type createNoteInput struct {
-	Title string   `json:"title" jsonschema:"Clear, specific title for durable project knowledge, such as a decision, convention, architecture note, debugging finding, setup step, or task outcome."`
-	Body  string   `json:"body,omitempty" jsonschema:"Markdown body containing verified durable project knowledge. Include context, evidence/source, current status, and links to related notes when useful. Do not include secrets, credentials, guesses, or temporary chat details."`
-	Path  string   `json:"path,omitempty" jsonschema:"Optional relative note path under the project memory root. Use a stable, descriptive path. Do not use absolute paths or paths outside the memory root."`
-	Tags  []string `json:"tags,omitempty" jsonschema:"Optional project memory tags. Prefer consistent tags discovered with list_tags, such as architecture, decision, convention, bug, setup, api, integration, task-outcome."`
-	Type  string   `json:"type,omitempty" jsonschema:"Optional note type, for example decision, convention, architecture, bug, setup, api, integration, task-outcome, finding."`
+	Title string   `json:"title" jsonschema:"Clear title for durable project knowledge."`
+	Body  string   `json:"body,omitempty" jsonschema:"Markdown body with verified durable knowledge, context, and useful links. Do not include secrets, guesses, or temporary chat details."`
+	Path  string   `json:"path,omitempty" jsonschema:"Optional relative path under the project memory root."`
+	Tags  []string `json:"tags,omitempty" jsonschema:"Optional project memory tags. Prefer existing tag conventions."`
+	Type  string   `json:"type,omitempty" jsonschema:"Optional note type, such as decision, convention, architecture, bug, setup, api, integration, or task-outcome."`
 }
 
 type createNoteOutput struct {
@@ -138,11 +138,11 @@ type createNoteOutput struct {
 }
 
 type editNoteInput struct {
-	Identifier       string            `json:"identifier" jsonschema:"Existing note identifier. Read the note first when possible and use its content_hash as if_match_hash."`
-	Append           string            `json:"append,omitempty" jsonschema:"Markdown text to append when adding new durable information, task outcomes, confirmations, or follow-up findings without replacing existing context."`
-	ReplaceBody      string            `json:"replace_body,omitempty" jsonschema:"Full replacement body. Use only when rewriting the note is safer than appending. Preserve important context and avoid deleting useful history accidentally."`
-	MergeFrontmatter map[string]string `json:"merge_frontmatter,omitempty" jsonschema:"Frontmatter fields to merge, such as status, type, or summary. Prefer explicit, stable metadata."`
-	IfMatchHash      string            `json:"if_match_hash,omitempty" jsonschema:"Content hash returned by read_note. Use it to avoid overwriting changes made since the note was read."`
+	Identifier       string            `json:"identifier" jsonschema:"Existing note id, slug, path, or title."`
+	Append           string            `json:"append,omitempty" jsonschema:"Markdown text to append with new durable information."`
+	ReplaceBody      string            `json:"replace_body,omitempty" jsonschema:"Full replacement body. Use only when safer than appending."`
+	MergeFrontmatter map[string]string `json:"merge_frontmatter,omitempty" jsonschema:"Frontmatter fields to merge, such as status, type, or summary."`
+	IfMatchHash      string            `json:"if_match_hash,omitempty" jsonschema:"Content hash from read_note for safe updates."`
 }
 
 type editNoteOutput struct {
@@ -155,9 +155,9 @@ type editNoteOutput struct {
 }
 
 type deleteNoteInput struct {
-	Identifier  string `json:"identifier" jsonschema:"Existing note identifier. Read the note first and verify deletion is safer than editing or merging."`
-	HardDelete  bool   `json:"hard_delete,omitempty" jsonschema:"Delete permanently instead of moving to trash. Use only when explicitly requested or when the note must not remain in memory."`
-	IfMatchHash string `json:"if_match_hash,omitempty" jsonschema:"Content hash returned by read_note. Use it to avoid deleting a note that changed since it was inspected."`
+	Identifier  string `json:"identifier" jsonschema:"Existing note id, slug, path, or title."`
+	HardDelete  bool   `json:"hard_delete,omitempty" jsonschema:"Delete permanently instead of moving to trash."`
+	IfMatchHash string `json:"if_match_hash,omitempty" jsonschema:"Content hash from read_note for safe deletion."`
 }
 
 type deleteNoteOutput struct {
