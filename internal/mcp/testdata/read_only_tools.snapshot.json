@@ -4,7 +4,7 @@
       "destructiveHint": false,
       "openWorldHint": false
     },
-    "description": "Save new durable knowledge (workflows, preferences, facts).\n**YOU MUST** persist learned context for future use. Search first to avoid duplicates (use 'edit_note' if related context exists). Do NOT save secrets or chat logs.",
+    "description": "Save new durable knowledge (workflows, preferences, facts).\nYOU MUST persist learned context for future use. Search first to avoid duplicates (use 'edit_note' if related context exists). Do NOT save secrets or chat logs.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -122,7 +122,7 @@
       "destructiveHint": true,
       "openWorldHint": false
     },
-    "description": "Update existing notes when knowledge evolves.\n**YOU MUST** keep memory accurate. Read the note first to get 'content_hash', then pass it as 'if_match_hash'.",
+    "description": "Update existing notes when knowledge evolves.\nYOU MUST keep memory accurate. Read the note first to get 'content_hash', then pass it as 'if_match_hash'.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -457,7 +457,7 @@
     "annotations": {
       "readOnlyHint": true
     },
-    "description": "Search this memory.\n**YOU MUST** search proactively before acting or asking questions to find existing rules, workflows, or preferences. Never ask the user for facts already stored. Read found notes before proceeding.",
+    "description": "Search this memory.\nYOU MUST search proactively before acting or asking questions to find existing rules, workflows, or preferences. Never ask the user for facts already stored. Read found notes before proceeding.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
