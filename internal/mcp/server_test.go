@@ -700,6 +700,43 @@ func TestSearchNotesMissingIndexSuggestsReindex(t *testing.T) {
 	require.Contains(t, resultText(t, result), "index missing")
 }
 
+func TestGetIndexDB_nilServer(t *testing.T) {
+	var s *Server
+	_, err := s.GetIndexDB()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "server is nil")
+}
+
+func TestRebuildIndex_nilServer(t *testing.T) {
+	var s *Server
+	err := s.RebuildIndex("/tmp")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "server is nil")
+}
+
+func TestCloseIndexDB_nilServer(t *testing.T) {
+	var s *Server
+	err := s.closeIndexDB()
+	require.NoError(t, err)
+}
+
+func TestCloseIndexDB_noConnection(t *testing.T) {
+	s := &Server{}
+	err := s.closeIndexDB()
+	require.NoError(t, err)
+}
+
+func TestGetIndexDB_missingIndex(t *testing.T) {
+	s := &Server{
+		Project: project.ResolvedProject{
+			Project: project.MnemonicProject{ID: "non-existent-uuid"},
+		},
+	}
+	_, err := s.GetIndexDB()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "index missing")
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -767,16 +804,6 @@ func decodeListNotesPayload(t *testing.T, result *mcp.CallToolResult, out *tools
 	return decodeAny(t, result, out)
 }
 
-func decodeListNotesContent(t *testing.T, result *mcp.CallToolResult) (tools.ListNotesOutput, bool) {
-	t.Helper()
-
-	var out tools.ListNotesOutput
-	if err := decodeAny(t, result, &out); err != nil {
-		return out, false
-	}
-	return out, true
-}
-
 func decodeCreateNoteOutput(t *testing.T, result *mcp.CallToolResult) tools.CreateNoteOutput {
 	t.Helper()
 
@@ -789,40 +816,6 @@ func decodeCreateNotePayload(t *testing.T, result *mcp.CallToolResult, out *tool
 	t.Helper()
 
 	return decodeAny(t, result, out)
-}
-
-func decodeCreateNoteContent(t *testing.T, result *mcp.CallToolResult) (tools.CreateNoteOutput, bool) {
-	t.Helper()
-
-	var out tools.CreateNoteOutput
-	if err := decodeAny(t, result, &out); err != nil {
-		return out, false
-	}
-	return out, true
-}
-
-func decodeEditNoteOutput(t *testing.T, result *mcp.CallToolResult) tools.EditNoteOutput {
-	t.Helper()
-
-	var out tools.EditNoteOutput
-	require.NoError(t, decodeEditNotePayload(t, result, &out))
-	return out
-}
-
-func decodeEditNotePayload(t *testing.T, result *mcp.CallToolResult, out *tools.EditNoteOutput) error {
-	t.Helper()
-
-	return decodeAny(t, result, out)
-}
-
-func decodeEditNoteContent(t *testing.T, result *mcp.CallToolResult) (tools.EditNoteOutput, bool) {
-	t.Helper()
-
-	var out tools.EditNoteOutput
-	if err := decodeAny(t, result, &out); err != nil {
-		return out, false
-	}
-	return out, true
 }
 
 func decodeDeleteNoteOutput(t *testing.T, result *mcp.CallToolResult) tools.DeleteNoteOutput {
@@ -839,16 +832,6 @@ func decodeDeleteNotePayload(t *testing.T, result *mcp.CallToolResult, out *tool
 	return decodeAny(t, result, out)
 }
 
-func decodeDeleteNoteContent(t *testing.T, result *mcp.CallToolResult) (tools.DeleteNoteOutput, bool) {
-	t.Helper()
-
-	var out tools.DeleteNoteOutput
-	if err := decodeAny(t, result, &out); err != nil {
-		return out, false
-	}
-	return out, true
-}
-
 func decodeListTagsOutput(t *testing.T, result *mcp.CallToolResult) tools.ListTagsOutput {
 	t.Helper()
 
@@ -861,16 +844,6 @@ func decodeListTagsPayload(t *testing.T, result *mcp.CallToolResult, out *tools.
 	t.Helper()
 
 	return decodeAny(t, result, out)
-}
-
-func decodeListTagsContent(t *testing.T, result *mcp.CallToolResult) (tools.ListTagsOutput, bool) {
-	t.Helper()
-
-	var out tools.ListTagsOutput
-	if err := decodeAny(t, result, &out); err != nil {
-		return out, false
-	}
-	return out, true
 }
 
 func decodeListBacklinksOutput(t *testing.T, result *mcp.CallToolResult) tools.ListBacklinksOutput {
@@ -887,16 +860,6 @@ func decodeListBacklinksPayload(t *testing.T, result *mcp.CallToolResult, out *t
 	return decodeAny(t, result, out)
 }
 
-func decodeListBacklinksContent(t *testing.T, result *mcp.CallToolResult) (tools.ListBacklinksOutput, bool) {
-	t.Helper()
-
-	var out tools.ListBacklinksOutput
-	if err := decodeAny(t, result, &out); err != nil {
-		return out, false
-	}
-	return out, true
-}
-
 func decodeReadNoteOutput(t *testing.T, result *mcp.CallToolResult) tools.ReadNoteOutput {
 	t.Helper()
 
@@ -911,16 +874,6 @@ func decodeReadNotePayload(t *testing.T, result *mcp.CallToolResult, out *tools.
 	return decodeAny(t, result, out)
 }
 
-func decodeReadNoteContent(t *testing.T, result *mcp.CallToolResult) (tools.ReadNoteOutput, bool) {
-	t.Helper()
-
-	var out tools.ReadNoteOutput
-	if err := decodeAny(t, result, &out); err != nil {
-		return out, false
-	}
-	return out, true
-}
-
 func decodeSearchNotesOutput(t *testing.T, result *mcp.CallToolResult) tools.SearchNotesOutput {
 	t.Helper()
 
@@ -933,16 +886,6 @@ func decodeSearchNotesPayload(t *testing.T, result *mcp.CallToolResult, out *too
 	t.Helper()
 
 	return decodeAny(t, result, out)
-}
-
-func decodeSearchNotesContent(t *testing.T, result *mcp.CallToolResult) (tools.SearchNotesOutput, bool) {
-	t.Helper()
-
-	var out tools.SearchNotesOutput
-	if err := decodeAny(t, result, &out); err != nil {
-		return out, false
-	}
-	return out, true
 }
 
 // decodeAny unmarshals StructuredContent or the first TextContent from a CallToolResult.
