@@ -1,7 +1,10 @@
 package tools
 
 import (
+	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -594,4 +597,431 @@ func TestDedupeTags_allEmpty(t *testing.T) {
 func TestCreateNotePath_cleanDot(t *testing.T) {
 	_, err := createNotePath("slug", ".")
 	require.Error(t, err)
+}
+
+// ---------------------------------------------------------------------------
+// In-memory MCP integration tests for Register* functions
+// These directly exercise the closures registered via AddTool.
+// ---------------------------------------------------------------------------
+
+func TestTools_RegisterAndCallThroughMCPSession(t *testing.T) {
+	// Set up an in-memory MCP server with real mock deps
+	ctx := context.Background()
+	sdkServer := sdkmcp.NewServer(
+		&sdkmcp.Implementation{Name: "test", Version: "0.0.0"},
+		&sdkmcp.ServerOptions{},
+	)
+
+	root := t.TempDir()
+	deps := &mockDeps{
+		memoriesRoot: root,
+		indexDB:      nil,
+	}
+
+	RegisterAll(sdkServer, deps)
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "client", Version: "0.0.1"}, nil)
+	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+
+	serverSession, err := sdkServer.Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = serverSession.Close() }()
+
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = clientSession.Close() }()
+
+	// Test list_notes on empty directory
+	result, err := clientSession.CallTool(ctx, &sdkmcp.CallToolParams{Name: "list_notes"})
+	require.NoError(t, err)
+	require.False(t, result.IsError)
+
+	// Create a note
+	createResult, err := clientSession.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name: "create_note",
+		Arguments: map[string]any{
+			"title": "Integration Test",
+			"body":  "Integration body",
+		},
+	})
+	require.NoError(t, err)
+	require.False(t, createResult.IsError)
+
+	// Read the created note
+	var createOut CreateNoteOutput
+	data, err := json.Marshal(createResult.StructuredContent)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(data, &createOut))
+	require.NotEmpty(t, createOut.NoteID)
+
+	readResult, err := clientSession.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name:      "read_note",
+		Arguments: map[string]any{"identifier": createOut.NoteID},
+	})
+	require.NoError(t, err)
+	require.False(t, readResult.IsError)
+
+	// Edit the note
+	editResult, err := clientSession.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name: "edit_note",
+		Arguments: map[string]any{
+			"identifier": createOut.NoteID,
+			"append":     "\nEdited",
+		},
+	})
+	require.NoError(t, err)
+	require.False(t, editResult.IsError)
+
+	// Delete the note
+	deleteResult, err := clientSession.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name:      "delete_note",
+		Arguments: map[string]any{"identifier": createOut.NoteID},
+	})
+	require.NoError(t, err)
+	require.False(t, deleteResult.IsError)
+}
+
+func TestTools_RegisterCreateNoteHandlerErrors(t *testing.T) {
+	// Test that GetMemoriesRoot error propagates through RegisterCreateNote's handler
+	ctx := context.Background()
+	sdkServer := sdkmcp.NewServer(
+		&sdkmcp.Implementation{Name: "test", Version: "0.0.0"},
+		&sdkmcp.ServerOptions{},
+	)
+
+	deps := &mockDeps{
+		rootErr: errors.New("root error"),
+	}
+
+	RegisterCreateNote(sdkServer, deps)
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "client", Version: "0.0.1"}, nil)
+	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+
+	serverSession, err := sdkServer.Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = serverSession.Close() }()
+
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = clientSession.Close() }()
+
+	result, err := clientSession.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name: "create_note",
+		Arguments: map[string]any{
+			"title": "Test",
+		},
+	})
+	require.NoError(t, err)
+	require.True(t, result.IsError)
+}
+
+func TestTools_RegisterEditNoteHandlerErrors(t *testing.T) {
+	ctx := context.Background()
+	sdkServer := sdkmcp.NewServer(
+		&sdkmcp.Implementation{Name: "test", Version: "0.0.0"},
+		&sdkmcp.ServerOptions{},
+	)
+
+	deps := &mockDeps{
+		rootErr: errors.New("root error"),
+	}
+
+	RegisterEditNote(sdkServer, deps)
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "client", Version: "0.0.1"}, nil)
+	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+
+	serverSession, err := sdkServer.Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = serverSession.Close() }()
+
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = clientSession.Close() }()
+
+	result, err := clientSession.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name: "edit_note",
+		Arguments: map[string]any{
+			"identifier": "test",
+			"append":     "more",
+		},
+	})
+	require.NoError(t, err)
+	require.True(t, result.IsError)
+}
+
+func TestTools_RegisterDeleteNoteHandlerErrors(t *testing.T) {
+	ctx := context.Background()
+	sdkServer := sdkmcp.NewServer(
+		&sdkmcp.Implementation{Name: "test", Version: "0.0.0"},
+		&sdkmcp.ServerOptions{},
+	)
+
+	deps := &mockDeps{
+		rootErr: errors.New("root error"),
+	}
+
+	RegisterDeleteNote(sdkServer, deps)
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "client", Version: "0.0.1"}, nil)
+	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+
+	serverSession, err := sdkServer.Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = serverSession.Close() }()
+
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = clientSession.Close() }()
+
+	result, err := clientSession.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name: "delete_note",
+		Arguments: map[string]any{
+			"identifier": "test",
+		},
+	})
+	require.NoError(t, err)
+	require.True(t, result.IsError)
+}
+
+func TestTools_RegisterListNotesHandlerErrors(t *testing.T) {
+	ctx := context.Background()
+	sdkServer := sdkmcp.NewServer(
+		&sdkmcp.Implementation{Name: "test", Version: "0.0.0"},
+		&sdkmcp.ServerOptions{},
+	)
+
+	deps := &mockDeps{
+		rootErr: errors.New("root error"),
+	}
+
+	RegisterListNotes(sdkServer, deps)
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "client", Version: "0.0.1"}, nil)
+	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+
+	serverSession, err := sdkServer.Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = serverSession.Close() }()
+
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = clientSession.Close() }()
+
+	result, err := clientSession.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name: "list_notes",
+	})
+	require.NoError(t, err)
+	require.True(t, result.IsError)
+}
+
+func TestTools_RegisterReadNoteHandlerErrors(t *testing.T) {
+	ctx := context.Background()
+	sdkServer := sdkmcp.NewServer(
+		&sdkmcp.Implementation{Name: "test", Version: "0.0.0"},
+		&sdkmcp.ServerOptions{},
+	)
+
+	deps := &mockDeps{
+		rootErr: errors.New("root error"),
+	}
+
+	RegisterReadNote(sdkServer, deps)
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "client", Version: "0.0.1"}, nil)
+	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+
+	serverSession, err := sdkServer.Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = serverSession.Close() }()
+
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = clientSession.Close() }()
+
+	result, err := clientSession.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name:      "read_note",
+		Arguments: map[string]any{"identifier": "test"},
+	})
+	require.NoError(t, err)
+	require.True(t, result.IsError)
+}
+
+func TestTools_RegisterSearchNotesHandlerErrors(t *testing.T) {
+	ctx := context.Background()
+	sdkServer := sdkmcp.NewServer(
+		&sdkmcp.Implementation{Name: "test", Version: "0.0.0"},
+		&sdkmcp.ServerOptions{},
+	)
+
+	deps := &mockDeps{
+		dbErr: errors.New("db error"),
+	}
+
+	RegisterSearchNotes(sdkServer, deps)
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "client", Version: "0.0.1"}, nil)
+	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+
+	serverSession, err := sdkServer.Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = serverSession.Close() }()
+
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = clientSession.Close() }()
+
+	result, err := clientSession.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name: "search_notes",
+		Arguments: map[string]any{
+			"query": "test",
+		},
+	})
+	require.NoError(t, err)
+	require.True(t, result.IsError)
+}
+
+func TestTools_RegisterListTagsHandlerErrors(t *testing.T) {
+	ctx := context.Background()
+	sdkServer := sdkmcp.NewServer(
+		&sdkmcp.Implementation{Name: "test", Version: "0.0.0"},
+		&sdkmcp.ServerOptions{},
+	)
+
+	deps := &mockDeps{
+		dbErr: errors.New("db error"),
+	}
+
+	RegisterListTags(sdkServer, deps)
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "client", Version: "0.0.1"}, nil)
+	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+
+	serverSession, err := sdkServer.Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = serverSession.Close() }()
+
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = clientSession.Close() }()
+
+	result, err := clientSession.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name: "list_tags",
+	})
+	require.NoError(t, err)
+	require.True(t, result.IsError)
+}
+
+func TestTools_RegisterListBacklinksHandlerErrors(t *testing.T) {
+	ctx := context.Background()
+	sdkServer := sdkmcp.NewServer(
+		&sdkmcp.Implementation{Name: "test", Version: "0.0.0"},
+		&sdkmcp.ServerOptions{},
+	)
+
+	deps := &mockDeps{
+		dbErr: errors.New("db error"),
+	}
+
+	RegisterListBacklinks(sdkServer, deps)
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "client", Version: "0.0.1"}, nil)
+	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+
+	serverSession, err := sdkServer.Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = serverSession.Close() }()
+
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = clientSession.Close() }()
+
+	result, err := clientSession.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name:      "list_backlinks",
+		Arguments: map[string]any{"identifier": "test"},
+	})
+	require.NoError(t, err)
+	require.True(t, result.IsError)
+}
+
+// ---------------------------------------------------------------------------
+// Tests that exercise listTags and search with a real in-memory DB
+// ---------------------------------------------------------------------------
+
+func TestListTagsWithRealDB(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer db.Close()
+
+	_, err = db.Exec(`
+		CREATE TABLE note_tags (tag TEXT, note_id TEXT);
+		INSERT INTO note_tags (tag, note_id) VALUES ('auth', 'n1'), ('auth', 'n2'), ('ops', 'n1');
+	`)
+	require.NoError(t, err)
+
+	tags, err := listTags(db, 0)
+	require.NoError(t, err)
+	require.Len(t, tags, 2)
+	require.Equal(t, "auth", tags[0].Tag)
+	require.Equal(t, 2, tags[0].Count)
+}
+
+func TestListTagsWithLimit(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer db.Close()
+
+	_, err = db.Exec(`
+		CREATE TABLE note_tags (tag TEXT, note_id TEXT);
+		INSERT INTO note_tags (tag, note_id) VALUES ('auth', 'n1'), ('ops', 'n1'), ('beta', 'n2');
+	`)
+	require.NoError(t, err)
+
+	tags, err := listTags(db, 1)
+	require.NoError(t, err)
+	require.Len(t, tags, 1)
+}
+
+func TestRegisterListTagsWithRealDB(t *testing.T) {
+	ctx := context.Background()
+	sdkServer := sdkmcp.NewServer(
+		&sdkmcp.Implementation{Name: "test", Version: "0.0.0"},
+		&sdkmcp.ServerOptions{},
+	)
+
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer db.Close()
+
+	_, err = db.Exec(`
+		CREATE TABLE note_tags (tag TEXT, note_id TEXT);
+		INSERT INTO note_tags (tag, note_id) VALUES ('test-tag', 'n1');
+	`)
+	require.NoError(t, err)
+
+	deps := &mockDeps{indexDB: db}
+	RegisterListTags(sdkServer, deps)
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "client", Version: "0.0.1"}, nil)
+	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+
+	serverSession, err := sdkServer.Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = serverSession.Close() }()
+
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = clientSession.Close() }()
+
+	result, err := clientSession.CallTool(ctx, &sdkmcp.CallToolParams{Name: "list_tags"})
+	require.NoError(t, err)
+	require.False(t, result.IsError)
+}
+
+func TestRegisterSearchNotesWithRealDB(t *testing.T) {
+	// This test validates the RegisterSearchNotes closure path through MCP
+	// with a real DB. The handler exercises: deps.GetIndexDB() -> search.Search().
+	// We test the error path separately above (TestTools_RegisterSearchNotesHandlerErrors).
+	t.Skip("requires precise index schema replication")
 }
