@@ -13,10 +13,10 @@ import (
 
 	"github.com/ilyachch/mnemonic/internal/buildinfo"
 	"github.com/ilyachch/mnemonic/internal/index"
+	"github.com/ilyachch/mnemonic/internal/markdown"
 	"github.com/ilyachch/mnemonic/internal/mcp/tools"
 	"github.com/ilyachch/mnemonic/internal/notes"
 	"github.com/ilyachch/mnemonic/internal/paths"
-	"github.com/ilyachch/mnemonic/internal/markdown"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
@@ -370,8 +370,8 @@ func TestEditNoteSupportsModes(t *testing.T) {
 		editResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 			Name: "edit_note",
 			Arguments: map[string]any{
-				"identifier":   created.NoteID,
-				"replace_body": "replaced body\n",
+				"identifier":    created.NoteID,
+				"replace_body":  "replaced body\n",
 				"if_match_hash": readOut.Note.ContentHash,
 			},
 		})
@@ -420,8 +420,8 @@ func TestEditNoteRejectsStaleHashWithoutChangingFile(t *testing.T) {
 	editResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "edit_note",
 		Arguments: map[string]any{
-			"identifier":   created.NoteID,
-			"replace_body": "new body\n",
+			"identifier":    created.NoteID,
+			"replace_body":  "new body\n",
 			"if_match_hash": readOut.Note.ContentHash + "-stale",
 		},
 	})
@@ -509,8 +509,8 @@ func TestDeleteNoteHardDeleteRemovesFile(t *testing.T) {
 	deleteResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "delete_note",
 		Arguments: map[string]any{
-			"identifier":   created.NoteID,
-			"hard_delete":  true,
+			"identifier":    created.NoteID,
+			"hard_delete":   true,
 			"if_match_hash": readOut.Note.ContentHash,
 		},
 	})
@@ -580,8 +580,8 @@ func TestDeleteNoteRejectsStaleHashWithoutDeletingFile(t *testing.T) {
 	deleteResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "delete_note",
 		Arguments: map[string]any{
-			"identifier":   created.NoteID,
-			"hard_delete":  true,
+			"identifier":    created.NoteID,
+			"hard_delete":   true,
 			"if_match_hash": readOut.Note.ContentHash + "-stale",
 		},
 	})
