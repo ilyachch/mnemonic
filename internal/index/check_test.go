@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/require"
 	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/testutil"
+	"github.com/stretchr/testify/require"
 )
 
 func TestQuickCheckHealthyDB(t *testing.T) {

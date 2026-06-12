@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
 	"github.com/ilyachch/mnemonic/internal/testutil"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTimestampUsesUTCAndInjectedClock(t *testing.T) {

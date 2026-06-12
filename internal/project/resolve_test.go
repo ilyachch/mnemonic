@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
 	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/stretchr/testify/require"
 )
 
 func TestResolveProjectExplicitSelectorWinsOverEnv(t *testing.T) {

@@ -4,7 +4,7 @@
       "destructiveHint": false,
       "openWorldHint": false
     },
-    "description": "Create a project memory note for durable, reusable project knowledge discovered during work.\n\nUse for stable facts that will help future agents: decisions, architecture, conventions, setup steps, API contracts, debugging findings, constraints, or task outcomes.\n\nBefore creating, search existing notes to avoid duplicates. Prefer edit_note when a related note already exists. Do not store secrets, credentials, guesses, temporary chat details, or unverified assumptions.",
+    "description": "Save new durable knowledge (workflows, preferences, facts).\n**YOU MUST** persist learned context for future use. Search first to avoid duplicates (use 'edit_note' if related context exists). Do NOT save secrets or chat logs.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -71,7 +71,7 @@
       "destructiveHint": true,
       "openWorldHint": false
     },
-    "description": "Delete a project memory note only when it is clearly obsolete, duplicated, misleading, accidentally created, or harmful to keep.\n\nBefore deleting, read the note and consider whether edit_note or merging would be safer.\n\nDo not delete notes merely because they are old. Use hard_delete only when explicitly requested or when the note must not remain in memory.",
+    "description": "Delete permanently obsolete or duplicated notes.\nRead first. Prefer 'edit_note' (e.g., adding a deprecation warning) unless deletion is strictly required.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -122,7 +122,7 @@
       "destructiveHint": true,
       "openWorldHint": false
     },
-    "description": "Edit an existing project memory note when new information corrects, extends, confirms, or supersedes stored project knowledge.\n\nUse after project work when decisions, implementation details, bug status, conventions, or task outcomes changed.\n\nRead the note first and use content_hash as if_match_hash when possible. Prefer editing over creating duplicate notes.",
+    "description": "Update existing notes when knowledge evolves.\n**YOU MUST** keep memory accurate. Read the note first to get 'content_hash', then pass it as 'if_match_hash'.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -193,7 +193,7 @@
     "annotations": {
       "readOnlyHint": true
     },
-    "description": "List notes that link to or reference a specific project memory note.\n\nUse to understand related decisions, dependencies, affected features, and consequences before editing or deleting an important note.",
+    "description": "List notes linking to a target note.\nUse to check dependencies and impact before editing or deleting important knowledge.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -268,7 +268,7 @@
     "annotations": {
       "readOnlyHint": true
     },
-    "description": "List project memory notes, optionally paginated.\n\nUse to orient yourself, inspect available memory, or find notes when search terms are unclear.\n\nPrefer search_notes for targeted context lookup.",
+    "description": "List all notes in this memory (paginated).\nUse to browse available knowledge. Prefer 'search_notes' for specific queries.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -339,7 +339,7 @@
     "annotations": {
       "readOnlyHint": true
     },
-    "description": "List tags used in project memory.\n\nUse to understand how knowledge is organized, discover available topics, choose consistent tags, or refine broad searches.",
+    "description": "List available tags.\nUse to understand categorization, ensure consistent tagging for new notes, or refine searches.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -387,7 +387,7 @@
     "annotations": {
       "readOnlyHint": true
     },
-    "description": "Read a project memory note by note_id, slug, path, or title.\n\nUse after search_notes, list_notes, or list_backlinks returns a relevant note.\n\nRead notes before relying on them, editing them, deleting them, or using them as evidence. The result includes content_hash for safe edit_note and delete_note calls.",
+    "description": "Read a note by note_id, slug, path, or title.\nAlways read before using, editing, or deleting a note. Returns 'content_hash', which is REQUIRED for safe edits/deletions.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -457,7 +457,7 @@
     "annotations": {
       "readOnlyHint": true
     },
-    "description": "Search project memory notes.\n\nUse this proactively before project-specific work when prior context may exist: architecture, decisions, conventions, bugs, APIs, integrations, files, tasks, or previous findings.\n\nPrefer searching memory before asking the user to repeat project facts or rediscovering known information.\n\nIf relevant notes are found, read the most relevant notes before relying on them or modifying memory. If no relevant notes are found, continue investigation and later create or update notes with durable findings.",
+    "description": "Search this memory.\n**YOU MUST** search proactively before acting or asking questions to find existing rules, workflows, or preferences. Never ask the user for facts already stored. Read found notes before proceeding.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {

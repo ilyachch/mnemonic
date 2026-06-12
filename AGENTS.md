@@ -12,8 +12,8 @@ This document defines the constraints, invariants, and style guidelines for AI a
 
 ## Workflows
 
-- **Use mise as tasks runner**: For running tests, linters, and other tasks, use `mise`.
 - **Memory first**: Before starting any work, check project memory for relevant facts.
+- **Use mise as tasks runner**: For running tests, linters, and other tasks, use `mise`.
 
 ## Core Architectural Invariants
 

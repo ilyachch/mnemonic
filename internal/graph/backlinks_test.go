@@ -6,8 +6,8 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/stretchr/testify/require"
 	"github.com/ilyachch/mnemonic/internal/index"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBacklinksReturnsResolvedLinksWithMetadata(t *testing.T) {
