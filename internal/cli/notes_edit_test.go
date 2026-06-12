@@ -24,7 +24,7 @@ func TestNotesEditCommandAppendsBodyAndUpdatesTimestamp(t *testing.T) {
 	restoreClock := project.SetClock(clock)
 	defer restoreClock()
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
@@ -80,7 +80,7 @@ func TestNotesEditCommandReplacesBodyFromFile(t *testing.T) {
 	restoreClock := project.SetClock(clock)
 	defer restoreClock()
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
@@ -123,7 +123,7 @@ func TestNotesEditCommandAllowsEmptyBodyFile(t *testing.T) {
 	restoreClock := project.SetClock(clock)
 	defer restoreClock()
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
@@ -166,7 +166,7 @@ func TestNotesEditCommandSetsFrontmatterField(t *testing.T) {
 	restoreClock := project.SetClock(clock)
 	defer restoreClock()
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
@@ -204,7 +204,7 @@ func TestNotesEditCommandSetsFrontmatterField(t *testing.T) {
 func TestNotesEditCommandRejectsProtectedFrontmatterField(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
@@ -239,7 +239,7 @@ func TestNotesEditCommandEnforcesIfMatch(t *testing.T) {
 	))
 	defer restoreClock()
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 

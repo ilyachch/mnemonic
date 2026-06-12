@@ -25,7 +25,7 @@ func TestNotesCreateCommandCreatesMarkdownNote(t *testing.T) {
 	restoreClock := project.SetClock(clock)
 	defer restoreClock()
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
@@ -63,7 +63,7 @@ func TestNotesCreateCommandReadsBodyFromStdin(t *testing.T) {
 	restoreClock := project.SetClock(clock)
 	defer restoreClock()
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
@@ -84,7 +84,7 @@ func TestNotesCreateCommandReadsBodyFromStdin(t *testing.T) {
 func TestNotesCreateCommandRejectsStdinAndBodyFile(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
@@ -106,7 +106,7 @@ func TestNotesCreateCommandWritesDeduplicatedTags(t *testing.T) {
 	restoreClock := project.SetClock(clock)
 	defer restoreClock()
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 

@@ -23,7 +23,7 @@ func TestNotesDeleteCommandDryRunShowsTrashPath(t *testing.T) {
 	))
 	defer restoreClock()
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
@@ -65,7 +65,7 @@ func TestNotesDeleteCommandMovesNoteToTrash(t *testing.T) {
 	))
 	defer restoreClock()
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
@@ -117,7 +117,7 @@ func TestNotesDeleteCommandHardRequiresYes(t *testing.T) {
 	))
 	defer restoreClock()
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
@@ -151,7 +151,7 @@ func TestNotesDeleteCommandHardDeletesWhenConfirmed(t *testing.T) {
 	))
 	defer restoreClock()
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
