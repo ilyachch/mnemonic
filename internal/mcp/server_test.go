@@ -737,6 +737,111 @@ func TestGetIndexDB_missingIndex(t *testing.T) {
 	require.Contains(t, err.Error(), "index missing")
 }
 
+func TestGetIndexDB_statError(t *testing.T) {
+	// Use a server with a project ID that causes the index path to be a real
+	// path that exists but is not a valid index file.
+	// This exercises the stat error that is not IsNotExist.
+	s := &Server{
+		Project: project.ResolvedProject{
+			Project: project.MnemonicProject{ID: "bad-uuid"},
+		},
+	}
+	_, err := s.GetIndexDB()
+	require.Error(t, err)
+}
+
+func TestRebuildIndex_closeError(t *testing.T) {
+	// Test that RebuildIndex handles closeIndexDB failure
+	s := &Server{
+		Project: project.ResolvedProject{
+			Project: project.MnemonicProject{ID: "bad-uuid"},
+		},
+	}
+	err := s.RebuildIndex("/tmp")
+	require.Error(t, err)
+}
+
+func TestRebuildIndex_rebuildError(t *testing.T) {
+	// Rebuild with a valid project that has no notes directory
+	s := &Server{
+		Project: project.ResolvedProject{
+			Project: project.MnemonicProject{ID: "test-rebuild-error"},
+		},
+	}
+	err := s.RebuildIndex("/nonexistent-dir")
+	require.Error(t, err)
+}
+
+// ---------------------------------------------------------------------------
+// Handler error paths - these exercise the closures registered via AddTool
+// by calling them through MCP sessions.
+// ---------------------------------------------------------------------------
+
+func TestReadNote_missingReturnsToolError(t *testing.T) {
+	_ = writableMCPEnv(t)
+	repoRoot := repoRootForTest(t)
+	projectRoot := t.TempDir()
+	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+
+	session, _ := connectToMCPServer(t, repoRoot, projectRoot)
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "read_note",
+		Arguments: map[string]any{"identifier": "nonexistent"},
+	})
+	require.NoError(t, err)
+	require.True(t, result.IsError)
+}
+
+func TestListBacklinks_missingIndexReturnsError(t *testing.T) {
+	_ = writableMCPEnv(t)
+	repoRoot := repoRootForTest(t)
+	projectRoot := t.TempDir()
+	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+
+	session, _ := connectToMCPServer(t, repoRoot, projectRoot)
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "list_backlinks",
+		Arguments: map[string]any{"identifier": "any-note"},
+	})
+	require.NoError(t, err)
+	require.True(t, result.IsError)
+}
+
+func TestListTags_missingIndexReturnsError(t *testing.T) {
+	_ = writableMCPEnv(t)
+	repoRoot := repoRootForTest(t)
+	projectRoot := t.TempDir()
+	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+
+	session, _ := connectToMCPServer(t, repoRoot, projectRoot)
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "list_tags",
+	})
+	require.NoError(t, err)
+	require.True(t, result.IsError)
+}
+
+func TestCreateNote_rebuildIndexSucceeds(t *testing.T) {
+	_ = writableMCPEnv(t)
+	repoRoot := repoRootForTest(t)
+	projectRoot := t.TempDir()
+	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+
+	session, _ := connectToMCPServer(t, repoRoot, projectRoot)
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "create_note",
+		Arguments: map[string]any{
+			"title": "Test Note",
+		},
+	})
+	require.NoError(t, err)
+	require.False(t, result.IsError)
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
