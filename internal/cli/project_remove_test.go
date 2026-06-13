@@ -4,13 +4,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
+	"github.com/stretchr/testify/require"
 )
 
 type projectRemoveJSON struct {
@@ -27,245 +27,151 @@ type projectRemoveJSON struct {
 func TestProjectRemoveCommandSoftDeletesOnlyByDefault(t *testing.T) {
 	cwd, stateHome, projectID := seedRemovableLocalProject(t)
 	indexPath, err := index.Path(projectID)
-	if err != nil {
-		t.Fatalf("index.Path() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	result := executeCommand("project", "remove", "backend", "--json")
-	if result.Err != nil {
-		t.Fatalf("project remove returned error: %v\nstderr: %s", result.Err, result.Stderr)
-	}
+	require.NoError(t, result.Err, "project remove returned error\nstderr: %s", result.Stderr)
 
 	var got projectRemoveJSON
-	if err := json.Unmarshal([]byte(result.Stdout), &got); err != nil {
-		t.Fatalf("failed to decode JSON: %v\nstdout: %s", err, result.Stdout)
-	}
-	if got.ProjectID != projectID {
-		t.Fatalf("project_id = %q, want %q", got.ProjectID, projectID)
-	}
-	if got.Mode != "soft" {
-		t.Fatalf("mode = %q, want soft", got.Mode)
-	}
-	if !got.RegistryRemoved {
-		t.Fatal("registry_removed = false, want true")
-	}
-	if got.IndexDeleted {
-		t.Fatal("index_deleted = true, want false")
-	}
-	if got.StateMarkersDeleted {
-		t.Fatal("state_markers_deleted = true, want false")
-	}
-	if got.MarkdownDeleted {
-		t.Fatal("markdown_deleted = true, want false")
-	}
-	if got.FullWipe {
-		t.Fatal("full_wipe = true, want false")
-	}
+	err = json.Unmarshal([]byte(result.Stdout), &got)
+	require.NoError(t, err, "failed to decode JSON\nstdout: %s", result.Stdout)
+	require.Equal(t, projectID, got.ProjectID)
+	require.Equal(t, "soft", got.Mode)
+	require.True(t, got.RegistryRemoved, "registry_removed = false, want true")
+	require.False(t, got.IndexDeleted, "index_deleted = true, want false")
+	require.False(t, got.StateMarkersDeleted, "state_markers_deleted = true, want false")
+	require.False(t, got.MarkdownDeleted, "markdown_deleted = true, want false")
+	require.False(t, got.FullWipe, "full_wipe = true, want false")
 
-	if _, err := os.Stat(filepath.Join(cwd, ".mnemonic-memories", "backend")); err != nil {
-		t.Fatalf("markdown directory missing unexpectedly: %v", err)
-	}
-	if _, err := os.Stat(indexPath); err != nil {
-		t.Fatalf("index missing unexpectedly: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(stateHome, "mnemonic", "projects", projectID, "state.toml")); err != nil {
-		t.Fatalf("state marker missing unexpectedly: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(stateHome, "mnemonic", "projects", projectID, "locks", "write.lock")); err != nil {
-		t.Fatalf("write lock missing unexpectedly: %v", err)
-	}
+	_, err = os.Stat(filepath.Join(cwd, ".mnemonic-memories", "backend"))
+	require.NoError(t, err, "markdown directory missing unexpectedly")
+	_, err = os.Stat(indexPath)
+	require.NoError(t, err, "index missing unexpectedly")
+	_, err = os.Stat(filepath.Join(stateHome, "mnemonic", "projects", projectID, "state.toml"))
+	require.NoError(t, err, "state marker missing unexpectedly")
+	_, err = os.Stat(filepath.Join(stateHome, "mnemonic", "projects", projectID, "locks", "write.lock"))
+	require.NoError(t, err, "write lock missing unexpectedly")
 
 	list := executeCommand("project", "list", "--json")
-	if list.Err != nil {
-		t.Fatalf("project list returned error: %v\nstderr: %s", list.Err, list.Stderr)
-	}
+	require.NoError(t, list.Err, "project list returned error\nstderr: %s", list.Stderr)
 
 	var listJSON struct {
 		Projects []any `json:"projects"`
 	}
-	if err := json.Unmarshal([]byte(list.Stdout), &listJSON); err != nil {
-		t.Fatalf("failed to decode list JSON: %v\nstdout: %s", err, list.Stdout)
-	}
-	if len(listJSON.Projects) != 0 {
-		t.Fatalf("len(projects) = %d, want 0", len(listJSON.Projects))
-	}
+	err = json.Unmarshal([]byte(list.Stdout), &listJSON)
+	require.NoError(t, err, "failed to decode list JSON\nstdout: %s", list.Stdout)
+	require.Len(t, listJSON.Projects, 0)
 
 	second := executeCommand("project", "remove", "backend", "--json")
-	if second.Err == nil {
-		t.Fatal("second remove error = nil, want not-found")
-	}
-	if got := ExitCodeForError(second.Err); got != 3 {
-		t.Fatalf("exit code = %d, want 3", got)
-	}
+	require.Error(t, second.Err, "second remove error = nil, want not-found")
+	require.Equal(t, 3, ExitCodeForError(second.Err))
 }
 
 func TestProjectRemoveCommandHardRemovesStateArtifactsButKeepsMarkdown(t *testing.T) {
 	cwd, stateHome, projectID := seedRemovableLocalProject(t)
 	indexPath, err := index.Path(projectID)
-	if err != nil {
-		t.Fatalf("index.Path() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	result := executeCommand("project", "remove", "backend", "--hard", "--json")
-	if result.Err != nil {
-		t.Fatalf("project remove returned error: %v\nstderr: %s", result.Err, result.Stderr)
-	}
+	require.NoError(t, result.Err, "project remove returned error\nstderr: %s", result.Stderr)
 
 	var got projectRemoveJSON
-	if err := json.Unmarshal([]byte(result.Stdout), &got); err != nil {
-		t.Fatalf("failed to decode JSON: %v\nstdout: %s", err, result.Stdout)
-	}
-	if got.Mode != "hard" {
-		t.Fatalf("mode = %q, want hard", got.Mode)
-	}
-	if !got.RegistryRemoved {
-		t.Fatal("registry_removed = false, want true")
-	}
-	if !got.IndexDeleted {
-		t.Fatal("index_deleted = false, want true")
-	}
-	if !got.StateMarkersDeleted {
-		t.Fatal("state_markers_deleted = false, want true")
-	}
-	if got.MarkdownDeleted {
-		t.Fatal("markdown_deleted = true, want false")
-	}
+	err = json.Unmarshal([]byte(result.Stdout), &got)
+	require.NoError(t, err, "failed to decode JSON\nstdout: %s", result.Stdout)
+	require.Equal(t, "hard", got.Mode)
+	require.True(t, got.RegistryRemoved, "registry_removed = false, want true")
+	require.True(t, got.IndexDeleted, "index_deleted = false, want true")
+	require.True(t, got.StateMarkersDeleted, "state_markers_deleted = false, want true")
+	require.False(t, got.MarkdownDeleted, "markdown_deleted = true, want false")
 
-	if _, err := os.Stat(filepath.Join(cwd, ".mnemonic-memories", "backend")); err != nil {
-		t.Fatalf("markdown directory missing unexpectedly: %v", err)
-	}
-	if _, err := os.Stat(indexPath); !os.IsNotExist(err) {
-		t.Fatalf("index still exists or stat failed unexpectedly: %v", err)
-	}
-	if _, err := os.Stat(indexPath + "-wal"); !os.IsNotExist(err) {
-		t.Fatalf("index wal still exists or stat failed unexpectedly: %v", err)
-	}
-	if _, err := os.Stat(indexPath + "-shm"); !os.IsNotExist(err) {
-		t.Fatalf("index shm still exists or stat failed unexpectedly: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(stateHome, "mnemonic", "projects", projectID, "state.toml")); !os.IsNotExist(err) {
-		t.Fatalf("state marker still exists or stat failed unexpectedly: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(stateHome, "mnemonic", "projects", projectID, "locks", "write.lock")); err != nil {
-		t.Fatalf("write lock missing unexpectedly: %v", err)
-	}
+	_, err = os.Stat(filepath.Join(cwd, ".mnemonic-memories", "backend"))
+	require.NoError(t, err, "markdown directory missing unexpectedly")
+	_, err = os.Stat(indexPath)
+	require.True(t, os.IsNotExist(err), "index still exists or stat failed unexpectedly: %v", err)
+	_, err = os.Stat(indexPath + "-wal")
+	require.True(t, os.IsNotExist(err), "index wal still exists or stat failed unexpectedly: %v", err)
+	_, err = os.Stat(indexPath + "-shm")
+	require.True(t, os.IsNotExist(err), "index shm still exists or stat failed unexpectedly: %v", err)
+	_, err = os.Stat(filepath.Join(stateHome, "mnemonic", "projects", projectID, "state.toml"))
+	require.True(t, os.IsNotExist(err), "state marker still exists or stat failed unexpectedly: %v", err)
+	_, err = os.Stat(filepath.Join(stateHome, "mnemonic", "projects", projectID, "locks", "write.lock"))
+	require.NoError(t, err, "write lock missing unexpectedly")
 }
 
 func TestProjectRemoveCommandDeleteMarkdownRemovesMarkdownAndIndexButKeepsRegistry(t *testing.T) {
 	cwd, stateHome, projectID := seedRemovableLocalProject(t)
 	indexPath, err := index.Path(projectID)
-	if err != nil {
-		t.Fatalf("index.Path() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	result := executeCommand("project", "remove", "backend", "--delete-markdown", "--json")
-	if result.Err != nil {
-		t.Fatalf("project remove returned error: %v\nstderr: %s", result.Err, result.Stderr)
-	}
+	require.NoError(t, result.Err, "project remove returned error\nstderr: %s", result.Stderr)
 
 	var got projectRemoveJSON
-	if err := json.Unmarshal([]byte(result.Stdout), &got); err != nil {
-		t.Fatalf("failed to decode JSON: %v\nstdout: %s", err, result.Stdout)
-	}
-	if got.Mode != "markdown-only" {
-		t.Fatalf("mode = %q, want markdown-only", got.Mode)
-	}
-	if got.RegistryRemoved {
-		t.Fatal("registry_removed = true, want false")
-	}
-	if !got.IndexDeleted {
-		t.Fatal("index_deleted = false, want true")
-	}
-	if !got.StateMarkersDeleted {
-		t.Fatal("state_markers_deleted = false, want true")
-	}
-	if !got.MarkdownDeleted {
-		t.Fatal("markdown_deleted = false, want true")
-	}
+	err = json.Unmarshal([]byte(result.Stdout), &got)
+	require.NoError(t, err, "failed to decode JSON\nstdout: %s", result.Stdout)
+	require.Equal(t, "markdown-only", got.Mode)
+	require.False(t, got.RegistryRemoved, "registry_removed = true, want false")
+	require.True(t, got.IndexDeleted, "index_deleted = false, want true")
+	require.True(t, got.StateMarkersDeleted, "state_markers_deleted = false, want true")
+	require.True(t, got.MarkdownDeleted, "markdown_deleted = false, want true")
 
-	if _, err := os.Stat(filepath.Join(cwd, ".mnemonic")); err != nil {
-		t.Fatalf(".mnemonic marker missing unexpectedly: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(cwd, ".mnemonic-memories", "backend")); !os.IsNotExist(err) {
-		t.Fatalf("markdown directory still exists or stat failed unexpectedly: %v", err)
-	}
-	if _, err := os.Stat(indexPath); !os.IsNotExist(err) {
-		t.Fatalf("index still exists or stat failed unexpectedly: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(stateHome, "mnemonic", "projects", projectID, "state.toml")); !os.IsNotExist(err) {
-		t.Fatalf("state marker still exists or stat failed unexpectedly: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(stateHome, "mnemonic", "projects", projectID, "locks", "write.lock")); err != nil {
-		t.Fatalf("write lock missing unexpectedly: %v", err)
-	}
+	_, err = os.Stat(filepath.Join(cwd, ".mnemonic"))
+	require.NoError(t, err, ".mnemonic marker missing unexpectedly")
+	_, err = os.Stat(filepath.Join(cwd, ".mnemonic-memories", "backend"))
+	require.True(t, os.IsNotExist(err), "markdown directory still exists or stat failed unexpectedly: %v", err)
+	_, err = os.Stat(indexPath)
+	require.True(t, os.IsNotExist(err), "index still exists or stat failed unexpectedly: %v", err)
+	_, err = os.Stat(filepath.Join(stateHome, "mnemonic", "projects", projectID, "state.toml"))
+	require.True(t, os.IsNotExist(err), "state marker still exists or stat failed unexpectedly: %v", err)
+	_, err = os.Stat(filepath.Join(stateHome, "mnemonic", "projects", projectID, "locks", "write.lock"))
+	require.NoError(t, err, "write lock missing unexpectedly")
 
 	show := executeCommand("project", "show", "backend", "--json")
-	if show.Err != nil {
-		t.Fatalf("project show returned error after --delete-markdown: %v\nstderr: %s", show.Err, show.Stderr)
-	}
+	require.NoError(t, show.Err, "project show returned error after --delete-markdown\nstderr: %s", show.Stderr)
 }
 
 func TestProjectRemoveCommandWipeRemovesEverythingManagedByRemove(t *testing.T) {
 	cwd, stateHome, projectID := seedRemovableLocalProject(t)
 	indexPath, err := index.Path(projectID)
-	if err != nil {
-		t.Fatalf("index.Path() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	result := executeCommand("project", "remove", "backend", "--wipe", "--json")
-	if result.Err != nil {
-		t.Fatalf("project remove returned error: %v\nstderr: %s", result.Err, result.Stderr)
-	}
+	require.NoError(t, result.Err, "project remove returned error\nstderr: %s", result.Stderr)
 
 	var got projectRemoveJSON
-	if err := json.Unmarshal([]byte(result.Stdout), &got); err != nil {
-		t.Fatalf("failed to decode JSON: %v\nstdout: %s", err, result.Stdout)
-	}
-	if got.Mode != "wipe" {
-		t.Fatalf("mode = %q, want wipe", got.Mode)
-	}
-	if !got.RegistryRemoved || !got.IndexDeleted || !got.StateMarkersDeleted || !got.MarkdownDeleted || !got.FullWipe {
-		t.Fatalf("unexpected wipe output: %+v", got)
-	}
+	err = json.Unmarshal([]byte(result.Stdout), &got)
+	require.NoError(t, err, "failed to decode JSON\nstdout: %s", result.Stdout)
+	require.Equal(t, "wipe", got.Mode)
+	require.True(t, got.RegistryRemoved, "registry_removed = false, want true")
+	require.True(t, got.IndexDeleted, "index_deleted = false, want true")
+	require.True(t, got.StateMarkersDeleted, "state_markers_deleted = false, want true")
+	require.True(t, got.MarkdownDeleted, "markdown_deleted = false, want true")
+	require.True(t, got.FullWipe, "full_wipe = false, want true")
 
-	if _, err := os.Stat(filepath.Join(cwd, ".mnemonic-memories", "backend")); !os.IsNotExist(err) {
-		t.Fatalf("markdown directory still exists or stat failed unexpectedly: %v", err)
-	}
-	if _, err := os.Stat(indexPath); !os.IsNotExist(err) {
-		t.Fatalf("index still exists or stat failed unexpectedly: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(stateHome, "mnemonic", "projects", projectID, "state.toml")); !os.IsNotExist(err) {
-		t.Fatalf("state marker still exists or stat failed unexpectedly: %v", err)
-	}
+	_, err = os.Stat(filepath.Join(cwd, ".mnemonic-memories", "backend"))
+	require.True(t, os.IsNotExist(err), "markdown directory still exists or stat failed unexpectedly: %v", err)
+	_, err = os.Stat(indexPath)
+	require.True(t, os.IsNotExist(err), "index still exists or stat failed unexpectedly: %v", err)
+	_, err = os.Stat(filepath.Join(stateHome, "mnemonic", "projects", projectID, "state.toml"))
+	require.True(t, os.IsNotExist(err), "state marker still exists or stat failed unexpectedly: %v", err)
 
 	list := executeCommand("project", "list", "--json")
-	if list.Err != nil {
-		t.Fatalf("project list returned error: %v\nstderr: %s", list.Err, list.Stderr)
-	}
+	require.NoError(t, list.Err, "project list returned error\nstderr: %s", list.Stderr)
 	var listJSON struct {
 		Projects []any `json:"projects"`
 	}
-	if err := json.Unmarshal([]byte(list.Stdout), &listJSON); err != nil {
-		t.Fatalf("failed to decode list JSON: %v\nstdout: %s", err, list.Stdout)
-	}
-	if len(listJSON.Projects) != 0 {
-		t.Fatalf("len(projects) = %d, want 0", len(listJSON.Projects))
-	}
+	err = json.Unmarshal([]byte(list.Stdout), &listJSON)
+	require.NoError(t, err, "failed to decode list JSON\nstdout: %s", list.Stdout)
+	require.Len(t, listJSON.Projects, 0)
 }
 
 func TestProjectRemoveCommandRejectsHardAndDeleteMarkdownTogether(t *testing.T) {
 	seedRemovableLocalProject(t)
 
 	result := executeCommand("project", "remove", "backend", "--hard", "--delete-markdown", "--json")
-	if result.Err == nil {
-		t.Fatal("project remove error = nil, want CLI usage error")
-	}
-	if got := ExitCodeForError(result.Err); got != 2 {
-		t.Fatalf("exit code = %d, want 2", got)
-	}
-	if !strings.Contains(result.Err.Error(), "--wipe") {
-		t.Fatalf("error %q does not mention --wipe", result.Err.Error())
-	}
+	require.Error(t, result.Err, "project remove error = nil, want CLI usage error")
+	require.Equal(t, 2, ExitCodeForError(result.Err))
+	require.Contains(t, result.Err.Error(), "--wipe")
 }
 
 func seedRemovableLocalProject(t *testing.T) (cwd, stateHome, projectID string) {
@@ -275,12 +181,9 @@ func seedRemovableLocalProject(t *testing.T) (cwd, stateHome, projectID string) 
 	stateHome = filepath.Join(cwd, "state")
 
 	originalWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd() error = %v", err)
-	}
-	if err := os.Chdir(cwd); err != nil {
-		t.Fatalf("Chdir() error = %v", err)
-	}
+	require.NoError(t, err)
+	err = os.Chdir(cwd)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = os.Chdir(originalWD)
 	})
@@ -293,49 +196,37 @@ func seedRemovableLocalProject(t *testing.T) (cwd, stateHome, projectID string) 
 	})
 	t.Cleanup(restore)
 
-	if err := project.InitProject(project.InitInput{
+	err = project.InitProject(project.InitInput{
 		CWD:          cwd,
 		MemoriesHome: t.TempDir(),
 		Name:         "backend",
 		Mode:         project.InitModeLocal,
-	}); err != nil {
-		t.Fatalf("InitProject(local) error = %v", err)
-	}
+	})
+	require.NoError(t, err)
 
 	projectData, err := os.ReadFile(filepath.Join(cwd, ".mnemonic"))
-	if err != nil {
-		t.Fatalf("ReadFile(project) error = %v", err)
-	}
+	require.NoError(t, err)
 	parsedProject, err := project.ParseMnemonicFile(projectData)
-	if err != nil {
-		t.Fatalf("ParseMnemonicFile() error = %v", err)
-	}
+	require.NoError(t, err)
 	projectID = parsedProject.Projects[0].ID
 
 	stateDir := filepath.Join(stateHome, "mnemonic", "projects", projectID)
-	if err := os.MkdirAll(stateDir, 0o755); err != nil {
-		t.Fatalf("failed to create state dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(stateDir, "state.toml"), []byte("status = \"ok\"\n"), 0o644); err != nil {
-		t.Fatalf("failed to seed state file: %v", err)
-	}
+	err = os.MkdirAll(stateDir, 0o755)
+	require.NoError(t, err, "failed to create state dir")
+	err = os.WriteFile(filepath.Join(stateDir, "state.toml"), []byte("status = \"ok\"\n"), 0o644)
+	require.NoError(t, err, "failed to seed state file")
 	indexPath := filepath.Join(stateDir, "index.sqlite")
-	if err := os.WriteFile(indexPath, []byte("sqlite-index"), 0o644); err != nil {
-		t.Fatalf("failed to seed index file: %v", err)
-	}
-	if err := os.WriteFile(indexPath+"-wal", []byte("wal"), 0o644); err != nil {
-		t.Fatalf("failed to seed index wal file: %v", err)
-	}
-	if err := os.WriteFile(indexPath+"-shm", []byte("shm"), 0o644); err != nil {
-		t.Fatalf("failed to seed index shm file: %v", err)
-	}
+	err = os.WriteFile(indexPath, []byte("sqlite-index"), 0o644)
+	require.NoError(t, err, "failed to seed index file")
+	err = os.WriteFile(indexPath+"-wal", []byte("wal"), 0o644)
+	require.NoError(t, err, "failed to seed index wal file")
+	err = os.WriteFile(indexPath+"-shm", []byte("shm"), 0o644)
+	require.NoError(t, err, "failed to seed index shm file")
 	locksDir := filepath.Join(stateDir, "locks")
-	if err := os.MkdirAll(locksDir, 0o755); err != nil {
-		t.Fatalf("failed to seed locks dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(locksDir, "write.lock"), []byte("lock"), 0o644); err != nil {
-		t.Fatalf("failed to seed write lock: %v", err)
-	}
+	err = os.MkdirAll(locksDir, 0o755)
+	require.NoError(t, err, "failed to seed locks dir")
+	err = os.WriteFile(filepath.Join(locksDir, "write.lock"), []byte("lock"), 0o644)
+	require.NoError(t, err, "failed to seed write lock")
 
 	return cwd, stateHome, projectID
 }

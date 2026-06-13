@@ -9,34 +9,28 @@ import (
 	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/lock"
 	"github.com/ilyachch/mnemonic/internal/testutil"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRebuildProjectIndexReturnsBusyErrorWhenLockHeld(t *testing.T) {
 	testutil.CleanEnvForTest(t)
 
 	memoriesRoot := filepath.Join(t.TempDir(), "memories")
-	if err := createIndexTestNote(memoriesRoot, "alpha.md", "# Alpha\n"); err != nil {
-		t.Fatalf("createIndexTestNote() error = %v", err)
-	}
+	require.NoError(t, createIndexTestNote(memoriesRoot, "alpha.md", "# Alpha\n"))
 
 	guard, err := lock.Acquire(lock.AcquireInput{
 		ProjectID: "550e8400-e29b-41d4-a716-446655440000",
 		Name:      reindexLockName,
 	})
-	if err != nil {
-		t.Fatalf("Acquire() error = %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = guard.Release() })
 
 	_, err = RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoriesRoot)
-	if err == nil {
-		t.Fatal("RebuildProjectIndex() error = nil, want unsafe error")
-	}
+	require.Error(t, err)
 
 	var appErr *app.AppError
-	if !errors.As(err, &appErr) || appErr.Code != app.CodeUnsafe {
-		t.Fatalf("RebuildProjectIndex() error = %v, want unsafe error", err)
-	}
+	require.True(t, errors.As(err, &appErr))
+	require.Equal(t, app.CodeUnsafe, appErr.Code)
 }
 
 func createIndexTestNote(root string, relPath string, content string) error {

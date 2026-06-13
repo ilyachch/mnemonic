@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseNoteReadsCanonicalFieldsAndPreservesBody(t *testing.T) {
@@ -26,48 +28,20 @@ func TestParseNoteReadsCanonicalFieldsAndPreservesBody(t *testing.T) {
 		"Body text\n")
 
 	note, err := ParseNote(input)
-	if err != nil {
-		t.Fatalf("ParseNote() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	if note.MnemonicNoteID != "550e8400-e29b-41d4-a716-446655440000" {
-		t.Fatalf("MnemonicNoteID = %q", note.MnemonicNoteID)
-	}
-	if note.Title != "Example Note" {
-		t.Fatalf("Title = %q", note.Title)
-	}
-	if note.Slug != "example-note" {
-		t.Fatalf("Slug = %q", note.Slug)
-	}
-	if got, want := note.Tags, []string{"django", "auth"}; len(got) != len(want) {
-		t.Fatalf("Tags = %#v, want %#v", got, want)
-	} else {
-		for i := range want {
-			if got[i] != want[i] {
-				t.Fatalf("Tags = %#v, want %#v", got, want)
-			}
-		}
-	}
+	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", note.MnemonicNoteID)
+	require.Equal(t, "Example Note", note.Title)
+	require.Equal(t, "example-note", note.Slug)
+	require.Equal(t, []string{"django", "auth"}, note.Tags)
 	wantCreatedAt := time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
-	if !note.CreatedAt.Equal(wantCreatedAt) {
-		t.Fatalf("CreatedAt = %s, want %s", note.CreatedAt, wantCreatedAt)
-	}
+	require.True(t, note.CreatedAt.Equal(wantCreatedAt))
 	wantUpdatedAt := time.Date(2026, time.June, 2, 11, 0, 0, 0, time.UTC)
-	if !note.UpdatedAt.Equal(wantUpdatedAt) {
-		t.Fatalf("UpdatedAt = %s, want %s", note.UpdatedAt, wantUpdatedAt)
-	}
-	if note.Type != "decision" {
-		t.Fatalf("Type = %q", note.Type)
-	}
-	if note.Permalink != "example-note" {
-		t.Fatalf("Permalink = %q", note.Permalink)
-	}
-	if note.Frontmatter["extra_field"] != "keep-me" {
-		t.Fatalf("Frontmatter[extra_field] = %#v, want %q", note.Frontmatter["extra_field"], "keep-me")
-	}
-	if !bytes.Equal(note.Body, []byte("# Heading\nBody text\n")) {
-		t.Fatalf("Body = %q", note.Body)
-	}
+	require.True(t, note.UpdatedAt.Equal(wantUpdatedAt))
+	require.Equal(t, "decision", note.Type)
+	require.Equal(t, "example-note", note.Permalink)
+	require.Equal(t, "keep-me", note.Frontmatter["extra_field"])
+	require.True(t, bytes.Equal(note.Body, []byte("# Heading\nBody text\n")))
 }
 
 func TestParseNoteUsesPermalinkFallbackWhenSlugMissing(t *testing.T) {
@@ -81,12 +55,8 @@ func TestParseNoteUsesPermalinkFallbackWhenSlugMissing(t *testing.T) {
 		"updated_at: 2026-06-02T10:00:00Z\n" +
 		"---\n" +
 		"Body\n"))
-	if err != nil {
-		t.Fatalf("ParseNote() error = %v", err)
-	}
-	if note.Slug != "permalink-note" {
-		t.Fatalf("Slug = %q, want permalink-note", note.Slug)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "permalink-note", note.Slug)
 }
 
 func TestParseNoteWithoutFrontmatterReturnsFullBody(t *testing.T) {
@@ -94,15 +64,9 @@ func TestParseNoteWithoutFrontmatterReturnsFullBody(t *testing.T) {
 
 	input := []byte("# Heading\nBody\n")
 	note, err := ParseNote(input)
-	if err != nil {
-		t.Fatalf("ParseNote() error = %v", err)
-	}
-	if len(note.Frontmatter) != 0 {
-		t.Fatalf("Frontmatter = %#v, want empty", note.Frontmatter)
-	}
-	if !bytes.Equal(note.Body, input) {
-		t.Fatalf("Body = %q, want %q", note.Body, input)
-	}
+	require.NoError(t, err)
+	require.Empty(t, note.Frontmatter)
+	require.True(t, bytes.Equal(note.Body, input))
 }
 
 func TestParseNoteRejectsWrongFieldTypes(t *testing.T) {
@@ -115,7 +79,5 @@ func TestParseNoteRejectsWrongFieldTypes(t *testing.T) {
 		"updated_at: 2026-06-02T10:00:00Z\n" +
 		"---\n" +
 		"Body\n"))
-	if err == nil {
-		t.Fatal("ParseNote() error = nil, want wrong type error")
-	}
+	require.Error(t, err)
 }

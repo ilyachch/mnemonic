@@ -4,25 +4,19 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestExampleNoteParses(t *testing.T) {
 	t.Parallel()
 
 	data, err := os.ReadFile(filepath.Join("..", "..", "testdata", "markdown", "example-note.md"))
-	if err != nil {
-		t.Fatalf("ReadFile(example-note.md) error = %v", err)
-	}
+	require.NoError(t, err)
 
 	note, err := ParseNote(data)
-	if err != nil {
-		t.Fatalf("ParseNote() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	if note.Title == "" {
-		t.Fatal("Title is empty")
-	}
-	if len(note.Body) == 0 {
-		t.Fatal("Body is empty")
-	}
+	require.NotEmpty(t, note.Title)
+	require.NotEmpty(t, note.Body)
 }

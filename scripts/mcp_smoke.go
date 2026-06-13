@@ -20,13 +20,6 @@ type createNoteOutput struct {
 	ContentHash string `json:"content_hash"`
 }
 
-type editNoteOutput struct {
-	NoteID      string `json:"note_id"`
-	Slug        string `json:"slug"`
-	Path        string `json:"path"`
-	ContentHash string `json:"content_hash"`
-}
-
 type resultEnvelope struct {
 	StructuredContent any              `json:"structured_content,omitempty"`
 	Content           []contentSummary `json:"content,omitempty"`

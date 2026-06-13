@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/ilyachch/mnemonic/internal/testutil"
+	"github.com/stretchr/testify/require"
 )
 
 type configShowJSON struct {
@@ -28,23 +29,23 @@ func TestConfigShowCommandJSONDefaults(t *testing.T) {
 	tmpCache := filepath.Join(tmpRoot, "cache")
 
 	result := executeCommand("config", "show", "--json")
-	if result.Err != nil {
-		t.Fatalf("config show returned error: %v\nstderr: %s", result.Err, result.Stderr)
-	}
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 
 	var got configShowJSON
-	if err := json.Unmarshal([]byte(result.Stdout), &got); err != nil {
-		t.Fatalf("failed to decode JSON: %v\nstdout: %s", err, result.Stdout)
-	}
+	err := json.Unmarshal([]byte(result.Stdout), &got)
+	require.NoError(t, err, "stdout: %s", result.Stdout)
 
-	assertConfigShowJSON(t, got, configShowJSON{
+	want := configShowJSON{
 		ConfigHome:   tmpConfig,
 		DataHome:     tmpData,
 		StateHome:    tmpState,
 		CacheHome:    tmpCache,
 		MemoriesHome: filepath.Join(tmpHome, ".mnemonic"),
 		ConfigFile:   filepath.Join(tmpConfig, "mnemonic", "config.toml"),
-	})
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Fatalf("config show JSON mismatch (-want +got):\n%s", diff)
+	}
 }
 
 func TestConfigShowCommandLoadsConfigFile(t *testing.T) {
@@ -55,31 +56,29 @@ func TestConfigShowCommandLoadsConfigFile(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", "")
 
 	configPath := filepath.Join(tmpConfig, "mnemonic", "config.toml")
-	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
-		t.Fatalf("failed to create config directory: %v", err)
-	}
-	if err := os.WriteFile(configPath, []byte("version = 1\n[paths]\nmemories_home = \"~/from-config\"\n"), 0o644); err != nil {
-		t.Fatalf("failed to write config file: %v", err)
-	}
+	err := os.MkdirAll(filepath.Dir(configPath), 0o755)
+	require.NoError(t, err)
+	err = os.WriteFile(configPath, []byte("version = 1\n[paths]\nmemories_home = \"~/from-config\"\n"), 0o644)
+	require.NoError(t, err)
 
 	result := executeCommand("config", "show", "--json")
-	if result.Err != nil {
-		t.Fatalf("config show returned error: %v\nstderr: %s", result.Err, result.Stderr)
-	}
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 
 	var got configShowJSON
-	if err := json.Unmarshal([]byte(result.Stdout), &got); err != nil {
-		t.Fatalf("failed to decode JSON: %v\nstdout: %s", err, result.Stdout)
-	}
+	err = json.Unmarshal([]byte(result.Stdout), &got)
+	require.NoError(t, err, "stdout: %s", result.Stdout)
 
-	assertConfigShowJSON(t, got, configShowJSON{
+	want := configShowJSON{
 		ConfigHome:   tmpConfig,
 		DataHome:     filepath.Join(tmpHome, ".local", "share"),
 		StateHome:    filepath.Join(tmpHome, ".local", "state"),
 		CacheHome:    filepath.Join(tmpHome, ".cache"),
 		MemoriesHome: filepath.Join(tmpHome, "from-config"),
 		ConfigFile:   configPath,
-	})
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Fatalf("config show JSON mismatch (-want +got):\n%s", diff)
+	}
 }
 
 func TestConfigShowCommandRejectsMissingVersionWithExitTwo(t *testing.T) {
@@ -90,23 +89,15 @@ func TestConfigShowCommandRejectsMissingVersionWithExitTwo(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", "")
 
 	configPath := filepath.Join(tmpConfig, "mnemonic", "config.toml")
-	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
-		t.Fatalf("failed to create config directory: %v", err)
-	}
-	if err := os.WriteFile(configPath, []byte("[paths]\nmemories_home = \"~/from-config\"\n"), 0o644); err != nil {
-		t.Fatalf("failed to write config file: %v", err)
-	}
+	err := os.MkdirAll(filepath.Dir(configPath), 0o755)
+	require.NoError(t, err)
+	err = os.WriteFile(configPath, []byte("[paths]\nmemories_home = \"~/from-config\"\n"), 0o644)
+	require.NoError(t, err)
 
 	result := executeCommand("config", "show", "--json")
-	if result.Err == nil {
-		t.Fatal("config show error = nil, want missing version error")
-	}
-	if ExitCodeForError(result.Err) != 2 {
-		t.Fatalf("exit code = %d, want 2", ExitCodeForError(result.Err))
-	}
-	if !strings.Contains(result.Err.Error(), "version = 1") {
-		t.Fatalf("error = %q, want mention of version = 1", result.Err)
-	}
+	require.Error(t, result.Err, "config show error = nil, want missing version error")
+	require.Equal(t, 2, ExitCodeForError(result.Err))
+	require.Contains(t, result.Err.Error(), "version = 1")
 }
 
 func TestConfigShowCommandRejectsUnsupportedVersionWithExitTwo(t *testing.T) {
@@ -117,44 +108,13 @@ func TestConfigShowCommandRejectsUnsupportedVersionWithExitTwo(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", "")
 
 	configPath := filepath.Join(tmpConfig, "mnemonic", "config.toml")
-	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
-		t.Fatalf("failed to create config directory: %v", err)
-	}
-	if err := os.WriteFile(configPath, []byte("version = 999\n"), 0o644); err != nil {
-		t.Fatalf("failed to write config file: %v", err)
-	}
+	err := os.MkdirAll(filepath.Dir(configPath), 0o755)
+	require.NoError(t, err)
+	err = os.WriteFile(configPath, []byte("version = 999\n"), 0o644)
+	require.NoError(t, err)
 
 	result := executeCommand("config", "show", "--json")
-	if result.Err == nil {
-		t.Fatal("config show error = nil, want unsupported version error")
-	}
-	if ExitCodeForError(result.Err) != 2 {
-		t.Fatalf("exit code = %d, want 2", ExitCodeForError(result.Err))
-	}
-	if !strings.Contains(result.Err.Error(), "unsupported config version 999") {
-		t.Fatalf("error = %q, want unsupported config version 999", result.Err)
-	}
-}
-
-func assertConfigShowJSON(t *testing.T, got, want configShowJSON) {
-	t.Helper()
-
-	if got.ConfigHome != want.ConfigHome {
-		t.Fatalf("config_home = %q, want %q", got.ConfigHome, want.ConfigHome)
-	}
-	if got.DataHome != want.DataHome {
-		t.Fatalf("data_home = %q, want %q", got.DataHome, want.DataHome)
-	}
-	if got.StateHome != want.StateHome {
-		t.Fatalf("state_home = %q, want %q", got.StateHome, want.StateHome)
-	}
-	if got.CacheHome != want.CacheHome {
-		t.Fatalf("cache_home = %q, want %q", got.CacheHome, want.CacheHome)
-	}
-	if got.MemoriesHome != want.MemoriesHome {
-		t.Fatalf("memories_home = %q, want %q", got.MemoriesHome, want.MemoriesHome)
-	}
-	if got.ConfigFile != want.ConfigFile {
-		t.Fatalf("config_file = %q, want %q", got.ConfigFile, want.ConfigFile)
-	}
+	require.Error(t, result.Err, "config show error = nil, want unsupported version error")
+	require.Equal(t, 2, ExitCodeForError(result.Err))
+	require.Contains(t, result.Err.Error(), "unsupported config version 999")
 }

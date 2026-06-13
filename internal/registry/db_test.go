@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/ilyachch/mnemonic/internal/testutil"
 )
 
@@ -12,42 +15,33 @@ func TestOpenDBCreatesRegistryFileAndPragmas(t *testing.T) {
 	dataHome := filepath.Join(testutil.CleanEnvForTest(t), "data")
 
 	path, err := RegistryPath()
-	if err != nil {
-		t.Fatalf("RegistryPath() error = %v", err)
-	}
+	require.NoError(t, err)
 	wantPath := filepath.Join(dataHome, "mnemonic", "registry.sqlite")
-	if path != wantPath {
-		t.Fatalf("RegistryPath() = %q, want %q", path, wantPath)
-	}
+	require.Equal(t, wantPath, path)
 
 	db, err := OpenDB()
-	if err != nil {
-		t.Fatalf("OpenDB() error = %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = db.Close()
 	})
 
-	if _, err := os.Stat(filepath.Dir(path)); err != nil {
-		t.Fatalf("parent directory missing: %v", err)
-	}
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("registry file missing: %v", err)
-	}
+	_, err = os.Stat(filepath.Dir(path))
+	require.NoError(t, err, "parent directory missing")
+	_, err = os.Stat(path)
+	require.NoError(t, err, "registry file missing")
 
 	var foreignKeys int
-	if err := db.QueryRow(`PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil {
-		t.Fatalf("PRAGMA foreign_keys query failed: %v", err)
-	}
-	if foreignKeys != 1 {
-		t.Fatalf("PRAGMA foreign_keys = %d, want 1", foreignKeys)
-	}
+	err = db.QueryRow(`PRAGMA foreign_keys`).Scan(&foreignKeys)
+	require.NoError(t, err)
+	require.Equal(t, 1, foreignKeys)
 
 	var userVersion int
-	if err := db.QueryRow(`PRAGMA user_version`).Scan(&userVersion); err != nil {
-		t.Fatalf("PRAGMA user_version query failed: %v", err)
-	}
-	if userVersion != 0 {
-		t.Fatalf("PRAGMA user_version = %d, want 0 before migrations", userVersion)
-	}
+	err = db.QueryRow(`PRAGMA user_version`).Scan(&userVersion)
+	require.NoError(t, err)
+	require.Equal(t, 0, userVersion)
+}
+
+func TestNullString(t *testing.T) {
+	assert.Nil(t, nullString(""))
+	assert.Equal(t, "hello", nullString("hello"))
 }

@@ -3,6 +3,8 @@ package project
 import (
 	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestSlugifyASCIIExamples(t *testing.T) {
@@ -36,12 +38,8 @@ func TestSlugifyASCIIExamples(t *testing.T) {
 			t.Parallel()
 
 			got, err := Slugify(tt.input)
-			if err != nil {
-				t.Fatalf("Slugify() error = %v", err)
-			}
-			if got != tt.want {
-				t.Fatalf("Slugify() = %q, want %q", got, tt.want)
-			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -50,22 +48,14 @@ func TestSlugifyUnicodeUnsupported(t *testing.T) {
 	t.Parallel()
 
 	got, err := Slugify("Привет мир")
-	if got != "" {
-		t.Fatalf("Slugify() = %q, want empty slug on unsupported input", got)
-	}
-	if !errors.Is(err, ErrUnsupportedSlugInput) {
-		t.Fatalf("Slugify() error = %v, want ErrUnsupportedSlugInput", err)
-	}
+	require.Empty(t, got)
+	require.True(t, errors.Is(err, ErrUnsupportedSlugInput))
 }
 
 func TestSlugifyEmptyInput(t *testing.T) {
 	t.Parallel()
 
 	got, err := Slugify("")
-	if got != "" {
-		t.Fatalf("Slugify() = %q, want empty slug", got)
-	}
-	if !errors.Is(err, ErrEmptySlug) {
-		t.Fatalf("Slugify() error = %v, want ErrEmptySlug", err)
-	}
+	require.Empty(t, got)
+	require.True(t, errors.Is(err, ErrEmptySlug))
 }

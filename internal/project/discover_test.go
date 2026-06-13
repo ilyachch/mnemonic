@@ -4,12 +4,12 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/ilyachch/mnemonic/internal/testutil"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDiscoverProjectsRegistersDirectChildrenOnly(t *testing.T) {
@@ -17,67 +17,38 @@ func TestDiscoverProjectsRegistersDirectChildrenOnly(t *testing.T) {
 	cwd := t.TempDir()
 	memoriesHome := filepath.Join(cwd, "memories")
 
-	if err := os.MkdirAll(memoriesHome, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := writeDiscoverManifest(t, filepath.Join(memoriesHome, "backend"), "backend", ManifestKindRegular); err != nil {
-		t.Fatalf("writeDiscoverManifest() error = %v", err)
-	}
-	if err := writeDiscoverManifest(t, filepath.Join(memoriesHome, "personal"), "personal", ManifestKindDetached); err != nil {
-		t.Fatalf("writeDiscoverManifest() error = %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(memoriesHome, "ignored", "nested"), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := writeDiscoverManifest(t, filepath.Join(memoriesHome, "ignored", "nested"), "nested", ManifestKindRegular); err != nil {
-		t.Fatalf("writeDiscoverManifest() error = %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(memoriesHome, "empty"), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(memoriesHome, 0o755))
+	require.NoError(t, writeDiscoverManifest(t, filepath.Join(memoriesHome, "backend"), "backend", ManifestKindRegular))
+	require.NoError(t, writeDiscoverManifest(t, filepath.Join(memoriesHome, "personal"), "personal", ManifestKindDetached))
+	require.NoError(t, os.MkdirAll(filepath.Join(memoriesHome, "ignored", "nested"), 0o755))
+	require.NoError(t, writeDiscoverManifest(t, filepath.Join(memoriesHome, "ignored", "nested"), "nested", ManifestKindRegular))
+	require.NoError(t, os.MkdirAll(filepath.Join(memoriesHome, "empty"), 0o755))
 
 	result, err := DiscoverProjects(DiscoverInput{MemoriesHome: memoriesHome})
-	if err != nil {
-		t.Fatalf("DiscoverProjects() error = %v", err)
-	}
-	if result.MemoriesHome != memoriesHome {
-		t.Fatalf("DiscoverProjects() memories_home = %q, want %q", result.MemoriesHome, memoriesHome)
-	}
-	if result.Discovered != 2 {
-		t.Fatalf("DiscoverProjects() discovered = %d, want 2", result.Discovered)
-	}
+	require.NoError(t, err)
+	require.Equal(t, memoriesHome, result.MemoriesHome)
+	require.Equal(t, 2, result.Discovered)
 
 	db, err := registry.OpenDB()
-	if err != nil {
-		t.Fatalf("OpenDB() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer func() {
 		_ = db.Close()
 	}()
-	if err := registry.ApplySchema(db); err != nil {
-		t.Fatalf("ApplySchema() error = %v", err)
-	}
+	require.NoError(t, registry.ApplySchema(db))
 
 	var count int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM projects WHERE removed_at IS NULL`).Scan(&count); err != nil {
-		t.Fatalf("QueryRow() error = %v", err)
-	}
-	if count != 2 {
-		t.Fatalf("project count = %d, want 2", count)
-	}
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM projects WHERE removed_at IS NULL`).Scan(&count))
+	require.Equal(t, 2, count)
 
 	assertDiscoverProjectRow(t, db, "550e8400-e29b-41d4-a716-446655440000", filepath.Join(memoriesHome, "backend"), filepath.Join(memoriesHome, "backend", "mnemonic.toml"), string(ProjectKindRegular))
 	assertDiscoverProjectRow(t, db, "550e8400-e29b-41d4-a716-446655440001", filepath.Join(memoriesHome, "personal"), filepath.Join(memoriesHome, "personal", "mnemonic.toml"), string(registry.ProjectKindDetached))
 
-	if _, err := os.Stat(filepath.Join(memoriesHome, "backend", "index.sqlite")); !os.IsNotExist(err) {
-		t.Fatalf("backend index.sqlite exists or stat failed unexpectedly: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(memoriesHome, "personal", "index.sqlite")); !os.IsNotExist(err) {
-		t.Fatalf("personal index.sqlite exists or stat failed unexpectedly: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(memoriesHome, "ignored", "nested", "index.sqlite")); !os.IsNotExist(err) {
-		t.Fatalf("nested index.sqlite exists or stat failed unexpectedly: %v", err)
-	}
+	_, err = os.Stat(filepath.Join(memoriesHome, "backend", "index.sqlite"))
+	require.True(t, os.IsNotExist(err))
+	_, err = os.Stat(filepath.Join(memoriesHome, "personal", "index.sqlite"))
+	require.True(t, os.IsNotExist(err))
+	_, err = os.Stat(filepath.Join(memoriesHome, "ignored", "nested", "index.sqlite"))
+	require.True(t, os.IsNotExist(err))
 }
 
 func TestDiscoverProjectsDryRunReportsInvalidManifests(t *testing.T) {
@@ -85,48 +56,26 @@ func TestDiscoverProjectsDryRunReportsInvalidManifests(t *testing.T) {
 	cwd := t.TempDir()
 	memoriesHome := filepath.Join(cwd, "memories")
 
-	if err := os.MkdirAll(memoriesHome, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := writeDiscoverManifest(t, filepath.Join(memoriesHome, "backend"), "backend", ManifestKindRegular); err != nil {
-		t.Fatalf("writeDiscoverManifest() error = %v", err)
-	}
-	if err := writeInvalidDiscoverManifest(filepath.Join(memoriesHome, "broken"), "broken"); err != nil {
-		t.Fatalf("writeInvalidDiscoverManifest() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(memoriesHome, 0o755))
+	require.NoError(t, writeDiscoverManifest(t, filepath.Join(memoriesHome, "backend"), "backend", ManifestKindRegular))
+	require.NoError(t, writeInvalidDiscoverManifest(filepath.Join(memoriesHome, "broken"), "broken"))
 
 	result, err := DiscoverProjects(DiscoverInput{MemoriesHome: memoriesHome, DryRun: true})
-	if err != nil {
-		t.Fatalf("DiscoverProjects() error = %v", err)
-	}
-	if result.Discovered != 1 {
-		t.Fatalf("DiscoverProjects() discovered = %d, want 1", result.Discovered)
-	}
-	if len(result.Errors) != 1 {
-		t.Fatalf("DiscoverProjects() errors = %d, want 1", len(result.Errors))
-	}
-	if result.Errors[0].Path != filepath.Join(memoriesHome, "broken", "mnemonic.toml") {
-		t.Fatalf("DiscoverProjects() error path = %q, want %q", result.Errors[0].Path, filepath.Join(memoriesHome, "broken", "mnemonic.toml"))
-	}
+	require.NoError(t, err)
+	require.Equal(t, 1, result.Discovered)
+	require.Len(t, result.Errors, 1)
+	require.Equal(t, filepath.Join(memoriesHome, "broken", "mnemonic.toml"), result.Errors[0].Path)
 
 	db, err := registry.OpenDB()
-	if err != nil {
-		t.Fatalf("OpenDB() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer func() {
 		_ = db.Close()
 	}()
-	if err := registry.ApplySchema(db); err != nil {
-		t.Fatalf("ApplySchema() error = %v", err)
-	}
+	require.NoError(t, registry.ApplySchema(db))
 
 	var count int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM projects WHERE removed_at IS NULL`).Scan(&count); err != nil {
-		t.Fatalf("QueryRow() error = %v", err)
-	}
-	if count != 0 {
-		t.Fatalf("project count = %d, want 0", count)
-	}
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM projects WHERE removed_at IS NULL`).Scan(&count))
+	require.Equal(t, 0, count)
 }
 
 func TestDiscoverProjectsDryRunRejectsUnsupportedManifestVersionWithoutTouchingMarkdown(t *testing.T) {
@@ -135,19 +84,13 @@ func TestDiscoverProjectsDryRunRejectsUnsupportedManifestVersionWithoutTouchingM
 	memoriesHome := filepath.Join(cwd, "memories")
 
 	projectRoot := filepath.Join(memoriesHome, "broken")
-	if err := os.MkdirAll(projectRoot, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(projectRoot, 0o755))
 
 	notePath := filepath.Join(projectRoot, "note.md")
 	noteBody := []byte("# Note\n\nUnchanged.\n")
-	if err := os.WriteFile(notePath, noteBody, 0o644); err != nil {
-		t.Fatalf("WriteFile(note) error = %v", err)
-	}
+	require.NoError(t, os.WriteFile(notePath, noteBody, 0o644))
 	beforeInfo, err := os.Stat(notePath)
-	if err != nil {
-		t.Fatalf("Stat(note before) error = %v", err)
-	}
+	require.NoError(t, err)
 
 	manifest := []byte(`version = 999
 project_id = "550e8400-e29b-41d4-a716-446655440010"
@@ -165,39 +108,21 @@ ignore = ["mnemonic.toml", ".trash/**"]
 [generator]
 app = "mnemonic"
 `)
-	if err := os.WriteFile(filepath.Join(projectRoot, "mnemonic.toml"), manifest, 0o644); err != nil {
-		t.Fatalf("WriteFile(manifest) error = %v", err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(projectRoot, "mnemonic.toml"), manifest, 0o644))
 
 	result, err := DiscoverProjects(DiscoverInput{MemoriesHome: memoriesHome, DryRun: true})
-	if err != nil {
-		t.Fatalf("DiscoverProjects() error = %v", err)
-	}
-	if result.Discovered != 0 {
-		t.Fatalf("DiscoverProjects() discovered = %d, want 0", result.Discovered)
-	}
-	if len(result.Errors) != 1 {
-		t.Fatalf("DiscoverProjects() errors = %d, want 1", len(result.Errors))
-	}
-	if !strings.Contains(result.Errors[0].Error, "version 999 is unsupported; expected 1") {
-		t.Fatalf("DiscoverProjects() error = %q, want unsupported version rejection", result.Errors[0].Error)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 0, result.Discovered)
+	require.Len(t, result.Errors, 1)
+	require.Contains(t, result.Errors[0].Error, "version 999 is unsupported; expected 1")
 
 	afterInfo, err := os.Stat(notePath)
-	if err != nil {
-		t.Fatalf("Stat(note after) error = %v", err)
-	}
-	if !afterInfo.ModTime().Equal(beforeInfo.ModTime()) {
-		t.Fatalf("note.md modtime changed: before %v after %v", beforeInfo.ModTime(), afterInfo.ModTime())
-	}
+	require.NoError(t, err)
+	require.True(t, afterInfo.ModTime().Equal(beforeInfo.ModTime()))
 
 	afterBody, err := os.ReadFile(notePath)
-	if err != nil {
-		t.Fatalf("ReadFile(note after) error = %v", err)
-	}
-	if string(afterBody) != string(noteBody) {
-		t.Fatalf("note.md content changed:\n%s", string(afterBody))
-	}
+	require.NoError(t, err)
+	require.Equal(t, string(noteBody), string(afterBody))
 }
 
 func writeDiscoverManifest(t *testing.T, projectRoot, name string, kind ManifestKind) error {
@@ -250,27 +175,17 @@ func assertDiscoverProjectRow(t *testing.T, db *sql.DB, projectID, memoriesAbs, 
 	t.Helper()
 
 	var gotMemoriesAbs, gotManifestAbs, gotSourceKind, gotKind string
-	if err := db.QueryRow(
+	require.NoError(t, db.QueryRow(
 		`SELECT l.memories_abs, COALESCE(l.manifest_abs, ''), l.source_kind, p.kind
 		 FROM projects p
 		 JOIN project_locations l ON l.project_id = p.project_id
 		 WHERE p.project_id = ? AND p.removed_at IS NULL`,
 		projectID,
-	).Scan(&gotMemoriesAbs, &gotManifestAbs, &gotSourceKind, &gotKind); err != nil {
-		t.Fatalf("query project row failed: %v", err)
-	}
-	if gotMemoriesAbs != memoriesAbs {
-		t.Fatalf("memories_abs = %q, want %q", gotMemoriesAbs, memoriesAbs)
-	}
-	if gotManifestAbs != manifestAbs {
-		t.Fatalf("manifest_abs = %q, want %q", gotManifestAbs, manifestAbs)
-	}
-	if gotSourceKind != string(registry.ProjectSourceKindDiscover) {
-		t.Fatalf("source_kind = %q, want %q", gotSourceKind, registry.ProjectSourceKindDiscover)
-	}
-	if gotKind != kind {
-		t.Fatalf("kind = %q, want %q", gotKind, kind)
-	}
+	).Scan(&gotMemoriesAbs, &gotManifestAbs, &gotSourceKind, &gotKind))
+	require.Equal(t, memoriesAbs, gotMemoriesAbs)
+	require.Equal(t, manifestAbs, gotManifestAbs)
+	require.Equal(t, string(registry.ProjectSourceKindDiscover), gotSourceKind)
+	require.Equal(t, kind, gotKind)
 }
 
 func projectIDForSlug(slug string) string {

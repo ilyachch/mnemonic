@@ -1,6 +1,10 @@
 package markdown
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func TestParseRelationsExtractsRelationTypesWikiLinksAndSources(t *testing.T) {
 	t.Parallel()
@@ -18,17 +22,11 @@ func TestParseRelationsExtractsRelationTypesWikiLinksAndSources(t *testing.T) {
 		"Outside [[Post Note]]\n")
 
 	refs := ParseRelations(input)
-	if got, want := len(refs), 6; got != want {
-		t.Fatalf("len(refs) = %d, want %d", got, want)
-	}
+	require.Len(t, refs, 6)
 
 	assertRelationRef := func(idx int, want RelationRef) {
 		t.Helper()
-
-		got := refs[idx]
-		if got != want {
-			t.Fatalf("refs[%d] = %#v, want %#v", idx, got, want)
-		}
+		require.Equal(t, want, refs[idx])
 	}
 
 	assertRelationRef(0, RelationRef{
@@ -68,7 +66,6 @@ func TestParseRelationsExtractsRelationTypesWikiLinksAndSources(t *testing.T) {
 func TestParseRelationsHandlesEmptyInput(t *testing.T) {
 	t.Parallel()
 
-	if refs := ParseRelations(nil); len(refs) != 0 {
-		t.Fatalf("ParseRelations(nil) = %#v, want empty", refs)
-	}
+	refs := ParseRelations(nil)
+	require.Empty(t, refs)
 }

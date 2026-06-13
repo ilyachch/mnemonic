@@ -2,8 +2,9 @@ package markdown
 
 import (
 	"bytes"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseFrontmatterWithBodyPreserved(t *testing.T) {
@@ -17,19 +18,13 @@ func TestParseFrontmatterWithBodyPreserved(t *testing.T) {
 		"Body\r\n")
 
 	parsed, err := ParseFrontmatter(input)
-	if err != nil {
-		t.Fatalf("ParseFrontmatter() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	wantMetadata := []byte("title: Example\r\ncount: 1\r\n")
-	if !bytes.Equal(parsed.Metadata, wantMetadata) {
-		t.Fatalf("Metadata = %q, want %q", parsed.Metadata, wantMetadata)
-	}
+	require.True(t, bytes.Equal(parsed.Metadata, wantMetadata))
 
 	wantBody := []byte("# Heading\r\nBody\r\n")
-	if !bytes.Equal(parsed.Body, wantBody) {
-		t.Fatalf("Body = %q, want %q", parsed.Body, wantBody)
-	}
+	require.True(t, bytes.Equal(parsed.Body, wantBody))
 }
 
 func TestParseFrontmatterWithoutFrontmatter(t *testing.T) {
@@ -38,16 +33,10 @@ func TestParseFrontmatterWithoutFrontmatter(t *testing.T) {
 	input := []byte("# Heading\n---\nnot frontmatter\n")
 
 	parsed, err := ParseFrontmatter(input)
-	if err != nil {
-		t.Fatalf("ParseFrontmatter() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	if len(parsed.Metadata) != 0 {
-		t.Fatalf("Metadata = %q, want empty", parsed.Metadata)
-	}
-	if !bytes.Equal(parsed.Body, input) {
-		t.Fatalf("Body = %q, want %q", parsed.Body, input)
-	}
+	require.Empty(t, parsed.Metadata)
+	require.True(t, bytes.Equal(parsed.Body, input))
 }
 
 func TestParseFrontmatterIgnoresLeadingBlankLines(t *testing.T) {
@@ -59,16 +48,10 @@ func TestParseFrontmatterIgnoresLeadingBlankLines(t *testing.T) {
 		"Body\n")
 
 	parsed, err := ParseFrontmatter(input)
-	if err != nil {
-		t.Fatalf("ParseFrontmatter() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	if len(parsed.Metadata) != 0 {
-		t.Fatalf("Metadata = %q, want empty", parsed.Metadata)
-	}
-	if !bytes.Equal(parsed.Body, input) {
-		t.Fatalf("Body = %q, want %q", parsed.Body, input)
-	}
+	require.Empty(t, parsed.Metadata)
+	require.True(t, bytes.Equal(parsed.Body, input))
 }
 
 func TestParseFrontmatterRejectsUnclosedFrontmatter(t *testing.T) {
@@ -77,10 +60,6 @@ func TestParseFrontmatterRejectsUnclosedFrontmatter(t *testing.T) {
 	_, err := ParseFrontmatter([]byte("---\n" +
 		"title: Example\n" +
 		"# Heading\n"))
-	if err == nil {
-		t.Fatal("ParseFrontmatter() error = nil, want unclosed frontmatter error")
-	}
-	if !strings.Contains(err.Error(), "unclosed frontmatter") {
-		t.Fatalf("ParseFrontmatter() error = %q, want unclosed frontmatter error", err)
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unclosed frontmatter")
 }

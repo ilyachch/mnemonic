@@ -5,18 +5,16 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestBasicMemoryFixturesParse(t *testing.T) {
 	t.Parallel()
 
 	paths, err := filepath.Glob(filepath.Join("testdata", "basic-memory", "*.md"))
-	if err != nil {
-		t.Fatalf("filepath.Glob() error = %v", err)
-	}
-	if len(paths) == 0 {
-		t.Fatal("no Basic Memory fixtures found")
-	}
+	require.NoError(t, err)
+	require.NotEmpty(t, paths)
 
 	for _, path := range paths {
 		path := path
@@ -24,39 +22,23 @@ func TestBasicMemoryFixturesParse(t *testing.T) {
 			t.Parallel()
 
 			data, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatalf("os.ReadFile(%q) error = %v", path, err)
-			}
+			require.NoError(t, err)
 
 			note, err := ParseNote(data)
-			if err != nil {
-				t.Fatalf("ParseNote(%q) error = %v", path, err)
-			}
-			if len(note.Body) == 0 {
-				t.Fatalf("ParseNote(%q) returned empty body", path)
-			}
+			require.NoError(t, err)
+			require.NotEmpty(t, note.Body)
 
 			switch {
 			case strings.Contains(path, "permalink"):
-				if note.Permalink == "" {
-					t.Fatalf("ParseNote(%q) permalink = empty", path)
-				}
-				if note.Slug != note.Permalink {
-					t.Fatalf("ParseNote(%q) Slug = %q, want permalink fallback %q", path, note.Slug, note.Permalink)
-				}
+				require.NotEmpty(t, note.Permalink)
+				require.Equal(t, note.Permalink, note.Slug)
 			case strings.Contains(path, "observations"):
 				observations := ParseObservations(note.Body)
-				if len(observations) == 0 {
-					t.Fatalf("ParseObservations(%q) returned no observations", path)
-				}
-				if len(observations[0].Tags) == 0 {
-					t.Fatalf("ParseObservations(%q) did not extract inline tags from observations", path)
-				}
+				require.NotEmpty(t, observations)
+				require.NotEmpty(t, observations[0].Tags)
 			case strings.Contains(path, "relations"):
 				refs := ParseRelations(note.Body)
-				if len(refs) == 0 {
-					t.Fatalf("ParseRelations(%q) returned no relations", path)
-				}
+				require.NotEmpty(t, refs)
 				var hasRelationsSection bool
 				var hasWikiLink bool
 				for _, ref := range refs {
@@ -67,12 +49,8 @@ func TestBasicMemoryFixturesParse(t *testing.T) {
 						hasWikiLink = true
 					}
 				}
-				if !hasRelationsSection {
-					t.Fatalf("ParseRelations(%q) did not mark relations-section links", path)
-				}
-				if !hasWikiLink {
-					t.Fatalf("ParseRelations(%q) did not preserve plain wiki links", path)
-				}
+				require.True(t, hasRelationsSection)
+				require.True(t, hasWikiLink)
 			}
 		})
 	}

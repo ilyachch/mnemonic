@@ -4,20 +4,20 @@
       "destructiveHint": false,
       "openWorldHint": false
     },
-    "description": "Create a note in the current project",
+    "description": "Save new durable knowledge (workflows, preferences, facts).\nYOU MUST persist learned context for future use. Search first to avoid duplicates (use 'edit_note' if related context exists). Do NOT save secrets or chat logs.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "body": {
-          "description": "optional note body",
+          "description": "Markdown body with verified durable knowledge, context, and useful links. Do not include secrets, guesses, or temporary chat details.",
           "type": "string"
         },
         "path": {
-          "description": "optional relative note path",
+          "description": "Optional relative path under the project memory root.",
           "type": "string"
         },
         "tags": {
-          "description": "optional note tags",
+          "description": "Optional project memory tags. Prefer existing tag conventions.",
           "items": {
             "type": "string"
           },
@@ -27,11 +27,11 @@
           ]
         },
         "title": {
-          "description": "note title",
+          "description": "Clear title for durable project knowledge.",
           "type": "string"
         },
         "type": {
-          "description": "optional note type",
+          "description": "Optional note type, such as decision, convention, architecture, bug, setup, api, integration, or task-outcome.",
           "type": "string"
         }
       },
@@ -71,20 +71,20 @@
       "destructiveHint": true,
       "openWorldHint": false
     },
-    "description": "Delete a note in the current project",
+    "description": "Delete permanently obsolete or duplicated notes.\nRead first. Prefer 'edit_note' (e.g., adding a deprecation warning) unless deletion is strictly required.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "hard_delete": {
-          "description": "delete permanently instead of moving to trash",
+          "description": "Delete permanently instead of moving to trash.",
           "type": "boolean"
         },
         "identifier": {
-          "description": "note identifier",
+          "description": "Existing note id, slug, path, or title.",
           "type": "string"
         },
         "if_match_hash": {
-          "description": "require the current content hash to match",
+          "description": "Content hash from read_note for safe deletion.",
           "type": "string"
         }
       },
@@ -122,31 +122,31 @@
       "destructiveHint": true,
       "openWorldHint": false
     },
-    "description": "Edit a note in the current project",
+    "description": "Update existing notes when knowledge evolves.\nYOU MUST keep memory accurate. Read the note first to get 'content_hash', then pass it as 'if_match_hash'.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "append": {
-          "description": "append text to the note body",
+          "description": "Markdown text to append with new durable information.",
           "type": "string"
         },
         "identifier": {
-          "description": "note identifier",
+          "description": "Existing note id, slug, path, or title.",
           "type": "string"
         },
         "if_match_hash": {
-          "description": "require the current content hash to match",
+          "description": "Content hash from read_note for safe updates.",
           "type": "string"
         },
         "merge_frontmatter": {
           "additionalProperties": {
             "type": "string"
           },
-          "description": "merge frontmatter fields",
+          "description": "Frontmatter fields to merge, such as status, type, or summary.",
           "type": "object"
         },
         "replace_body": {
-          "description": "replace the note body",
+          "description": "Full replacement body. Use only when safer than appending.",
           "type": "string"
         }
       },
@@ -193,16 +193,16 @@
     "annotations": {
       "readOnlyHint": true
     },
-    "description": "List backlinks for a note",
+    "description": "List notes linking to a target note.\nUse to check dependencies and impact before editing or deleting important knowledge.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "identifier": {
-          "description": "note identifier",
+          "description": "Note id, slug, relative path, or exact title.",
           "type": "string"
         },
         "limit": {
-          "description": "maximum number of backlinks to return",
+          "description": "Maximum backlinks to return.",
           "type": "integer"
         }
       },
@@ -268,16 +268,16 @@
     "annotations": {
       "readOnlyHint": true
     },
-    "description": "List notes in the current project",
+    "description": "List all notes in this memory (paginated).\nUse to browse available knowledge. Prefer 'search_notes' for specific queries.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "cursor": {
-          "description": "pagination cursor",
+          "description": "Pagination cursor from a previous list_notes call.",
           "type": "string"
         },
         "limit": {
-          "description": "maximum number of notes to return",
+          "description": "Maximum notes to return.",
           "type": "integer"
         }
       },
@@ -339,12 +339,12 @@
     "annotations": {
       "readOnlyHint": true
     },
-    "description": "List tags in the current project",
+    "description": "List available tags.\nUse to understand categorization, ensure consistent tagging for new notes, or refine searches.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "limit": {
-          "description": "maximum number of tags to return",
+          "description": "Maximum tags to return.",
           "type": "integer"
         }
       },
@@ -387,12 +387,12 @@
     "annotations": {
       "readOnlyHint": true
     },
-    "description": "Read a note by identifier",
+    "description": "Read a note by note_id, slug, path, or title.\nAlways read before using, editing, or deleting a note. Returns 'content_hash', which is REQUIRED for safe edits/deletions.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "identifier": {
-          "description": "note identifier",
+          "description": "Note id, slug, relative path, or exact title.",
           "type": "string"
         }
       },
@@ -457,20 +457,20 @@
     "annotations": {
       "readOnlyHint": true
     },
-    "description": "Search notes in the current project",
+    "description": "Search this memory.\nYOU MUST search proactively before acting or asking questions to find existing rules, workflows, or preferences. Never ask the user for facts already stored. Read found notes before proceeding.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "limit": {
-          "description": "maximum number of hits to return",
+          "description": "Maximum hits to return. Use 5-10 for focused searches.",
           "type": "integer"
         },
         "query": {
-          "description": "full-text search query",
+          "description": "Natural language query or keywords. Include project entities such as features, bugs, decisions, files, modules, APIs, services, tickets, or architecture concepts.",
           "type": "string"
         },
         "tag": {
-          "description": "optional tag filter",
+          "description": "Optional tag filter when the topic is known.",
           "type": "string"
         }
       },

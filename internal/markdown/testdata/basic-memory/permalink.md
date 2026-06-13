@@ -10,4 +10,3 @@ type: note
 # Session storage redesign
 
 This note uses legacy Basic Memory permalink frontmatter.
-

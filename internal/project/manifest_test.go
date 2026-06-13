@@ -2,9 +2,10 @@ package project
 
 import (
 	"reflect"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestMnemonicManifestDefaults(t *testing.T) {
@@ -12,15 +13,9 @@ func TestMnemonicManifestDefaults(t *testing.T) {
 
 	manifest := NewMnemonicManifest()
 
-	if manifest.Version != 1 {
-		t.Fatalf("Version = %d, want 1", manifest.Version)
-	}
-	if got, want := manifest.Layout.NotesGlob, []string{"**/*.md"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("Layout.NotesGlob = %#v, want %#v", got, want)
-	}
-	if got, want := manifest.Layout.Ignore, []string{"mnemonic.toml", ".trash/**"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("Layout.Ignore = %#v, want %#v", got, want)
-	}
+	require.Equal(t, 1, manifest.Version)
+	require.True(t, reflect.DeepEqual(manifest.Layout.NotesGlob, []string{"**/*.md"}))
+	require.True(t, reflect.DeepEqual(manifest.Layout.Ignore, []string{"mnemonic.toml", ".trash/**"}))
 }
 
 func TestMnemonicManifestRoundTrip(t *testing.T) {
@@ -46,18 +41,12 @@ func TestMnemonicManifestRoundTrip(t *testing.T) {
 	}
 
 	data, err := original.MarshalTOML()
-	if err != nil {
-		t.Fatalf("MarshalTOML() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	parsed, err := ParseMnemonicManifest(data)
-	if err != nil {
-		t.Fatalf("ParseMnemonicManifest() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	if !reflect.DeepEqual(parsed, original) {
-		t.Fatalf("roundtrip mismatch\noriginal: %#v\nparsed: %#v\ntext:\n%s", original, parsed, string(data))
-	}
+	require.True(t, reflect.DeepEqual(parsed, original))
 }
 
 func TestMnemonicManifestDefaultsWhenParsing(t *testing.T) {
@@ -76,16 +65,10 @@ updated_at = "2026-06-02T10:05:00Z"
 app = "mnemonic"
 app_version = "0.1.0-dev"
 `))
-	if err != nil {
-		t.Fatalf("ParseMnemonicManifest() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	if got, want := parsed.Layout.NotesGlob, []string{"**/*.md"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("Layout.NotesGlob = %#v, want %#v", got, want)
-	}
-	if got, want := parsed.Layout.Ignore, []string{"mnemonic.toml", ".trash/**"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("Layout.Ignore = %#v, want %#v", got, want)
-	}
+	require.True(t, reflect.DeepEqual(parsed.Layout.NotesGlob, []string{"**/*.md"}))
+	require.True(t, reflect.DeepEqual(parsed.Layout.Ignore, []string{"mnemonic.toml", ".trash/**"}))
 }
 
 func TestMnemonicManifestRejectsUnsupportedVersion(t *testing.T) {
@@ -100,12 +83,8 @@ markdown_format_version = 1
 created_at = "2026-06-02T10:00:00Z"
 updated_at = "2026-06-02T10:05:00Z"
 `))
-	if err == nil {
-		t.Fatal("ParseMnemonicManifest() error = nil, want unsupported version rejection")
-	}
-	if !strings.Contains(err.Error(), "version 999 is unsupported; expected 1") {
-		t.Fatalf("ParseMnemonicManifest() error = %q, want unsupported version rejection", err)
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "version 999 is unsupported; expected 1")
 }
 
 func TestMnemonicManifestValidateAllowsRegularAndDetached(t *testing.T) {
@@ -136,9 +115,7 @@ func TestMnemonicManifestValidateAllowsRegularAndDetached(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if err := base(tt.kind).Validate(); err != nil {
-				t.Fatalf("Validate() error = %v", err)
-			}
+			require.NoError(t, base(tt.kind).Validate())
 		})
 	}
 }
@@ -156,12 +133,8 @@ func TestMnemonicManifestRejectsLocalKind(t *testing.T) {
 	manifest.UpdatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
 
 	err := manifest.Validate()
-	if err == nil {
-		t.Fatal("Validate() error = nil, want local kind rejection")
-	}
-	if !strings.Contains(err.Error(), `kind "local" is not allowed`) {
-		t.Fatalf("Validate() error = %q, want local kind rejection", err)
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `kind "local" is not allowed`)
 }
 
 func TestMnemonicManifestRequiresFields(t *testing.T) {
@@ -225,12 +198,8 @@ func TestMnemonicManifestRequiresFields(t *testing.T) {
 			tt.mutate(manifest)
 
 			err := manifest.Validate()
-			if err == nil {
-				t.Fatalf("Validate() error = nil, want %s", tt.wantErr)
-			}
-			if !strings.Contains(err.Error(), tt.wantErr) {
-				t.Fatalf("Validate() error = %q, want %q", err, tt.wantErr)
-			}
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
 }

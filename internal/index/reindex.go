@@ -119,9 +119,7 @@ func ScanNotes(root string) ([]NoteDoc, []error, error) {
 		}
 		var searchable []string
 		searchable = append(searchable, note.Title, string(note.Body))
-		for _, t := range note.Tags {
-			searchable = append(searchable, t)
-		}
+		searchable = append(searchable, note.Tags...)
 		for _, ob := range info.Observations {
 			searchable = append(searchable, ob.Category, ob.Content)
 		}

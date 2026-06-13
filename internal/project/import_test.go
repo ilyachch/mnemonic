@@ -10,196 +10,122 @@ import (
 	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/ilyachch/mnemonic/internal/testutil"
+	"github.com/stretchr/testify/require"
 )
 
 func TestResolveImportPathDefaultsToDot(t *testing.T) {
 	cwd := t.TempDir()
 	originalWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd() error = %v", err)
-	}
-	if err := os.Chdir(cwd); err != nil {
-		t.Fatalf("Chdir() error = %v", err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(cwd))
 	t.Cleanup(func() {
 		_ = os.Chdir(originalWD)
 	})
 
 	got, err := ResolveImportPath(ImportInput{})
-	if err != nil {
-		t.Fatalf("ResolveImportPath() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	want := cwd
-	if got != want {
-		t.Fatalf("ResolveImportPath() = %q, want %q", got, want)
-	}
+	require.Equal(t, cwd, got)
 }
 
 func TestResolveImportPathNormalizesRelativePath(t *testing.T) {
 	cwd := t.TempDir()
 	target := filepath.Join(cwd, "notes")
-	if err := os.MkdirAll(target, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(target, 0o755))
 
 	originalWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd() error = %v", err)
-	}
-	if err := os.Chdir(cwd); err != nil {
-		t.Fatalf("Chdir() error = %v", err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(cwd))
 	t.Cleanup(func() {
 		_ = os.Chdir(originalWD)
 	})
 
 	got, err := ResolveImportPath(ImportInput{Path: "notes"})
-	if err != nil {
-		t.Fatalf("ResolveImportPath() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	if got != target {
-		t.Fatalf("ResolveImportPath() = %q, want %q", got, target)
-	}
+	require.Equal(t, target, got)
 }
 
 func TestResolveImportPathReturnsNotFoundForMissingPath(t *testing.T) {
 	cwd := t.TempDir()
 	originalWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd() error = %v", err)
-	}
-	if err := os.Chdir(cwd); err != nil {
-		t.Fatalf("Chdir() error = %v", err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(cwd))
 	t.Cleanup(func() {
 		_ = os.Chdir(originalWD)
 	})
 
 	_, err = ResolveImportPath(ImportInput{Path: "missing"})
-	if err == nil {
-		t.Fatal("ResolveImportPath() error = nil, want not found")
-	}
+	require.Error(t, err)
 	var appErr *app.AppError
-	if !errors.As(err, &appErr) {
-		t.Fatalf("ResolveImportPath() error = %v, want app error", err)
-	}
-	if appErr.Code != app.CodeNotFound {
-		t.Fatalf("exit code = %d, want %d", appErr.Code, app.CodeNotFound)
-	}
+	require.True(t, errors.As(err, &appErr))
+	require.Equal(t, app.CodeNotFound, appErr.Code)
 }
 
 func TestImportProjectFindsNearestMnemonicFileFromSubdirectory(t *testing.T) {
 	cwd := testutil.CleanEnvForTest(t)
 	repoRoot := filepath.Join(cwd, "repo")
 	subdir := filepath.Join(repoRoot, "sub", "dir")
-	if err := os.MkdirAll(subdir, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(subdir, 0o755))
 
 	writeImportMnemonicFile(t, filepath.Join(repoRoot, ".mnemonic"), "backend")
 
 	result, err := ImportProject(ImportInput{Path: subdir})
-	if err != nil {
-		t.Fatalf("ImportProject() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	if result.Path != subdir {
-		t.Fatalf("ImportProject() path = %q, want %q", result.Path, subdir)
-	}
-	if result.Imported != 1 {
-		t.Fatalf("ImportProject() imported = %d, want 1", result.Imported)
-	}
-	if result.CopiedFiles != 0 {
-		t.Fatalf("ImportProject() copied_files = %d, want 0", result.CopiedFiles)
-	}
-	if result.Indexed != 0 {
-		t.Fatalf("ImportProject() indexed = %d, want 0", result.Indexed)
-	}
+	require.Equal(t, subdir, result.Path)
+	require.Equal(t, 1, result.Imported)
+	require.Equal(t, 0, result.CopiedFiles)
+	require.Equal(t, 0, result.Indexed)
 
 	db, err := registry.OpenDB()
-	if err != nil {
-		t.Fatalf("OpenDB() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer func() {
 		_ = db.Close()
 	}()
-	if err := registry.ApplySchema(db); err != nil {
-		t.Fatalf("ApplySchema() error = %v", err)
-	}
+	require.NoError(t, registry.ApplySchema(db))
 
 	var count int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM projects WHERE removed_at IS NULL`).Scan(&count); err != nil {
-		t.Fatalf("QueryRow() error = %v", err)
-	}
-	if count != 1 {
-		t.Fatalf("project count = %d, want 1", count)
-	}
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM projects WHERE removed_at IS NULL`).Scan(&count))
+	require.Equal(t, 1, count)
 }
 
 func TestImportProjectDryRunReturnsCandidatesWithoutWritingRegistry(t *testing.T) {
 	cwd := testutil.CleanEnvForTest(t)
 	repoRoot := filepath.Join(cwd, "repo")
 	subdir := filepath.Join(repoRoot, "sub", "dir")
-	if err := os.MkdirAll(subdir, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(subdir, 0o755))
 
 	writeImportMnemonicFile(t, filepath.Join(repoRoot, ".mnemonic"), "backend")
 
 	result, err := ImportProject(ImportInput{Path: subdir, DryRun: true})
-	if err != nil {
-		t.Fatalf("ImportProject() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	if result.Imported != 1 {
-		t.Fatalf("ImportProject() imported = %d, want 1", result.Imported)
-	}
-	if result.CopiedFiles != 0 {
-		t.Fatalf("ImportProject() copied_files = %d, want 0", result.CopiedFiles)
-	}
-	if result.Indexed != 0 {
-		t.Fatalf("ImportProject() indexed = %d, want 0", result.Indexed)
-	}
-	if len(result.Candidates) != 1 {
-		t.Fatalf("ImportProject() candidates = %d, want 1", len(result.Candidates))
-	}
+	require.Equal(t, 1, result.Imported)
+	require.Equal(t, 0, result.CopiedFiles)
+	require.Equal(t, 0, result.Indexed)
+	require.Len(t, result.Candidates, 1)
 	candidate := result.Candidates[0]
-	if candidate.Slug != "backend" {
-		t.Fatalf("candidate slug = %q, want backend", candidate.Slug)
-	}
-	if candidate.MnemonicFileAbs != filepath.Join(repoRoot, ".mnemonic") {
-		t.Fatalf("candidate mnemonic_file_abs = %q, want %q", candidate.MnemonicFileAbs, filepath.Join(repoRoot, ".mnemonic"))
-	}
+	require.Equal(t, "backend", candidate.Slug)
+	require.Equal(t, filepath.Join(repoRoot, ".mnemonic"), candidate.MnemonicFileAbs)
 
 	db, err := registry.OpenDB()
-	if err != nil {
-		t.Fatalf("OpenDB() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer func() {
 		_ = db.Close()
 	}()
-	if err := registry.ApplySchema(db); err != nil {
-		t.Fatalf("ApplySchema() error = %v", err)
-	}
+	require.NoError(t, registry.ApplySchema(db))
 
 	var count int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM projects WHERE removed_at IS NULL`).Scan(&count); err != nil {
-		t.Fatalf("QueryRow() error = %v", err)
-	}
-	if count != 0 {
-		t.Fatalf("project count = %d, want 0", count)
-	}
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM projects WHERE removed_at IS NULL`).Scan(&count))
+	require.Equal(t, 0, count)
 }
 
 func TestImportProjectSkipsNonLocalProjects(t *testing.T) {
 	cwd := testutil.CleanEnvForTest(t)
 	repoRoot := filepath.Join(cwd, "repo")
 	subdir := filepath.Join(repoRoot, "sub")
-	if err := os.MkdirAll(subdir, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(subdir, 0o755))
 
 	mixed := &MnemonicFile{
 		Version:   1,
@@ -228,36 +154,22 @@ func TestImportProjectSkipsNonLocalProjects(t *testing.T) {
 			},
 		},
 	}
-	if err := WriteMnemonicFile(filepath.Join(repoRoot, ".mnemonic"), mixed); err != nil {
-		t.Fatalf("WriteMnemonicFile() error = %v", err)
-	}
+	require.NoError(t, WriteMnemonicFile(filepath.Join(repoRoot, ".mnemonic"), mixed))
 
 	result, err := ImportProject(ImportInput{Path: subdir})
-	if err != nil {
-		t.Fatalf("ImportProject() error = %v", err)
-	}
-	if result.Imported != 1 {
-		t.Fatalf("ImportProject() imported = %d, want 1", result.Imported)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 1, result.Imported)
 
 	db, err := registry.OpenDB()
-	if err != nil {
-		t.Fatalf("OpenDB() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer func() {
 		_ = db.Close()
 	}()
-	if err := registry.ApplySchema(db); err != nil {
-		t.Fatalf("ApplySchema() error = %v", err)
-	}
+	require.NoError(t, registry.ApplySchema(db))
 
 	var count int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM projects WHERE removed_at IS NULL`).Scan(&count); err != nil {
-		t.Fatalf("QueryRow() error = %v", err)
-	}
-	if count != 1 {
-		t.Fatalf("project count = %d, want 1", count)
-	}
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM projects WHERE removed_at IS NULL`).Scan(&count))
+	require.Equal(t, 1, count)
 }
 
 func writeImportMnemonicFile(t *testing.T, path string, slug string) {
@@ -280,7 +192,5 @@ func writeImportMnemonicFile(t *testing.T, path string, slug string) {
 			},
 		},
 	}
-	if err := WriteMnemonicFile(path, file); err != nil {
-		t.Fatalf("WriteMnemonicFile() error = %v", err)
-	}
+	require.NoError(t, WriteMnemonicFile(path, file))
 }

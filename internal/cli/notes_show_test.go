@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/ilyachch/mnemonic/internal/markdown"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
@@ -22,7 +24,7 @@ func TestNotesShowCommandReturnsJSONAndHumanOutput(t *testing.T) {
 	restoreClock := project.SetClock(clock)
 	defer restoreClock()
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
@@ -36,21 +38,13 @@ func TestNotesShowCommandReturnsJSONAndHumanOutput(t *testing.T) {
 		Body:           []byte("## Summary\n\nPlan.\n"),
 	}
 	rendered, err := markdown.RenderNote(note)
-	if err != nil {
-		t.Fatalf("RenderNote() error = %v", err)
-	}
+	require.NoError(t, err)
 	notePath := filepath.Join(projectRoot, ".mnemonic-memories", "personal", "auth-migration.md")
-	if err := os.MkdirAll(filepath.Dir(notePath), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(notePath, rendered, 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(notePath), 0o755))
+	require.NoError(t, os.WriteFile(notePath, rendered, 0o644))
 
 	jsonResult := executeCommand("notes", "show", "auth-migration", "--project", "personal", "--json")
-	if jsonResult.Err != nil {
-		t.Fatalf("notes show json returned error: %v\nstderr: %s", jsonResult.Err, jsonResult.Stderr)
-	}
+	require.NoError(t, jsonResult.Err, "stderr: %s", jsonResult.Stderr)
 
 	var got struct {
 		Note struct {
@@ -64,43 +58,25 @@ func TestNotesShowCommandReturnsJSONAndHumanOutput(t *testing.T) {
 			UpdatedAt   string         `json:"updated_at"`
 		} `json:"note"`
 	}
-	if err := json.Unmarshal([]byte(jsonResult.Stdout), &got); err != nil {
-		t.Fatalf("json.Unmarshal() error = %v\nstdout: %s", err, jsonResult.Stdout)
-	}
-	if got.Note.NoteID != "550e8400-e29b-41d4-a716-446655440000" {
-		t.Fatalf("note_id = %q", got.Note.NoteID)
-	}
-	if got.Note.Path != "auth-migration.md" {
-		t.Fatalf("path = %q", got.Note.Path)
-	}
-	if got.Note.Body != string(note.Body) {
-		t.Fatalf("body = %q, want %q", got.Note.Body, string(note.Body))
-	}
-	if got.Note.ContentHash == "" {
-		t.Fatal("content_hash is empty")
-	}
+	require.NoError(t, json.Unmarshal([]byte(jsonResult.Stdout), &got), "stdout: %s", jsonResult.Stdout)
+	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", got.Note.NoteID)
+	require.Equal(t, "auth-migration.md", got.Note.Path)
+	require.Equal(t, string(note.Body), got.Note.Body)
+	require.NotEmpty(t, got.Note.ContentHash)
 
 	humanResult := executeCommand("notes", "show", "auth-migration", "--project", "personal")
-	if humanResult.Err != nil {
-		t.Fatalf("notes show human returned error: %v\nstderr: %s", humanResult.Err, humanResult.Stderr)
-	}
-	if humanResult.Stdout != string(rendered) {
-		t.Fatalf("stdout = %q, want %q", humanResult.Stdout, string(rendered))
-	}
+	require.NoError(t, humanResult.Err, "stderr: %s", humanResult.Stderr)
+	require.Equal(t, string(rendered), humanResult.Stdout)
 }
 
 func TestNotesShowCommandMissingSelector(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
 	result := executeCommand("notes", "show", "missing", "--project", "personal", "--json")
-	if result.Err == nil {
-		t.Fatal("notes show error = nil, want not found error")
-	}
-	if ExitCodeForError(result.Err) != 3 {
-		t.Fatalf("exit code = %d, want 3", ExitCodeForError(result.Err))
-	}
+	require.Error(t, result.Err)
+	require.Equal(t, 3, ExitCodeForError(result.Err))
 }

@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/ilyachch/mnemonic/internal/markdown"
 	"github.com/ilyachch/mnemonic/internal/project"
@@ -23,7 +24,7 @@ func TestNotesEditCommandAppendsBodyAndUpdatesTimestamp(t *testing.T) {
 	restoreClock := project.SetClock(clock)
 	defer restoreClock()
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
@@ -36,24 +37,16 @@ func TestNotesEditCommandAppendsBodyAndUpdatesTimestamp(t *testing.T) {
 		Body:           []byte("## Summary\n"),
 	}
 	rendered, err := markdown.RenderNote(initial)
-	if err != nil {
-		t.Fatalf("RenderNote() error = %v", err)
-	}
+	require.NoError(t, err)
 	notePath := filepath.Join(projectRoot, ".mnemonic-memories", "personal", "auth-migration.md")
-	if err := os.MkdirAll(filepath.Dir(notePath), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(notePath, rendered, 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(notePath), 0o755))
+	require.NoError(t, os.WriteFile(notePath, rendered, 0o644))
 
 	restoreEditClock := project.SetClock(testutil.NewClock(time.Date(2026, time.June, 2, 12, 35, 56, 0, time.UTC)))
 	defer restoreEditClock()
 
 	editResult := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--append", "Next step", "--json")
-	if editResult.Err != nil {
-		t.Fatalf("notes edit returned error: %v\nstderr: %s", editResult.Err, editResult.Stderr)
-	}
+	require.NoError(t, editResult.Err, "stderr: %s", editResult.Stderr)
 
 	var got struct {
 		Note struct {
@@ -65,32 +58,16 @@ func TestNotesEditCommandAppendsBodyAndUpdatesTimestamp(t *testing.T) {
 		} `json:"note"`
 	}
 	showResult := executeCommand("notes", "show", "auth-migration", "--project", "personal", "--json")
-	if showResult.Err != nil {
-		t.Fatalf("notes show returned error: %v\nstderr: %s", showResult.Err, showResult.Stderr)
-	}
-	if err := json.Unmarshal([]byte(showResult.Stdout), &got); err != nil {
-		t.Fatalf("json.Unmarshal() error = %v\nstdout: %s", err, showResult.Stdout)
-	}
-	if got.Note.Body != "## Summary\nNext step" {
-		t.Fatalf("body = %q", got.Note.Body)
-	}
-	if got.Note.ContentHash == "" {
-		t.Fatal("content_hash is empty")
-	}
+	require.NoError(t, showResult.Err, "stderr: %s", showResult.Stderr)
+	require.NoError(t, json.Unmarshal([]byte(showResult.Stdout), &got), "stdout: %s", showResult.Stdout)
+	require.Equal(t, "## Summary\nNext step", got.Note.Body)
+	require.NotEmpty(t, got.Note.ContentHash)
 
 	parsed, err := markdown.ParseNote(readNoteFile(t, notePath))
-	if err != nil {
-		t.Fatalf("ParseNote() error = %v", err)
-	}
-	if got.Note.Body != "## Summary\nNext step" {
-		t.Fatalf("body = %q", got.Note.Body)
-	}
-	if parsed.CreatedAt.UTC().Format(time.RFC3339) != "2026-06-02T12:34:56Z" {
-		t.Fatalf("created_at = %s", parsed.CreatedAt)
-	}
-	if parsed.UpdatedAt.UTC().Format(time.RFC3339) != "2026-06-02T12:35:56Z" {
-		t.Fatalf("updated_at = %s", parsed.UpdatedAt)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "## Summary\nNext step", got.Note.Body)
+	require.Equal(t, "2026-06-02T12:34:56Z", parsed.CreatedAt.UTC().Format(time.RFC3339))
+	require.Equal(t, "2026-06-02T12:35:56Z", parsed.UpdatedAt.UTC().Format(time.RFC3339))
 }
 
 func TestNotesEditCommandReplacesBodyFromFile(t *testing.T) {
@@ -103,7 +80,7 @@ func TestNotesEditCommandReplacesBodyFromFile(t *testing.T) {
 	restoreClock := project.SetClock(clock)
 	defer restoreClock()
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
@@ -116,42 +93,24 @@ func TestNotesEditCommandReplacesBodyFromFile(t *testing.T) {
 		Body:           []byte("## Summary\n"),
 	}
 	rendered, err := markdown.RenderNote(initial)
-	if err != nil {
-		t.Fatalf("RenderNote() error = %v", err)
-	}
+	require.NoError(t, err)
 	notePath := filepath.Join(projectRoot, ".mnemonic-memories", "personal", "auth-migration.md")
-	if err := os.MkdirAll(filepath.Dir(notePath), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(notePath, rendered, 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(notePath), 0o755))
+	require.NoError(t, os.WriteFile(notePath, rendered, 0o644))
 	bodyFile := filepath.Join(projectRoot, "body.md")
-	if err := os.WriteFile(bodyFile, []byte("Replacement body\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile() body error = %v", err)
-	}
+	require.NoError(t, os.WriteFile(bodyFile, []byte("Replacement body\n"), 0o644))
 
 	restoreEditClock := project.SetClock(testutil.NewClock(time.Date(2026, time.June, 2, 12, 35, 56, 0, time.UTC)))
 	defer restoreEditClock()
 
 	result := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--body-file", bodyFile, "--json")
-	if result.Err != nil {
-		t.Fatalf("notes edit returned error: %v\nstderr: %s", result.Err, result.Stderr)
-	}
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 
 	parsed, err := markdown.ParseNote(readNoteFile(t, notePath))
-	if err != nil {
-		t.Fatalf("ParseNote() error = %v", err)
-	}
-	if string(parsed.Body) != "Replacement body\n" {
-		t.Fatalf("body = %q", parsed.Body)
-	}
-	if parsed.CreatedAt.UTC().Format(time.RFC3339) != "2026-06-02T12:34:56Z" {
-		t.Fatalf("created_at = %s", parsed.CreatedAt)
-	}
-	if parsed.UpdatedAt.UTC().Format(time.RFC3339) != "2026-06-02T12:35:56Z" {
-		t.Fatalf("updated_at = %s", parsed.UpdatedAt)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "Replacement body\n", string(parsed.Body))
+	require.Equal(t, "2026-06-02T12:34:56Z", parsed.CreatedAt.UTC().Format(time.RFC3339))
+	require.Equal(t, "2026-06-02T12:35:56Z", parsed.UpdatedAt.UTC().Format(time.RFC3339))
 }
 
 func TestNotesEditCommandAllowsEmptyBodyFile(t *testing.T) {
@@ -164,7 +123,7 @@ func TestNotesEditCommandAllowsEmptyBodyFile(t *testing.T) {
 	restoreClock := project.SetClock(clock)
 	defer restoreClock()
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
@@ -177,42 +136,24 @@ func TestNotesEditCommandAllowsEmptyBodyFile(t *testing.T) {
 		Body:           []byte("## Summary\n"),
 	}
 	rendered, err := markdown.RenderNote(initial)
-	if err != nil {
-		t.Fatalf("RenderNote() error = %v", err)
-	}
+	require.NoError(t, err)
 	notePath := filepath.Join(projectRoot, ".mnemonic-memories", "personal", "auth-migration.md")
-	if err := os.MkdirAll(filepath.Dir(notePath), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(notePath, rendered, 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(notePath), 0o755))
+	require.NoError(t, os.WriteFile(notePath, rendered, 0o644))
 	bodyFile := filepath.Join(projectRoot, "body.md")
-	if err := os.WriteFile(bodyFile, nil, 0o644); err != nil {
-		t.Fatalf("WriteFile() body error = %v", err)
-	}
+	require.NoError(t, os.WriteFile(bodyFile, nil, 0o644))
 
 	restoreEditClock := project.SetClock(testutil.NewClock(time.Date(2026, time.June, 2, 12, 35, 56, 0, time.UTC)))
 	defer restoreEditClock()
 
 	result := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--body-file", bodyFile, "--json")
-	if result.Err != nil {
-		t.Fatalf("notes edit returned error: %v\nstderr: %s", result.Err, result.Stderr)
-	}
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 
 	parsed, err := markdown.ParseNote(readNoteFile(t, notePath))
-	if err != nil {
-		t.Fatalf("ParseNote() error = %v", err)
-	}
-	if len(parsed.Body) != 0 {
-		t.Fatalf("body = %q, want empty", parsed.Body)
-	}
-	if parsed.CreatedAt.UTC().Format(time.RFC3339) != "2026-06-02T12:34:56Z" {
-		t.Fatalf("created_at = %s", parsed.CreatedAt)
-	}
-	if parsed.UpdatedAt.UTC().Format(time.RFC3339) != "2026-06-02T12:35:56Z" {
-		t.Fatalf("updated_at = %s", parsed.UpdatedAt)
-	}
+	require.NoError(t, err)
+	require.Empty(t, parsed.Body)
+	require.Equal(t, "2026-06-02T12:34:56Z", parsed.CreatedAt.UTC().Format(time.RFC3339))
+	require.Equal(t, "2026-06-02T12:35:56Z", parsed.UpdatedAt.UTC().Format(time.RFC3339))
 }
 
 func TestNotesEditCommandSetsFrontmatterField(t *testing.T) {
@@ -225,7 +166,7 @@ func TestNotesEditCommandSetsFrontmatterField(t *testing.T) {
 	restoreClock := project.SetClock(clock)
 	defer restoreClock()
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
@@ -238,46 +179,32 @@ func TestNotesEditCommandSetsFrontmatterField(t *testing.T) {
 		Body:           []byte("## Summary\n"),
 	}
 	rendered, err := markdown.RenderNote(note)
-	if err != nil {
-		t.Fatalf("RenderNote() error = %v", err)
-	}
+	require.NoError(t, err)
 	notePath := filepath.Join(projectRoot, ".mnemonic-memories", "personal", "auth-migration.md")
-	if err := os.MkdirAll(filepath.Dir(notePath), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(notePath, rendered, 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(notePath), 0o755))
+	require.NoError(t, os.WriteFile(notePath, rendered, 0o644))
 
 	restoreEditClock := project.SetClock(testutil.NewClock(time.Date(2026, time.June, 2, 12, 35, 56, 0, time.UTC)))
 	defer restoreEditClock()
 
 	result := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--set", "type=decision", "--json")
-	if result.Err != nil {
-		t.Fatalf("notes edit returned error: %v\nstderr: %s", result.Err, result.Stderr)
-	}
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 
 	showResult := executeCommand("notes", "show", "auth-migration", "--project", "personal", "--json")
-	if showResult.Err != nil {
-		t.Fatalf("notes show returned error: %v\nstderr: %s", showResult.Err, showResult.Stderr)
-	}
+	require.NoError(t, showResult.Err, "stderr: %s", showResult.Stderr)
 	var got struct {
 		Note struct {
 			Frontmatter map[string]any `json:"frontmatter"`
 		} `json:"note"`
 	}
-	if err := json.Unmarshal([]byte(showResult.Stdout), &got); err != nil {
-		t.Fatalf("json.Unmarshal() error = %v\nstdout: %s", err, showResult.Stdout)
-	}
-	if got.Note.Frontmatter["type"] != "decision" {
-		t.Fatalf("frontmatter[type] = %#v", got.Note.Frontmatter["type"])
-	}
+	require.NoError(t, json.Unmarshal([]byte(showResult.Stdout), &got), "stdout: %s", showResult.Stdout)
+	require.Equal(t, "decision", got.Note.Frontmatter["type"])
 }
 
 func TestNotesEditCommandRejectsProtectedFrontmatterField(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
@@ -290,29 +217,17 @@ func TestNotesEditCommandRejectsProtectedFrontmatterField(t *testing.T) {
 		Body:           []byte("## Summary\n"),
 	}
 	rendered, err := markdown.RenderNote(initial)
-	if err != nil {
-		t.Fatalf("RenderNote() error = %v", err)
-	}
+	require.NoError(t, err)
 	notePath := filepath.Join(projectRoot, ".mnemonic-memories", "personal", "auth-migration.md")
-	if err := os.MkdirAll(filepath.Dir(notePath), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(notePath, rendered, 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(notePath), 0o755))
+	require.NoError(t, os.WriteFile(notePath, rendered, 0o644))
 
 	bodyFile := filepath.Join(projectRoot, "body.md")
-	if err := os.WriteFile(bodyFile, []byte("replacement\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
+	require.NoError(t, os.WriteFile(bodyFile, []byte("replacement\n"), 0o644))
 
 	result := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--body-file", bodyFile, "--set", "created_at=2026-06-02T12:00:00Z", "--json")
-	if result.Err == nil {
-		t.Fatal("notes edit error = nil, want unsafe error")
-	}
-	if ExitCodeForError(result.Err) != 5 {
-		t.Fatalf("exit code = %d, want 5", ExitCodeForError(result.Err))
-	}
+	require.Error(t, result.Err)
+	require.Equal(t, 5, ExitCodeForError(result.Err))
 }
 
 func TestNotesEditCommandEnforcesIfMatch(t *testing.T) {
@@ -324,7 +239,7 @@ func TestNotesEditCommandEnforcesIfMatch(t *testing.T) {
 	))
 	defer restoreClock()
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
@@ -337,64 +252,38 @@ func TestNotesEditCommandEnforcesIfMatch(t *testing.T) {
 		Body:           []byte("## Summary\n"),
 	}
 	rendered, err := markdown.RenderNote(initial)
-	if err != nil {
-		t.Fatalf("RenderNote() error = %v", err)
-	}
+	require.NoError(t, err)
 	notePath := filepath.Join(projectRoot, ".mnemonic-memories", "personal", "auth-migration.md")
-	if err := os.MkdirAll(filepath.Dir(notePath), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(notePath, rendered, 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(notePath), 0o755))
+	require.NoError(t, os.WriteFile(notePath, rendered, 0o644))
 
 	showResult := executeCommand("notes", "show", "auth-migration", "--project", "personal", "--json")
-	if showResult.Err != nil {
-		t.Fatalf("notes show returned error: %v\nstderr: %s", showResult.Err, showResult.Stderr)
-	}
+	require.NoError(t, showResult.Err, "stderr: %s", showResult.Stderr)
 	var showGot struct {
 		Note struct {
 			ContentHash string `json:"content_hash"`
 		} `json:"note"`
 	}
-	if err := json.Unmarshal([]byte(showResult.Stdout), &showGot); err != nil {
-		t.Fatalf("json.Unmarshal() error = %v\nstdout: %s", err, showResult.Stdout)
-	}
+	require.NoError(t, json.Unmarshal([]byte(showResult.Stdout), &showGot), "stdout: %s", showResult.Stdout)
 
 	first := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--if-match", showGot.Note.ContentHash, "--append", "A", "--json")
-	if first.Err != nil {
-		t.Fatalf("first notes edit returned error: %v\nstderr: %s", first.Err, first.Stderr)
-	}
+	require.NoError(t, first.Err, "stderr: %s", first.Stderr)
 
 	second := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--if-match", showGot.Note.ContentHash, "--append", "B", "--json")
-	if second.Err == nil {
-		t.Fatal("second notes edit error = nil, want unsafe error")
-	}
-	if ExitCodeForError(second.Err) != 5 {
-		t.Fatalf("exit code = %d, want 5", ExitCodeForError(second.Err))
-	}
-	if got := second.Stderr; !strings.Contains(got, "content hash mismatch") {
-		t.Fatalf("stderr = %q, want content hash mismatch", got)
-	}
+	require.Error(t, second.Err)
+	require.Equal(t, 5, ExitCodeForError(second.Err))
+	require.Contains(t, second.Stderr, "content hash mismatch")
 
 	data, err := os.ReadFile(notePath)
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
-	if !strings.Contains(string(data), "A") {
-		t.Fatalf("note body = %q, want contains A", string(data))
-	}
-	if strings.Contains(string(data), "B") {
-		t.Fatalf("note body = %q, want not contains B", string(data))
-	}
+	require.NoError(t, err)
+	require.Contains(t, string(data), "A")
+	require.NotContains(t, string(data), "B")
 }
 
 func readNoteFile(t *testing.T, path string) []byte {
 	t.Helper()
 
 	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("ReadFile(%q) error = %v", path, err)
-	}
+	require.NoError(t, err)
 	return data
 }

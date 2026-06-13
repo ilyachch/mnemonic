@@ -3,9 +3,10 @@ package cli
 import (
 	"encoding/json"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/notes"
@@ -22,38 +23,32 @@ func TestNotesSearchCommandReturnsHits(t *testing.T) {
 	))
 	defer restoreClock()
 
-	if err := project.InitProject(project.InitInput{
+	require.NoError(t, project.InitProject(project.InitInput{
 		CWD:          projectRoot,
 		MemoriesHome: filepath.Join(projectRoot, ".mnemonic-memories"),
 		Name:         "personal",
 		Mode:         project.InitModeLocal,
-	}); err != nil {
-		t.Fatalf("InitProject() error = %v", err)
-	}
+	}))
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
 	memoriesRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
-	if _, err := notes.Create(notes.CreateInput{
+	_, err := notes.Create(notes.CreateInput{
 		RootDir: memoriesRoot,
 		Title:   "Auth migration",
 		Body:    []byte("Search this body.\nObservation queryterm.\n"),
 		UUID: func() string {
 			return "550e8400-e29b-41d4-a716-446655440001"
 		},
-	}); err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
+	})
+	require.NoError(t, err)
 
-	if _, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", filepath.Join(projectRoot, ".mnemonic-memories", "personal")); err != nil {
-		t.Fatalf("RebuildProjectIndex() error = %v", err)
-	}
+	_, err = index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", filepath.Join(projectRoot, ".mnemonic-memories", "personal"))
+	require.NoError(t, err)
 
 	result := executeCommand("notes", "search", "auth", "--project", "personal", "--json")
-	if result.Err != nil {
-		t.Fatalf("notes search returned error: %v\nstderr: %s", result.Err, result.Stderr)
-	}
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 
 	var got struct {
 		Hits []struct {
@@ -66,19 +61,16 @@ func TestNotesSearchCommandReturnsHits(t *testing.T) {
 			ContentHash string  `json:"content_hash"`
 		} `json:"hits"`
 	}
-	if err := json.Unmarshal([]byte(result.Stdout), &got); err != nil {
-		t.Fatalf("json.Unmarshal() error = %v\nstdout: %s", err, result.Stdout)
-	}
-	if len(got.Hits) == 0 {
-		t.Fatal("hits are empty")
-	}
+	require.NoError(t, json.Unmarshal([]byte(result.Stdout), &got), "stdout: %s", result.Stdout)
+	require.NotEmpty(t, got.Hits)
 	first := got.Hits[0]
-	if first.NoteID == "" || first.Slug == "" || first.Title == "" || first.Path == "" || first.Snippet == "" || first.ContentHash == "" {
-		t.Fatalf("unexpected empty hit: %#v", first)
-	}
-	if first.Slug != "auth-migration" {
-		t.Fatalf("slug = %q", first.Slug)
-	}
+	require.NotEmpty(t, first.NoteID)
+	require.NotEmpty(t, first.Slug)
+	require.NotEmpty(t, first.Title)
+	require.NotEmpty(t, first.Path)
+	require.NotEmpty(t, first.Snippet)
+	require.NotEmpty(t, first.ContentHash)
+	require.Equal(t, "auth-migration", first.Slug)
 }
 
 func TestNotesSearchCommandRespectsLimit(t *testing.T) {
@@ -90,14 +82,12 @@ func TestNotesSearchCommandRespectsLimit(t *testing.T) {
 	))
 	defer restoreClock()
 
-	if err := project.InitProject(project.InitInput{
+	require.NoError(t, project.InitProject(project.InitInput{
 		CWD:          projectRoot,
 		MemoriesHome: filepath.Join(projectRoot, ".mnemonic-memories"),
 		Name:         "personal",
 		Mode:         project.InitModeLocal,
-	}); err != nil {
-		t.Fatalf("InitProject() error = %v", err)
-	}
+	}))
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
@@ -105,35 +95,27 @@ func TestNotesSearchCommandRespectsLimit(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		title := "Query Term " + string(rune('A'+i))
 		uid := "550e8400-e29b-41d4-a716-44665544000" + string(rune('2'+i))
-		if _, err := notes.Create(notes.CreateInput{
+		_, err := notes.Create(notes.CreateInput{
 			RootDir: filepath.Join(projectRoot, ".mnemonic-memories", "personal"),
 			Title:   title,
 			Body:    []byte("queryterm queryterm\n"),
 			UUID: func() string {
 				return uid
 			},
-		}); err != nil {
-			t.Fatalf("Create() error = %v", err)
-		}
+		})
+		require.NoError(t, err)
 	}
 
-	if _, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", filepath.Join(projectRoot, ".mnemonic-memories", "personal")); err != nil {
-		t.Fatalf("RebuildProjectIndex() error = %v", err)
-	}
+	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", filepath.Join(projectRoot, ".mnemonic-memories", "personal"))
+	require.NoError(t, err)
 
 	result := executeCommand("notes", "search", "queryterm", "--project", "personal", "--limit", "2", "--json")
-	if result.Err != nil {
-		t.Fatalf("notes search returned error: %v\nstderr: %s", result.Err, result.Stderr)
-	}
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 	var got struct {
 		Hits []any `json:"hits"`
 	}
-	if err := json.Unmarshal([]byte(result.Stdout), &got); err != nil {
-		t.Fatalf("json.Unmarshal() error = %v\nstdout: %s", err, result.Stdout)
-	}
-	if len(got.Hits) != 2 {
-		t.Fatalf("len(hits) = %d, want 2", len(got.Hits))
-	}
+	require.NoError(t, json.Unmarshal([]byte(result.Stdout), &got), "stdout: %s", result.Stdout)
+	require.Len(t, got.Hits, 2)
 }
 
 func TestNotesSearchCommandFiltersByTag(t *testing.T) {
@@ -145,14 +127,12 @@ func TestNotesSearchCommandFiltersByTag(t *testing.T) {
 	))
 	defer restoreClock()
 
-	if err := project.InitProject(project.InitInput{
+	require.NoError(t, project.InitProject(project.InitInput{
 		CWD:          projectRoot,
 		MemoriesHome: filepath.Join(projectRoot, ".mnemonic-memories"),
 		Name:         "personal",
 		Mode:         project.InitModeLocal,
-	}); err != nil {
-		t.Fatalf("InitProject() error = %v", err)
-	}
+	}))
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
@@ -160,25 +140,18 @@ func TestNotesSearchCommandFiltersByTag(t *testing.T) {
 	memoriesRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
 	writeTaggedNote(t, filepath.Join(memoriesRoot, "frontmatter-tag.md"), "550e8400-e29b-41d4-a716-446655440001", "Frontmatter tag", "frontmatter-tag", []string{"django"}, "auth queryterm\n")
 	writeTaggedNote(t, filepath.Join(memoriesRoot, "inline-tag.md"), "550e8400-e29b-41d4-a716-446655440002", "Inline tag", "inline-tag", nil, "auth queryterm #django\n")
-	if _, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoriesRoot); err != nil {
-		t.Fatalf("RebuildProjectIndex() error = %v", err)
-	}
+	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoriesRoot)
+	require.NoError(t, err)
 
 	result := executeCommand("notes", "search", "auth", "--project", "personal", "--tag", "django", "--json")
-	if result.Err != nil {
-		t.Fatalf("notes search returned error: %v\nstderr: %s", result.Err, result.Stderr)
-	}
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 	var got struct {
 		Hits []struct {
 			Slug string `json:"slug"`
 		} `json:"hits"`
 	}
-	if err := json.Unmarshal([]byte(result.Stdout), &got); err != nil {
-		t.Fatalf("json.Unmarshal() error = %v\nstdout: %s", err, result.Stdout)
-	}
-	if len(got.Hits) != 2 {
-		t.Fatalf("len(hits) = %d, want 2", len(got.Hits))
-	}
+	require.NoError(t, json.Unmarshal([]byte(result.Stdout), &got), "stdout: %s", result.Stdout)
+	require.Len(t, got.Hits, 2)
 }
 
 func TestNotesSearchCommandMissingIndexSuggestsReindex(t *testing.T) {
@@ -190,26 +163,18 @@ func TestNotesSearchCommandMissingIndexSuggestsReindex(t *testing.T) {
 	))
 	defer restoreClock()
 
-	if err := project.InitProject(project.InitInput{
+	require.NoError(t, project.InitProject(project.InitInput{
 		CWD:          projectRoot,
 		MemoriesHome: filepath.Join(projectRoot, ".mnemonic-memories"),
 		Name:         "personal",
 		Mode:         project.InitModeLocal,
-	}); err != nil {
-		t.Fatalf("InitProject() error = %v", err)
-	}
+	}))
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
 	result := executeCommand("notes", "search", "auth", "--project", "personal", "--json")
-	if result.Err == nil {
-		t.Fatal("notes search error = nil, want missing index error")
-	}
-	if ExitCodeForError(result.Err) != 3 {
-		t.Fatalf("exit code = %d, want 3", ExitCodeForError(result.Err))
-	}
-	if got := result.Stderr; !strings.Contains(got, "mnemonic project reindex") {
-		t.Fatalf("stderr = %q, want reindex suggestion", got)
-	}
+	require.Error(t, result.Err)
+	require.Equal(t, 3, ExitCodeForError(result.Err))
+	require.Contains(t, result.Stderr, "mnemonic project reindex")
 }

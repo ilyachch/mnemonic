@@ -58,7 +58,8 @@ func parseObservationListItem(item *ast.ListItem, doc *parsedDocument) (Observat
 		return Observation{}, false
 	}
 
-	line := string(textBlock.Text(doc.source))
+	seg := textBlock.Lines().At(0)
+	line := string(seg.Value(doc.source))
 	firstLine := line
 	if index := strings.IndexByte(firstLine, '\n'); index >= 0 {
 		firstLine = firstLine[:index]

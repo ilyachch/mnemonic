@@ -1,6 +1,10 @@
 package markdown
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func TestParseObservationsExtractsCategoryContentTagsAndLineNumbers(t *testing.T) {
 	t.Parallel()
@@ -10,46 +14,22 @@ func TestParseObservationsExtractsCategoryContentTagsAndLineNumbers(t *testing.T
 		"- [note] Trim me #Tag_2\n")
 
 	observations := ParseObservations(input)
-	if got, want := len(observations), 2; got != want {
-		t.Fatalf("len(observations) = %d, want %d", got, want)
-	}
+	require.Len(t, observations, 2)
 
-	if observations[0].Category != "decision" {
-		t.Fatalf("observations[0].Category = %q, want %q", observations[0].Category, "decision")
-	}
-	if observations[0].Content != "Roll out #backend #release" {
-		t.Fatalf("observations[0].Content = %q", observations[0].Content)
-	}
-	if observations[0].LineStart != 2 || observations[0].LineEnd != 2 {
-		t.Fatalf("observations[0].LineStart/LineEnd = %d/%d, want 2/2", observations[0].LineStart, observations[0].LineEnd)
-	}
-	if got, want := observations[0].Tags, []Tag{
+	require.Equal(t, "decision", observations[0].Category)
+	require.Equal(t, "Roll out #backend #release", observations[0].Content)
+	require.Equal(t, 2, observations[0].LineStart)
+	require.Equal(t, 2, observations[0].LineEnd)
+	require.Equal(t, []Tag{
 		{Value: "backend", Line: 2},
 		{Value: "release", Line: 2},
-	}; len(got) != len(want) {
-		t.Fatalf("observations[0].Tags = %#v, want %#v", got, want)
-	} else {
-		for i := range want {
-			if got[i] != want[i] {
-				t.Fatalf("observations[0].Tags = %#v, want %#v", got, want)
-			}
-		}
-	}
+	}, observations[0].Tags)
 
-	if observations[1].Category != "note" {
-		t.Fatalf("observations[1].Category = %q, want %q", observations[1].Category, "note")
-	}
-	if observations[1].Content != "Trim me #Tag_2" {
-		t.Fatalf("observations[1].Content = %q", observations[1].Content)
-	}
-	if observations[1].LineStart != 3 || observations[1].LineEnd != 3 {
-		t.Fatalf("observations[1].LineStart/LineEnd = %d/%d, want 3/3", observations[1].LineStart, observations[1].LineEnd)
-	}
-	if got, want := observations[1].Tags, []Tag{{Value: "Tag_2", Line: 3}}; len(got) != len(want) {
-		t.Fatalf("observations[1].Tags = %#v, want %#v", got, want)
-	} else if got[0] != want[0] {
-		t.Fatalf("observations[1].Tags = %#v, want %#v", got, want)
-	}
+	require.Equal(t, "note", observations[1].Category)
+	require.Equal(t, "Trim me #Tag_2", observations[1].Content)
+	require.Equal(t, 3, observations[1].LineStart)
+	require.Equal(t, 3, observations[1].LineEnd)
+	require.Equal(t, []Tag{{Value: "Tag_2", Line: 3}}, observations[1].Tags)
 }
 
 func TestParseObservationsIgnoresNonstandardBulletsAndFencedCode(t *testing.T) {
@@ -64,28 +44,14 @@ func TestParseObservationsIgnoresNonstandardBulletsAndFencedCode(t *testing.T) {
 		"- [note] Final\n")
 
 	observations := ParseObservations(input)
-	if got, want := len(observations), 2; got != want {
-		t.Fatalf("len(observations) = %d, want %d", got, want)
-	}
+	require.Len(t, observations, 2)
 
-	if observations[0].Category != "decision" {
-		t.Fatalf("observations[0].Category = %q", observations[0].Category)
-	}
-	if observations[0].Content != "Keep #one" {
-		t.Fatalf("observations[0].Content = %q", observations[0].Content)
-	}
-	if got, want := observations[0].Tags, []Tag{{Value: "one", Line: 3}}; len(got) != len(want) {
-		t.Fatalf("observations[0].Tags = %#v, want %#v", got, want)
-	} else if got[0] != want[0] {
-		t.Fatalf("observations[0].Tags = %#v, want %#v", got, want)
-	}
+	require.Equal(t, "decision", observations[0].Category)
+	require.Equal(t, "Keep #one", observations[0].Content)
+	require.Equal(t, []Tag{{Value: "one", Line: 3}}, observations[0].Tags)
 
-	if observations[1].Category != "note" {
-		t.Fatalf("observations[1].Category = %q", observations[1].Category)
-	}
-	if observations[1].Content != "Final" {
-		t.Fatalf("observations[1].Content = %q", observations[1].Content)
-	}
+	require.Equal(t, "note", observations[1].Category)
+	require.Equal(t, "Final", observations[1].Content)
 }
 
 func TestParseObservationsSkipsInlineCodeInTags(t *testing.T) {
@@ -94,16 +60,8 @@ func TestParseObservationsSkipsInlineCodeInTags(t *testing.T) {
 	input := []byte("- [decision] Roll out `#ignored` and #release\n")
 
 	observations := ParseObservations(input)
-	if got, want := len(observations), 1; got != want {
-		t.Fatalf("len(observations) = %d, want %d", got, want)
-	}
+	require.Len(t, observations, 1)
 
-	if observations[0].Content != "Roll out `#ignored` and #release" {
-		t.Fatalf("observations[0].Content = %q", observations[0].Content)
-	}
-	if got, want := observations[0].Tags, []Tag{{Value: "release", Line: 1}}; len(got) != len(want) {
-		t.Fatalf("observations[0].Tags = %#v, want %#v", got, want)
-	} else if got[0] != want[0] {
-		t.Fatalf("observations[0].Tags = %#v, want %#v", got, want)
-	}
+	require.Equal(t, "Roll out `#ignored` and #release", observations[0].Content)
+	require.Equal(t, []Tag{{Value: "release", Line: 1}}, observations[0].Tags)
 }

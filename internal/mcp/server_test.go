@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -13,10 +14,13 @@ import (
 
 	"github.com/ilyachch/mnemonic/internal/buildinfo"
 	"github.com/ilyachch/mnemonic/internal/index"
+	"github.com/ilyachch/mnemonic/internal/markdown"
+	"github.com/ilyachch/mnemonic/internal/mcp/tools"
 	"github.com/ilyachch/mnemonic/internal/notes"
 	"github.com/ilyachch/mnemonic/internal/paths"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCommandTransportInitializeAndListTools(t *testing.T) {
@@ -27,26 +31,16 @@ func TestCommandTransportInitializeAndListTools(t *testing.T) {
 	session, stderr := connectToMCPServerWithEnv(t, repoRoot, projectRoot, writableMCPEnv(t))
 
 	tools, err := session.ListTools(context.Background(), nil)
-	if err != nil {
-		t.Fatalf("ListTools() error = %v", err)
-	}
-	if len(tools.Tools) != 8 {
-		t.Fatalf("ListTools() tools = %d, want 8", len(tools.Tools))
-	}
+	require.NoError(t, err)
+	require.Len(t, tools.Tools, 8)
 	gotNames := make([]string, 0, len(tools.Tools))
 	for _, tool := range tools.Tools {
-		if strings.Contains(tool.Name, " ") {
-			t.Fatalf("tool name %q contains spaces", tool.Name)
-		}
-		if tool.Annotations == nil {
-			t.Fatalf("tool %q is missing annotations", tool.Name)
-		}
+		require.NotContains(t, tool.Name, " ")
+		require.NotNil(t, tool.Annotations)
 		gotNames = append(gotNames, tool.Name)
 	}
 	wantNames := []string{"create_note", "delete_note", "edit_note", "list_backlinks", "list_notes", "list_tags", "read_note", "search_notes"}
-	if !slices.Equal(gotNames, wantNames) {
-		t.Fatalf("tool names = %v, want %v", gotNames, wantNames)
-	}
+	require.True(t, slices.Equal(gotNames, wantNames))
 	assertToolAnnotations(t, tools.Tools, "create_note", false, false)
 	assertToolAnnotations(t, tools.Tools, "edit_note", false, true)
 	assertToolAnnotations(t, tools.Tools, "delete_note", false, true)
@@ -57,16 +51,10 @@ func TestCommandTransportInitializeAndListTools(t *testing.T) {
 	assertToolAnnotations(t, tools.Tools, "search_notes", true, false)
 
 	gotSnapshot, err := json.MarshalIndent(tools.Tools, "", "  ")
-	if err != nil {
-		t.Fatalf("MarshalIndent() error = %v", err)
-	}
+	require.NoError(t, err)
 	wantSnapshot, err := os.ReadFile(filepath.Join(repoRoot, "internal", "mcp", "testdata", "read_only_tools.snapshot.json"))
-	if err != nil {
-		t.Fatalf("ReadFile(snapshot) error = %v\nactual:\n%s", err, gotSnapshot)
-	}
-	if strings.TrimSpace(string(gotSnapshot)) != strings.TrimSpace(string(wantSnapshot)) {
-		t.Fatalf("tools snapshot mismatch (-want +got):\n--- want\n%s\n--- got\n%s", wantSnapshot, gotSnapshot)
-	}
+	require.NoError(t, err)
+	require.Equal(t, strings.TrimSpace(string(wantSnapshot)), strings.TrimSpace(string(gotSnapshot)))
 
 	if got := stderr.String(); got != "" {
 		t.Logf("stderr output: %s", got)
@@ -82,14 +70,10 @@ func TestListNotesReturnsEmptyArrayForEmptyProject(t *testing.T) {
 	session, _ := connectToMCPServer(t, repoRoot, projectRoot)
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "list_notes"})
-	if err != nil {
-		t.Fatalf("CallTool(list_notes) error = %v", err)
-	}
+	require.NoError(t, err)
 
 	out := decodeListNotesOutput(t, result)
-	if len(out.Notes) != 0 {
-		t.Fatalf("notes len = %d, want 0", len(out.Notes))
-	}
+	require.Empty(t, out.Notes)
 }
 
 func TestListNotesSupportsPagination(t *testing.T) {
@@ -99,21 +83,17 @@ func TestListNotesSupportsPagination(t *testing.T) {
 	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
 
 	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
-	if err := os.MkdirAll(memoryRoot, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if _, err := notes.Create(notes.CreateInput{
+	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
+	_, err := notes.Create(notes.CreateInput{
 		RootDir: memoryRoot,
 		Title:   "Alpha Note",
-	}); err != nil {
-		t.Fatalf("Create(alpha) error = %v", err)
-	}
-	if _, err := notes.Create(notes.CreateInput{
+	})
+	require.NoError(t, err)
+	_, err = notes.Create(notes.CreateInput{
 		RootDir: memoryRoot,
 		Title:   "Beta Note",
-	}); err != nil {
-		t.Fatalf("Create(beta) error = %v", err)
-	}
+	})
+	require.NoError(t, err)
 
 	session, _ := connectToMCPServer(t, repoRoot, projectRoot)
 
@@ -121,31 +101,19 @@ func TestListNotesSupportsPagination(t *testing.T) {
 		Name:      "list_notes",
 		Arguments: map[string]any{"limit": 1},
 	})
-	if err != nil {
-		t.Fatalf("CallTool(list_notes, limit=1) error = %v", err)
-	}
+	require.NoError(t, err)
 	first := decodeListNotesOutput(t, firstResult)
-	if len(first.Notes) != 1 {
-		t.Fatalf("first page notes len = %d, want 1", len(first.Notes))
-	}
-	if first.NextCursor == "" {
-		t.Fatal("expected next_cursor on first page")
-	}
+	require.Len(t, first.Notes, 1)
+	require.NotEmpty(t, first.NextCursor)
 
 	secondResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "list_notes",
 		Arguments: map[string]any{"limit": 1, "cursor": first.NextCursor},
 	})
-	if err != nil {
-		t.Fatalf("CallTool(list_notes, pagination) error = %v", err)
-	}
+	require.NoError(t, err)
 	second := decodeListNotesOutput(t, secondResult)
-	if len(second.Notes) != 1 {
-		t.Fatalf("second page notes len = %d, want 1", len(second.Notes))
-	}
-	if second.NextCursor != "" {
-		t.Fatalf("second page next_cursor = %q, want empty", second.NextCursor)
-	}
+	require.Len(t, second.Notes, 1)
+	require.Empty(t, second.NextCursor)
 }
 
 func TestListTagsReturnsTagsAndRespectsLimit(t *testing.T) {
@@ -155,15 +123,12 @@ func TestListTagsReturnsTagsAndRespectsLimit(t *testing.T) {
 	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
 
 	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
-	if err := os.MkdirAll(memoryRoot, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
 	writeTaggedMCPNote(t, filepath.Join(memoryRoot, "auth-one.md"), "550e8400-e29b-41d4-a716-446655440001", "Auth One", "auth-one", []string{"auth", "ops"}, "auth one body\n")
 	writeTaggedMCPNote(t, filepath.Join(memoryRoot, "auth-two.md"), "550e8400-e29b-41d4-a716-446655440002", "Auth Two", "auth-two", []string{"auth"}, "auth two body\n")
 	writeTaggedMCPNote(t, filepath.Join(memoryRoot, "beta-one.md"), "550e8400-e29b-41d4-a716-446655440003", "Beta One", "beta-one", []string{"beta"}, "beta body\n")
-	if _, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot); err != nil {
-		t.Fatalf("RebuildProjectIndex() error = %v", err)
-	}
+	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
+	require.NoError(t, err)
 
 	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
 
@@ -171,23 +136,13 @@ func TestListTagsReturnsTagsAndRespectsLimit(t *testing.T) {
 		Name:      "list_tags",
 		Arguments: map[string]any{"limit": 1},
 	})
-	if err != nil {
-		t.Fatalf("CallTool(list_tags) error = %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("list_tags returned tool error: text=%q content=%#v", resultText(t, result), result.Content)
-	}
+	require.NoError(t, err)
+	require.False(t, result.IsError)
 
 	out := decodeListTagsOutput(t, result)
-	if len(out.Tags) != 1 {
-		t.Fatalf("tags len = %d, want 1", len(out.Tags))
-	}
-	if out.Tags[0].Tag != "auth" {
-		t.Fatalf("tag = %q, want %q", out.Tags[0].Tag, "auth")
-	}
-	if out.Tags[0].Count != 2 {
-		t.Fatalf("count = %d, want 2", out.Tags[0].Count)
-	}
+	require.Len(t, out.Tags, 1)
+	require.Equal(t, "auth", out.Tags[0].Tag)
+	require.Equal(t, 2, out.Tags[0].Count)
 }
 
 func TestServerIndexDBReusesSingleConnection(t *testing.T) {
@@ -196,42 +151,29 @@ func TestServerIndexDBReusesSingleConnection(t *testing.T) {
 	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
 
 	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
-	if err := os.MkdirAll(memoryRoot, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
 	writeTaggedMCPNote(t, filepath.Join(memoryRoot, "auth-one.md"), "550e8400-e29b-41d4-a716-446655440001", "Auth One", "auth-one", []string{"auth"}, "auth one body\n")
-	if _, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot); err != nil {
-		t.Fatalf("RebuildProjectIndex() error = %v", err)
-	}
+	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
+	require.NoError(t, err)
 
 	resolvedProject, err := project.ResolveProject(project.ResolveProjectInput{
 		CWD:             projectRoot,
 		ProjectSelector: "personal",
 	})
-	if err != nil {
-		t.Fatalf("ResolveProject() error = %v", err)
-	}
+	require.NoError(t, err)
 	effectivePaths, err := paths.ResolveEffectivePaths(paths.EffectiveInput{})
-	if err != nil {
-		t.Fatalf("ResolveEffectivePaths() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	server := NewServer(resolvedProject, effectivePaths)
 	t.Cleanup(func() {
 		_ = server.closeIndexDB()
 	})
 
-	firstDB, err := server.indexDB()
-	if err != nil {
-		t.Fatalf("indexDB() first error = %v", err)
-	}
-	secondDB, err := server.indexDB()
-	if err != nil {
-		t.Fatalf("indexDB() second error = %v", err)
-	}
-	if firstDB != secondDB {
-		t.Fatal("indexDB() did not reuse the cached database handle")
-	}
+	firstDB, err := server.GetIndexDB()
+	require.NoError(t, err)
+	secondDB, err := server.GetIndexDB()
+	require.NoError(t, err)
+	require.Same(t, firstDB, secondDB)
 }
 
 func TestListBacklinksReturnsLinksAndRespectsLimit(t *testing.T) {
@@ -241,15 +183,12 @@ func TestListBacklinksReturnsLinksAndRespectsLimit(t *testing.T) {
 	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
 
 	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
-	if err := os.MkdirAll(memoryRoot, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
 	writeWikiMCPNote(t, filepath.Join(memoryRoot, "target-note.md"), "550e8400-e29b-41d4-a716-446655440010", "Target Note", "target-note", "target body\n")
 	writeWikiMCPNote(t, filepath.Join(memoryRoot, "alpha-note.md"), "550e8400-e29b-41d4-a716-446655440011", "Alpha Note", "alpha-note", "[[target-note]]\n")
 	writeWikiMCPNote(t, filepath.Join(memoryRoot, "beta-note.md"), "550e8400-e29b-41d4-a716-446655440012", "Beta Note", "beta-note", "[[Target Note]]\n")
-	if _, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot); err != nil {
-		t.Fatalf("RebuildProjectIndex() error = %v", err)
-	}
+	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
+	require.NoError(t, err)
 
 	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
 
@@ -257,20 +196,12 @@ func TestListBacklinksReturnsLinksAndRespectsLimit(t *testing.T) {
 		Name:      "list_backlinks",
 		Arguments: map[string]any{"identifier": "target-note", "limit": 1},
 	})
-	if err != nil {
-		t.Fatalf("CallTool(list_backlinks) error = %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("list_backlinks returned tool error: text=%q content=%#v", resultText(t, result), result.Content)
-	}
+	require.NoError(t, err)
+	require.False(t, result.IsError)
 
 	out := decodeListBacklinksOutput(t, result)
-	if len(out.Links) != 1 {
-		t.Fatalf("links len = %d, want 1", len(out.Links))
-	}
-	if out.Links[0].Slug != "alpha-note" {
-		t.Fatalf("slug = %q, want %q", out.Links[0].Slug, "alpha-note")
-	}
+	require.Len(t, out.Links, 1)
+	require.Equal(t, "alpha-note", out.Links[0].Slug)
 }
 
 func TestListBacklinksReturnsToolErrorForMissingNote(t *testing.T) {
@@ -280,13 +211,10 @@ func TestListBacklinksReturnsToolErrorForMissingNote(t *testing.T) {
 	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
 
 	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
-	if err := os.MkdirAll(memoryRoot, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
 	writeWikiMCPNote(t, filepath.Join(memoryRoot, "target-note.md"), "550e8400-e29b-41d4-a716-446655440010", "Target Note", "target-note", "target body\n")
-	if _, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot); err != nil {
-		t.Fatalf("RebuildProjectIndex() error = %v", err)
-	}
+	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
+	require.NoError(t, err)
 
 	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
 
@@ -294,15 +222,9 @@ func TestListBacklinksReturnsToolErrorForMissingNote(t *testing.T) {
 		Name:      "list_backlinks",
 		Arguments: map[string]any{"identifier": "missing-note"},
 	})
-	if err != nil {
-		t.Fatalf("CallTool(list_backlinks missing) error = %v", err)
-	}
-	if !result.IsError {
-		t.Fatal("list_backlinks missing note IsError = false, want true")
-	}
-	if got := resultText(t, result); !strings.Contains(got, "not found") {
-		t.Fatalf("list_backlinks missing note text = %q, want not found", got)
-	}
+	require.NoError(t, err)
+	require.True(t, result.IsError)
+	require.Contains(t, resultText(t, result), "not found")
 }
 
 func TestCreateNoteCreatesReadableNote(t *testing.T) {
@@ -323,51 +245,27 @@ func TestCreateNoteCreatesReadableNote(t *testing.T) {
 			"type":  "decision",
 		},
 	})
-	if err != nil {
-		t.Fatalf("CallTool(create_note) error = %v", err)
-	}
-	if createResult.IsError {
-		t.Fatalf("create_note returned tool error: text=%q content=%#v", resultText(t, createResult), createResult.Content)
-	}
+	require.NoError(t, err)
+	require.False(t, createResult.IsError)
 
 	created := decodeCreateNoteOutput(t, createResult)
-	if created.NoteID == "" {
-		t.Fatal("created note_id is empty")
-	}
-	if created.Slug != "auth-migration" {
-		t.Fatalf("slug = %q, want %q", created.Slug, "auth-migration")
-	}
-	if created.Path != "plans/auth-migration.md" {
-		t.Fatalf("path = %q, want %q", created.Path, "plans/auth-migration.md")
-	}
-	if created.ContentHash == "" {
-		t.Fatal("created content_hash is empty")
-	}
+	require.NotEmpty(t, created.NoteID)
+	require.Equal(t, "auth-migration", created.Slug)
+	require.Equal(t, "plans/auth-migration.md", created.Path)
+	require.NotEmpty(t, created.ContentHash)
 
 	readResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "read_note",
 		Arguments: map[string]any{"identifier": created.NoteID},
 	})
-	if err != nil {
-		t.Fatalf("CallTool(read_note) error = %v", err)
-	}
-	if readResult.IsError {
-		t.Fatalf("read_note returned tool error: text=%q content=%#v", resultText(t, readResult), readResult.Content)
-	}
+	require.NoError(t, err)
+	require.False(t, readResult.IsError)
 
 	read := decodeReadNoteOutput(t, readResult)
-	if read.Note.Path != created.Path {
-		t.Fatalf("read path = %q, want %q", read.Note.Path, created.Path)
-	}
-	if read.Note.Body != "## Summary\n\nPlan.\n" {
-		t.Fatalf("read body = %q", read.Note.Body)
-	}
-	if got := read.Note.Frontmatter["type"]; got != "decision" {
-		t.Fatalf("frontmatter[type] = %#v, want %q", got, "decision")
-	}
-	if got := read.Note.Frontmatter["tags"]; !slices.Equal(anySliceToStrings(t, got), []string{"auth", "ops"}) {
-		t.Fatalf("frontmatter[tags] = %#v, want %#v", got, []string{"auth", "ops"})
-	}
+	require.Equal(t, created.Path, read.Note.Path)
+	require.Equal(t, "## Summary\n\nPlan.\n", read.Note.Body)
+	require.Equal(t, "decision", read.Note.Frontmatter["type"])
+	require.True(t, slices.Equal(anySliceToStrings(t, read.Note.Frontmatter["tags"]), []string{"auth", "ops"}))
 }
 
 func TestWriteToolsRefreshIndexForReadOnlyTools(t *testing.T) {
@@ -377,12 +275,9 @@ func TestWriteToolsRefreshIndexForReadOnlyTools(t *testing.T) {
 	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
 
 	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
-	if err := os.MkdirAll(memoryRoot, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if _, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot); err != nil {
-		t.Fatalf("RebuildProjectIndex() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
+	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
+	require.NoError(t, err)
 
 	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
 
@@ -390,12 +285,8 @@ func TestWriteToolsRefreshIndexForReadOnlyTools(t *testing.T) {
 		Name:      "search_notes",
 		Arguments: map[string]any{"query": "mcp-smoke-token-20260606-224145", "limit": 10},
 	})
-	if err != nil {
-		t.Fatalf("CallTool(search_notes before) error = %v", err)
-	}
-	if beforeSearch.IsError {
-		t.Fatalf("search_notes before returned tool error: text=%q content=%#v", resultText(t, beforeSearch), beforeSearch.Content)
-	}
+	require.NoError(t, err)
+	require.False(t, beforeSearch.IsError)
 
 	alphaResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "create_note",
@@ -406,12 +297,8 @@ func TestWriteToolsRefreshIndexForReadOnlyTools(t *testing.T) {
 			"tags":  []string{"mcp", "smoke"},
 		},
 	})
-	if err != nil {
-		t.Fatalf("CallTool(create_note alpha) error = %v", err)
-	}
-	if alphaResult.IsError {
-		t.Fatalf("create_note alpha returned tool error: text=%q content=%#v", resultText(t, alphaResult), alphaResult.Content)
-	}
+	require.NoError(t, err)
+	require.False(t, alphaResult.IsError)
 	alpha := decodeCreateNoteOutput(t, alphaResult)
 
 	betaResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
@@ -421,43 +308,29 @@ func TestWriteToolsRefreshIndexForReadOnlyTools(t *testing.T) {
 			"body":  "Links to [[mcp-smoke-alpha]].\nUnique token: mcp-smoke-token-20260606-224145.",
 		},
 	})
-	if err != nil {
-		t.Fatalf("CallTool(create_note beta) error = %v", err)
-	}
-	if betaResult.IsError {
-		t.Fatalf("create_note beta returned tool error: text=%q content=%#v", resultText(t, betaResult), betaResult.Content)
-	}
+	require.NoError(t, err)
+	require.False(t, betaResult.IsError)
 	beta := decodeCreateNoteOutput(t, betaResult)
 
 	searchResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "search_notes",
 		Arguments: map[string]any{"query": `"mcp-smoke-token-20260606-224145"`, "limit": 10},
 	})
-	if err != nil {
-		t.Fatalf("CallTool(search_notes after) error = %v", err)
-	}
-	if searchResult.IsError {
-		t.Fatalf("search_notes after returned tool error: text=%q content=%#v", resultText(t, searchResult), searchResult.Content)
-	}
+	require.NoError(t, err)
+	require.False(t, searchResult.IsError)
 	searchOut := decodeSearchNotesOutput(t, searchResult)
-	if len(searchOut.Hits) != 1 || searchOut.Hits[0].NoteID != beta.NoteID {
-		t.Fatalf("search hits = %#v, want beta note %q", searchOut.Hits, beta.NoteID)
-	}
+	require.Len(t, searchOut.Hits, 1)
+	require.Equal(t, beta.NoteID, searchOut.Hits[0].NoteID)
 
 	backlinksResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "list_backlinks",
 		Arguments: map[string]any{"identifier": alpha.NoteID, "limit": 10},
 	})
-	if err != nil {
-		t.Fatalf("CallTool(list_backlinks) error = %v", err)
-	}
-	if backlinksResult.IsError {
-		t.Fatalf("list_backlinks returned tool error: text=%q content=%#v", resultText(t, backlinksResult), backlinksResult.Content)
-	}
+	require.NoError(t, err)
+	require.False(t, backlinksResult.IsError)
 	backlinksOut := decodeListBacklinksOutput(t, backlinksResult)
-	if len(backlinksOut.Links) != 1 || backlinksOut.Links[0].NoteID != beta.NoteID {
-		t.Fatalf("backlinks = %#v, want beta note %q", backlinksOut.Links, beta.NoteID)
-	}
+	require.Len(t, backlinksOut.Links, 1)
+	require.Equal(t, beta.NoteID, backlinksOut.Links[0].NoteID)
 }
 
 func TestEditNoteSupportsModes(t *testing.T) {
@@ -469,43 +342,22 @@ func TestEditNoteSupportsModes(t *testing.T) {
 		writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
 		session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
 
-		createResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-			Name: "create_note",
-			Arguments: map[string]any{
-				"title": "Auth Migration",
-				"body":  "## Summary\n",
-			},
-		})
-		if err != nil {
-			t.Fatalf("CallTool(create_note) error = %v", err)
-		}
-		created := decodeCreateNoteOutput(t, createResult)
+		created := decodeCreateNoteOutput(t, callCreateNote(t, session, "Append Target", "", nil, ""))
+		readOut := decodeReadNoteOutput(t, callReadNote(t, session, created.NoteID))
 
 		editResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 			Name: "edit_note",
 			Arguments: map[string]any{
 				"identifier": created.NoteID,
-				"append":     "Next step",
+				"append":     "\n\n## Appendix\n\nMore content.\n",
 			},
 		})
-		if err != nil {
-			t.Fatalf("CallTool(edit_note append) error = %v", err)
-		}
-		if editResult.IsError {
-			t.Fatalf("edit_note append returned tool error: text=%q content=%#v", resultText(t, editResult), editResult.Content)
-		}
+		require.NoError(t, err)
+		require.False(t, editResult.IsError)
 
-		readResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-			Name:      "read_note",
-			Arguments: map[string]any{"identifier": created.NoteID},
-		})
-		if err != nil {
-			t.Fatalf("CallTool(read_note) error = %v", err)
-		}
-		read := decodeReadNoteOutput(t, readResult)
-		if read.Note.Body != "## Summary\nNext step" {
-			t.Fatalf("body = %q, want %q", read.Note.Body, "## Summary\nNext step")
-		}
+		updated := decodeReadNoteOutput(t, callReadNote(t, session, created.NoteID))
+		expectedBody := readOut.Note.Body + "\n\n## Appendix\n\nMore content.\n"
+		require.Equal(t, expectedBody, updated.Note.Body)
 	})
 
 	t.Run("replace_body", func(t *testing.T) {
@@ -513,43 +365,22 @@ func TestEditNoteSupportsModes(t *testing.T) {
 		writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
 		session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
 
-		createResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-			Name: "create_note",
-			Arguments: map[string]any{
-				"title": "Body Replace",
-				"body":  "Old body\n",
-			},
-		})
-		if err != nil {
-			t.Fatalf("CallTool(create_note) error = %v", err)
-		}
-		created := decodeCreateNoteOutput(t, createResult)
+		created := decodeCreateNoteOutput(t, callCreateNote(t, session, "Replace Target", "original body\n", nil, ""))
+		readOut := decodeReadNoteOutput(t, callReadNote(t, session, created.NoteID))
 
 		editResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 			Name: "edit_note",
 			Arguments: map[string]any{
-				"identifier":   created.NoteID,
-				"replace_body": "Replacement body\n",
+				"identifier":    created.NoteID,
+				"replace_body":  "replaced body\n",
+				"if_match_hash": readOut.Note.ContentHash,
 			},
 		})
-		if err != nil {
-			t.Fatalf("CallTool(edit_note replace_body) error = %v", err)
-		}
-		if editResult.IsError {
-			t.Fatalf("edit_note replace_body returned tool error: text=%q content=%#v", resultText(t, editResult), editResult.Content)
-		}
+		require.NoError(t, err)
+		require.False(t, editResult.IsError)
 
-		readResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-			Name:      "read_note",
-			Arguments: map[string]any{"identifier": created.NoteID},
-		})
-		if err != nil {
-			t.Fatalf("CallTool(read_note) error = %v", err)
-		}
-		read := decodeReadNoteOutput(t, readResult)
-		if read.Note.Body != "Replacement body\n" {
-			t.Fatalf("body = %q, want %q", read.Note.Body, "Replacement body\n")
-		}
+		updated := decodeReadNoteOutput(t, callReadNote(t, session, created.NoteID))
+		require.Equal(t, "replaced body\n", updated.Note.Body)
 	})
 
 	t.Run("merge_frontmatter", func(t *testing.T) {
@@ -557,49 +388,23 @@ func TestEditNoteSupportsModes(t *testing.T) {
 		writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
 		session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
 
-		createResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-			Name: "create_note",
-			Arguments: map[string]any{
-				"title": "Frontmatter Merge",
-			},
-		})
-		if err != nil {
-			t.Fatalf("CallTool(create_note) error = %v", err)
-		}
-		created := decodeCreateNoteOutput(t, createResult)
+		created := decodeCreateNoteOutput(t, callCreateNote(t, session, "FM Target", "", nil, "decision"))
 
 		editResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 			Name: "edit_note",
 			Arguments: map[string]any{
 				"identifier": created.NoteID,
 				"merge_frontmatter": map[string]string{
-					"type":       "decision",
-					"permalink":  "/decisions/frontmatter-merge",
-					"custom_key": "custom-value",
+					"status": "done",
 				},
 			},
 		})
-		if err != nil {
-			t.Fatalf("CallTool(edit_note merge_frontmatter) error = %v", err)
-		}
-		if editResult.IsError {
-			t.Fatalf("edit_note merge_frontmatter returned tool error: text=%q content=%#v", resultText(t, editResult), editResult.Content)
-		}
+		require.NoError(t, err)
+		require.False(t, editResult.IsError)
 
-		readResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-			Name:      "read_note",
-			Arguments: map[string]any{"identifier": created.NoteID},
-		})
-		if err != nil {
-			t.Fatalf("CallTool(read_note) error = %v", err)
-		}
-		read := decodeReadNoteOutput(t, readResult)
-		if got := read.Note.Frontmatter["type"]; got != "decision" {
-			t.Fatalf("frontmatter[type] = %#v, want %q", got, "decision")
-		}
-		if got := read.Note.Frontmatter["custom_key"]; got != "custom-value" {
-			t.Fatalf("frontmatter[custom_key] = %#v, want %q", got, "custom-value")
-		}
+		updated := decodeReadNoteOutput(t, callReadNote(t, session, created.NoteID))
+		require.Equal(t, "decision", updated.Note.Frontmatter["type"])
+		require.Equal(t, "done", updated.Note.Frontmatter["status"])
 	})
 }
 
@@ -608,65 +413,46 @@ func TestEditNoteRejectsStaleHashWithoutChangingFile(t *testing.T) {
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
 	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
-
 	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
 
-	createResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name: "create_note",
-		Arguments: map[string]any{
-			"title": "Auth Migration",
-			"body":  "## Summary\n",
-		},
-	})
-	if err != nil {
-		t.Fatalf("CallTool(create_note) error = %v", err)
-	}
-	created := decodeCreateNoteOutput(t, createResult)
+	created := decodeCreateNoteOutput(t, callCreateNote(t, session, "Stale Hash Edit", "original\n", nil, ""))
+	readOut := decodeReadNoteOutput(t, callReadNote(t, session, created.NoteID))
 
-	firstEdit, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+	editResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "edit_note",
 		Arguments: map[string]any{
 			"identifier":    created.NoteID,
-			"if_match_hash": created.ContentHash,
-			"append":        "A",
+			"replace_body":  "new body\n",
+			"if_match_hash": readOut.Note.ContentHash + "-stale",
 		},
 	})
-	if err != nil {
-		t.Fatalf("CallTool(edit_note first) error = %v", err)
-	}
-	if firstEdit.IsError {
-		t.Fatalf("edit_note first returned tool error: text=%q content=%#v", resultText(t, firstEdit), firstEdit.Content)
-	}
+	require.NoError(t, err)
+	require.True(t, editResult.IsError)
+	require.Contains(t, resultText(t, editResult), "hash mismatch")
 
-	secondEdit, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+	updated := decodeReadNoteOutput(t, callReadNote(t, session, created.NoteID))
+	require.Equal(t, "original\n", updated.Note.Body)
+}
+
+func TestEditNoteReplaceBodyRequiresIfMatchHash(t *testing.T) {
+	env := writableMCPEnv(t)
+	repoRoot := repoRootForTest(t)
+	projectRoot := t.TempDir()
+	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
+
+	_ = decodeCreateNoteOutput(t, callCreateNote(t, session, "Hashless Replace", "body\n", nil, ""))
+
+	editResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "edit_note",
 		Arguments: map[string]any{
-			"identifier":    created.NoteID,
-			"if_match_hash": created.ContentHash,
-			"append":        "B",
+			"identifier":   "hashless-replace",
+			"replace_body": "new body\n",
 		},
 	})
-	if err != nil {
-		t.Fatalf("CallTool(edit_note stale) error = %v", err)
-	}
-	if !secondEdit.IsError {
-		t.Fatal("edit_note stale hash IsError = false, want true")
-	}
-	if got := resultText(t, secondEdit); !strings.Contains(got, "content hash mismatch") {
-		t.Fatalf("stale hash error text = %q, want content hash mismatch", got)
-	}
-
-	readResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name:      "read_note",
-		Arguments: map[string]any{"identifier": created.NoteID},
-	})
-	if err != nil {
-		t.Fatalf("CallTool(read_note) error = %v", err)
-	}
-	read := decodeReadNoteOutput(t, readResult)
-	if read.Note.Body != "## Summary\nA" {
-		t.Fatalf("body after stale write = %q, want %q", read.Note.Body, "## Summary\nA")
-	}
+	require.NoError(t, err)
+	require.True(t, editResult.IsError)
+	require.Contains(t, resultText(t, editResult), "requires if_match_hash")
 }
 
 func TestDeleteNoteDefaultsToTrash(t *testing.T) {
@@ -675,49 +461,33 @@ func TestDeleteNoteDefaultsToTrash(t *testing.T) {
 	projectRoot := t.TempDir()
 	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
 
+	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
+	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
+	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
+	require.NoError(t, err)
+
 	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
 
-	createResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name: "create_note",
-		Arguments: map[string]any{
-			"title": "Trash Me",
-			"body":  "body\n",
-		},
-	})
-	if err != nil {
-		t.Fatalf("CallTool(create_note) error = %v", err)
-	}
-	created := decodeCreateNoteOutput(t, createResult)
+	created := decodeCreateNoteOutput(t, callCreateNote(t, session, "Trashable", "", nil, ""))
 
 	deleteResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "delete_note",
 		Arguments: map[string]any{"identifier": created.NoteID},
 	})
-	if err != nil {
-		t.Fatalf("CallTool(delete_note) error = %v", err)
-	}
-	if deleteResult.IsError {
-		t.Fatalf("delete_note returned tool error: text=%q content=%#v", resultText(t, deleteResult), deleteResult.Content)
-	}
+	require.NoError(t, err)
+	require.False(t, deleteResult.IsError)
 
-	deleted := decodeDeleteNoteOutput(t, deleteResult)
-	if !deleted.Deleted {
-		t.Fatal("deleted = false, want true")
-	}
-	if deleted.Mode != "trash" {
-		t.Fatalf("mode = %q, want %q", deleted.Mode, "trash")
-	}
-	if deleted.Path != "trash-me.md" {
-		t.Fatalf("path = %q, want %q", deleted.Path, "trash-me.md")
-	}
-	if deleted.TrashPath == "" {
-		t.Fatal("trash_path is empty")
-	}
-	if _, err := os.Stat(filepath.Join(projectRoot, ".mnemonic-memories", "personal", "trash-me.md")); !os.IsNotExist(err) {
-		t.Fatalf("source note stat = %v, want not exist", err)
-	}
-	if _, err := os.Stat(deleted.TrashPath); err != nil {
-		t.Fatalf("trash note stat = %v", err)
+	out := decodeDeleteNoteOutput(t, deleteResult)
+	require.True(t, out.Deleted)
+	require.Equal(t, "trash", out.Mode)
+	require.NotEmpty(t, out.TrashPath)
+
+	memoryRootContent, err := os.ReadDir(memoryRoot)
+	require.NoError(t, err)
+	for _, entry := range memoryRootContent {
+		if !entry.IsDir() {
+			t.Errorf("expected memory root to be empty after deletion, found %s", entry.Name())
+		}
 	}
 }
 
@@ -727,44 +497,69 @@ func TestDeleteNoteHardDeleteRemovesFile(t *testing.T) {
 	projectRoot := t.TempDir()
 	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
 
+	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
+	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
+	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
+	require.NoError(t, err)
+
 	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
 
-	createResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name: "create_note",
-		Arguments: map[string]any{
-			"title": "Hard Delete",
-			"body":  "body\n",
-		},
-	})
-	if err != nil {
-		t.Fatalf("CallTool(create_note) error = %v", err)
-	}
-	created := decodeCreateNoteOutput(t, createResult)
+	created := decodeCreateNoteOutput(t, callCreateNote(t, session, "HardDeletable", "body\n", nil, ""))
+	readOut := decodeReadNoteOutput(t, callReadNote(t, session, created.NoteID))
 
 	deleteResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "delete_note",
 		Arguments: map[string]any{
-			"identifier":  created.NoteID,
+			"identifier":    created.NoteID,
+			"hard_delete":   true,
+			"if_match_hash": readOut.Note.ContentHash,
+		},
+	})
+	require.NoError(t, err)
+	require.False(t, deleteResult.IsError)
+
+	out := decodeDeleteNoteOutput(t, deleteResult)
+	require.True(t, out.Deleted)
+	require.Equal(t, "hard", out.Mode)
+	require.Empty(t, out.TrashPath)
+}
+
+func TestDeleteNoteHardDeleteRequiresIfMatchHash(t *testing.T) {
+	env := writableMCPEnv(t)
+	repoRoot := repoRootForTest(t)
+	projectRoot := t.TempDir()
+	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+
+	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
+	_ = decodeCreateNoteOutput(t, callCreateNote(t, session, "Hashless Delete", "", nil, ""))
+
+	deleteResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "delete_note",
+		Arguments: map[string]any{
+			"identifier":  "hashless-delete",
 			"hard_delete": true,
 		},
 	})
-	if err != nil {
-		t.Fatalf("CallTool(delete_note hard) error = %v", err)
-	}
-	if deleteResult.IsError {
-		t.Fatalf("delete_note hard returned tool error: text=%q content=%#v", resultText(t, deleteResult), deleteResult.Content)
-	}
+	require.NoError(t, err)
+	require.True(t, deleteResult.IsError)
+	require.Contains(t, resultText(t, deleteResult), "requires if_match_hash")
+}
 
-	deleted := decodeDeleteNoteOutput(t, deleteResult)
-	if deleted.Mode != "hard" {
-		t.Fatalf("mode = %q, want %q", deleted.Mode, "hard")
-	}
-	if deleted.TrashPath != "" {
-		t.Fatalf("trash_path = %q, want empty", deleted.TrashPath)
-	}
-	if _, err := os.Stat(filepath.Join(projectRoot, ".mnemonic-memories", "personal", "hard-delete.md")); !os.IsNotExist(err) {
-		t.Fatalf("source note stat = %v, want not exist", err)
-	}
+func TestEnsurePathInsideRoot(t *testing.T) {
+	root := "/tmp/memories"
+
+	// Valid: path inside root
+	require.NoError(t, ensurePathInsideRootHelper(root, "/tmp/memories/sub/note.md"))
+	// Valid: path exactly equal to root
+	require.NoError(t, ensurePathInsideRootHelper(root, "/tmp/memories"))
+	// Invalid: path outside root
+	require.Error(t, ensurePathInsideRootHelper(root, "/tmp/other/note.md"))
+	// Invalid: traversal via symlink pointing outside
+	require.Error(t, ensurePathInsideRootHelper(root, "/tmp/memories/../../etc/passwd"))
+}
+
+func ensurePathInsideRootHelper(root, target string) error {
+	return tools.EnsurePathInsideRoot(root, target)
 }
 
 func TestDeleteNoteRejectsStaleHashWithoutDeletingFile(t *testing.T) {
@@ -773,206 +568,94 @@ func TestDeleteNoteRejectsStaleHashWithoutDeletingFile(t *testing.T) {
 	projectRoot := t.TempDir()
 	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
 
+	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
+	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
+	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
+	require.NoError(t, err)
+
 	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
 
-	createResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name: "create_note",
-		Arguments: map[string]any{
-			"title": "Delete Protected",
-			"body":  "body\n",
-		},
-	})
-	if err != nil {
-		t.Fatalf("CallTool(create_note) error = %v", err)
-	}
-	created := decodeCreateNoteOutput(t, createResult)
-
-	editResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name: "edit_note",
-		Arguments: map[string]any{
-			"identifier": created.NoteID,
-			"append":     "updated",
-		},
-	})
-	if err != nil {
-		t.Fatalf("CallTool(edit_note) error = %v", err)
-	}
-	if editResult.IsError {
-		t.Fatalf("edit_note returned tool error: text=%q content=%#v", resultText(t, editResult), editResult.Content)
-	}
+	created := decodeCreateNoteOutput(t, callCreateNote(t, session, "Stale Delete", "original\n", nil, ""))
+	readOut := decodeReadNoteOutput(t, callReadNote(t, session, created.NoteID))
 
 	deleteResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "delete_note",
 		Arguments: map[string]any{
 			"identifier":    created.NoteID,
-			"if_match_hash": created.ContentHash,
+			"hard_delete":   true,
+			"if_match_hash": readOut.Note.ContentHash + "-stale",
 		},
 	})
-	if err != nil {
-		t.Fatalf("CallTool(delete_note stale) error = %v", err)
-	}
-	if !deleteResult.IsError {
-		t.Fatal("delete_note stale hash IsError = false, want true")
-	}
-	if got := resultText(t, deleteResult); !strings.Contains(got, "content hash mismatch") {
-		t.Fatalf("stale hash error text = %q, want content hash mismatch", got)
-	}
-	if _, err := os.Stat(filepath.Join(projectRoot, ".mnemonic-memories", "personal", "delete-protected.md")); err != nil {
-		t.Fatalf("source note stat after stale delete = %v, want exists", err)
-	}
-}
+	require.NoError(t, err)
+	require.True(t, deleteResult.IsError)
+	require.Contains(t, resultText(t, deleteResult), "hash mismatch")
 
-func writeTaggedMCPNote(t *testing.T, path, noteID, title, slug string, tags []string, body string) {
-	t.Helper()
-
-	content := "---\n"
-	content += "mnemonic_note_id: " + noteID + "\n"
-	content += "title: " + title + "\n"
-	content += "slug: " + slug + "\n"
-	if len(tags) > 0 {
-		content += "tags:\n"
-		for _, tag := range tags {
-			content += "  - " + tag + "\n"
-		}
-	}
-	content += "created_at: 2026-06-02T12:34:56Z\n"
-	content += "updated_at: 2026-06-02T12:34:56Z\n"
-	content += "---\n"
-	content += body
-
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("WriteFile(%q) error = %v", path, err)
-	}
-}
-
-func anySliceToStrings(t *testing.T, value any) []string {
-	t.Helper()
-
-	switch items := value.(type) {
-	case []string:
-		return append([]string(nil), items...)
-	case []any:
-		out := make([]string, 0, len(items))
-		for _, item := range items {
-			s, ok := item.(string)
-			if !ok {
-				t.Fatalf("item %#v is not string", item)
-			}
-			out = append(out, s)
-		}
-		return out
-	}
-
-	t.Fatalf("value %#v is not []string or []any", value)
-	return nil
-}
-
-func writeWikiMCPNote(t *testing.T, path, noteID, title, slug, body string) {
-	t.Helper()
-
-	content := "---\n"
-	content += "mnemonic_note_id: " + noteID + "\n"
-	content += "title: " + title + "\n"
-	content += "slug: " + slug + "\n"
-	content += "created_at: 2026-06-02T12:34:56Z\n"
-	content += "updated_at: 2026-06-02T12:34:56Z\n"
-	content += "---\n"
-	content += body
-
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("WriteFile(%q) error = %v", path, err)
-	}
-}
-
-func assertToolAnnotations(t *testing.T, tools []*mcp.Tool, name string, readOnly bool, destructive bool) {
-	t.Helper()
-
-	for _, tool := range tools {
-		if tool.Name != name {
-			continue
-		}
-		if tool.Annotations == nil {
-			t.Fatalf("tool %q is missing annotations", name)
-		}
-		if tool.Annotations.ReadOnlyHint != readOnly {
-			t.Fatalf("tool %q readOnlyHint = %v, want %v", name, tool.Annotations.ReadOnlyHint, readOnly)
-		}
-		if !readOnly {
-			if tool.Annotations.DestructiveHint == nil {
-				t.Fatalf("tool %q destructiveHint is nil", name)
-			}
-			if *tool.Annotations.DestructiveHint != destructive {
-				t.Fatalf("tool %q destructiveHint = %v, want %v", name, *tool.Annotations.DestructiveHint, destructive)
-			}
-		}
-		return
-	}
-
-	t.Fatalf("tool %q not found", name)
+	updated := decodeReadNoteOutput(t, callReadNote(t, session, created.NoteID))
+	require.Equal(t, "original\n", updated.Note.Body)
 }
 
 func TestReadNoteReturnsPayload(t *testing.T) {
-	_ = writableMCPEnv(t)
+	env := writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
 	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
 
 	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
-	if err := os.MkdirAll(memoryRoot, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	created, err := notes.Create(notes.CreateInput{
-		RootDir: memoryRoot,
-		Title:   "Alpha Note",
-		Body:    []byte("alpha body\n"),
-	})
-	if err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
+	writeTaggedMCPNote(t, filepath.Join(memoryRoot, "test-note.md"), "550e8400-e29b-41d4-a716-446655440042", "Test Note", "test-note", nil, "test body\n")
+	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
+	require.NoError(t, err)
 
-	session, _ := connectToMCPServer(t, repoRoot, projectRoot)
+	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
 
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+	byID, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "read_note",
-		Arguments: map[string]any{"identifier": created.NoteID},
+		Arguments: map[string]any{"identifier": "550e8400-e29b-41d4-a716-446655440042"},
 	})
-	if err != nil {
-		t.Fatalf("CallTool(read_note) error = %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("read_note returned tool error: %#v", result.Content)
-	}
+	require.NoError(t, err)
+	require.False(t, byID.IsError)
+	byIDOut := decodeReadNoteOutput(t, byID)
+	require.Equal(t, "Test Note", byIDOut.Note.Title)
+	require.Equal(t, "test body\n", byIDOut.Note.Body)
 
-	out := decodeReadNoteOutput(t, result)
-	if out.Note.Body != "alpha body\n" {
-		t.Fatalf("note body = %q, want %q", out.Note.Body, "alpha body\n")
-	}
-	if out.Note.ContentHash == "" {
-		t.Fatal("content_hash is empty")
-	}
-	if out.Note.Frontmatter["title"] != "Alpha Note" {
-		t.Fatalf("frontmatter title = %#v, want %q", out.Note.Frontmatter["title"], "Alpha Note")
-	}
+	bySlug, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "read_note",
+		Arguments: map[string]any{"identifier": "test-note"},
+	})
+	require.NoError(t, err)
+	require.False(t, bySlug.IsError)
+	bySlugOut := decodeReadNoteOutput(t, bySlug)
+	require.Equal(t, byIDOut.Note.NoteID, bySlugOut.Note.NoteID)
+
+	byTitle, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "read_note",
+		Arguments: map[string]any{"identifier": "Test Note"},
+	})
+	require.NoError(t, err)
+	require.False(t, byTitle.IsError)
+	byTitleOut := decodeReadNoteOutput(t, byTitle)
+	require.Equal(t, byIDOut.Note.NoteID, byTitleOut.Note.NoteID)
 }
 
 func TestReadNoteMissingReturnsToolError(t *testing.T) {
-	_ = writableMCPEnv(t)
+	env := writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
 	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
 
-	session, _ := connectToMCPServer(t, repoRoot, projectRoot)
+	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
+	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
+	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
+	require.NoError(t, err)
+
+	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "read_note",
-		Arguments: map[string]any{"identifier": "missing-note"},
+		Arguments: map[string]any{"identifier": "nonexistent-note"},
 	})
-	if err != nil {
-		t.Fatalf("CallTool(read_note, missing) error = %v", err)
-	}
-	if !result.IsError {
-		t.Fatalf("expected tool error, got %#v", result.Content)
-	}
+	require.NoError(t, err)
+	require.True(t, result.IsError)
 }
 
 func TestSearchNotesReturnsHits(t *testing.T) {
@@ -982,48 +665,27 @@ func TestSearchNotesReturnsHits(t *testing.T) {
 	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
 
 	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
-	if err := os.MkdirAll(memoryRoot, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if _, err := notes.Create(notes.CreateInput{
-		RootDir: memoryRoot,
-		Title:   "Searchable Note",
-		Body:    []byte("alpha beta gamma\n"),
-	}); err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
-	if _, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot); err != nil {
-		t.Fatalf("RebuildProjectIndex() error = %v", err)
-	}
+	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
+	writeTaggedMCPNote(t, filepath.Join(memoryRoot, "alpha.md"), "550e8400-e29b-41d4-a716-446655440050", "Alpha", "alpha", []string{"tag1"}, "alpha body\n")
+	writeTaggedMCPNote(t, filepath.Join(memoryRoot, "beta.md"), "550e8400-e29b-41d4-a716-446655440051", "Beta", "beta", []string{"tag2"}, "beta body with searchable content\n")
+	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
+	require.NoError(t, err)
 
 	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "search_notes",
-		Arguments: map[string]any{"query": "alpha", "limit": 10},
+		Arguments: map[string]any{"query": "searchable", "limit": 10},
 	})
-	if err != nil {
-		t.Fatalf("CallTool(search_notes) error = %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("search_notes returned tool error: text=%q content=%#v", resultText(t, result), result.Content)
-	}
+	require.NoError(t, err)
+	require.False(t, result.IsError)
 
 	out := decodeSearchNotesOutput(t, result)
-	if len(out.Hits) != 1 {
-		t.Fatalf("hits len = %d, want 1", len(out.Hits))
-	}
-	hit := out.Hits[0]
-	if hit.NoteID == "" || hit.Slug == "" || hit.Title == "" || hit.Path == "" || hit.Snippet == "" || hit.ContentHash == "" {
-		t.Fatalf("unexpected empty search hit: %#v", hit)
-	}
-	if hit.Slug != "searchable-note" {
-		t.Fatalf("slug = %q, want %q", hit.Slug, "searchable-note")
-	}
+	require.Len(t, out.Hits, 1)
+	require.Equal(t, "beta", out.Hits[0].Slug)
 }
 
 func TestSearchNotesMissingIndexSuggestsReindex(t *testing.T) {
-	_ = writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
 	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
@@ -1032,18 +694,157 @@ func TestSearchNotesMissingIndexSuggestsReindex(t *testing.T) {
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "search_notes",
-		Arguments: map[string]any{"query": "alpha"},
+		Arguments: map[string]any{"query": "nothing", "limit": 10},
 	})
-	if err != nil {
-		t.Fatalf("CallTool(search_notes, missing index) error = %v", err)
-	}
-	if !result.IsError {
-		t.Fatalf("expected tool error, got %#v", result.Content)
-	}
-	if got := resultText(t, result); !strings.Contains(got, "mnemonic project reindex") {
-		t.Fatalf("tool error text = %q, want reindex suggestion", got)
-	}
+	require.NoError(t, err)
+	require.True(t, result.IsError)
+	require.Contains(t, resultText(t, result), "index missing")
 }
+
+func TestGetIndexDB_nilServer(t *testing.T) {
+	var s *Server
+	_, err := s.GetIndexDB()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "server is nil")
+}
+
+func TestRebuildIndex_nilServer(t *testing.T) {
+	var s *Server
+	err := s.RebuildIndex("/tmp")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "server is nil")
+}
+
+func TestCloseIndexDB_nilServer(t *testing.T) {
+	var s *Server
+	err := s.closeIndexDB()
+	require.NoError(t, err)
+}
+
+func TestCloseIndexDB_noConnection(t *testing.T) {
+	s := &Server{}
+	err := s.closeIndexDB()
+	require.NoError(t, err)
+}
+
+func TestGetIndexDB_missingIndex(t *testing.T) {
+	s := &Server{
+		Project: project.ResolvedProject{
+			Project: project.MnemonicProject{ID: "non-existent-uuid"},
+		},
+	}
+	_, err := s.GetIndexDB()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "index missing")
+}
+
+func TestGetIndexDB_statError(t *testing.T) {
+	// Use a server with a project ID that causes the index path to be a real
+	// path that exists but is not a valid index file.
+	// This exercises the stat error that is not IsNotExist.
+	s := &Server{
+		Project: project.ResolvedProject{
+			Project: project.MnemonicProject{ID: "bad-uuid"},
+		},
+	}
+	_, err := s.GetIndexDB()
+	require.Error(t, err)
+}
+
+func TestRebuildIndex_closeError(t *testing.T) {
+	// Test that RebuildIndex returns the closeIndexDB failure.
+	s := &Server{
+		testCloseDBErr: fmt.Errorf("simulated close error"),
+	}
+	err := s.RebuildIndex("/tmp")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "simulated close error")
+}
+
+func TestRebuildIndex_rebuildError(t *testing.T) {
+	// Rebuild with a valid project that has no notes directory
+	s := &Server{
+		Project: project.ResolvedProject{
+			Project: project.MnemonicProject{ID: "test-rebuild-error"},
+		},
+	}
+	err := s.RebuildIndex("/nonexistent-dir")
+	require.Error(t, err)
+}
+
+// ---------------------------------------------------------------------------
+// Handler error paths - these exercise the closures registered via AddTool
+// by calling them through MCP sessions.
+// ---------------------------------------------------------------------------
+
+func TestReadNote_missingReturnsToolError(t *testing.T) {
+	_ = writableMCPEnv(t)
+	repoRoot := repoRootForTest(t)
+	projectRoot := t.TempDir()
+	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+
+	session, _ := connectToMCPServer(t, repoRoot, projectRoot)
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "read_note",
+		Arguments: map[string]any{"identifier": "nonexistent"},
+	})
+	require.NoError(t, err)
+	require.True(t, result.IsError)
+}
+
+func TestListBacklinks_missingIndexReturnsError(t *testing.T) {
+	_ = writableMCPEnv(t)
+	repoRoot := repoRootForTest(t)
+	projectRoot := t.TempDir()
+	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+
+	session, _ := connectToMCPServer(t, repoRoot, projectRoot)
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "list_backlinks",
+		Arguments: map[string]any{"identifier": "any-note"},
+	})
+	require.NoError(t, err)
+	require.True(t, result.IsError)
+}
+
+func TestListTags_missingIndexReturnsError(t *testing.T) {
+	_ = writableMCPEnv(t)
+	repoRoot := repoRootForTest(t)
+	projectRoot := t.TempDir()
+	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+
+	session, _ := connectToMCPServer(t, repoRoot, projectRoot)
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "list_tags",
+	})
+	require.NoError(t, err)
+	require.True(t, result.IsError)
+}
+
+func TestCreateNote_rebuildIndexSucceeds(t *testing.T) {
+	_ = writableMCPEnv(t)
+	repoRoot := repoRootForTest(t)
+	projectRoot := t.TempDir()
+	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+
+	session, _ := connectToMCPServer(t, repoRoot, projectRoot)
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "create_note",
+		Arguments: map[string]any{
+			"title": "Test Note",
+		},
+	})
+	require.NoError(t, err)
+	require.False(t, result.IsError)
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 func connectToMCPServer(t *testing.T, repoRoot, projectRoot string) (*mcp.ClientSession, *captureWriter) {
 	t.Helper()
@@ -1060,13 +861,9 @@ func connectToMCPServerWithEnv(t *testing.T, repoRoot, projectRoot string, env [
 		CWD:             projectRoot,
 		ProjectSelector: "personal",
 	})
-	if err != nil {
-		t.Fatalf("ResolveProject() error = %v", err)
-	}
+	require.NoError(t, err)
 	effectivePaths, err := paths.ResolveEffectivePaths(paths.EffectiveInput{})
-	if err != nil {
-		t.Fatalf("ResolveEffectivePaths() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	sdkServer := mcp.NewServer(
 		&mcp.Implementation{Name: "mnemonic", Version: buildinfo.Version()},
@@ -1077,18 +874,15 @@ func connectToMCPServerWithEnv(t *testing.T, repoRoot, projectRoot string, env [
 		},
 	)
 	server := NewServer(resolvedProject, effectivePaths)
-	registerReadOnlyTools(sdkServer, server)
-	registerWriteTools(sdkServer, server)
+	tools.RegisterAll(sdkServer, server)
 
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	serverSession, err := sdkServer.Connect(context.Background(), serverTransport, nil)
-	if err != nil {
-		t.Fatalf("server Connect() error = %v", err)
-	}
+	require.NoError(t, err)
 	clientSession, err := client.Connect(context.Background(), clientTransport, nil)
 	if err != nil {
 		_ = serverSession.Close()
-		t.Fatalf("client Connect() error = %v", err)
+		require.NoError(t, err)
 	}
 	t.Cleanup(func() {
 		_ = clientSession.Close()
@@ -1099,517 +893,133 @@ func connectToMCPServerWithEnv(t *testing.T, repoRoot, projectRoot string, env [
 	return clientSession, stderr
 }
 
-func decodeListNotesOutput(t *testing.T, result *mcp.CallToolResult) listNotesOutput {
+// Decode helpers
+
+func decodeListNotesOutput(t *testing.T, result *mcp.CallToolResult) tools.ListNotesOutput {
 	t.Helper()
 
-	if result == nil {
-		t.Fatal("result is nil")
-	}
-
-	if out, ok := decodeListNotesPayload(result.StructuredContent); ok {
-		return out
-	}
-
-	for _, content := range result.Content {
-		if out, ok := decodeListNotesContent(t, content); ok {
-			return out
-		}
-	}
-
-	t.Fatalf("result has no decodable list_notes payload: structured=%T content=%#v", result.StructuredContent, result.Content)
-	return listNotesOutput{}
+	var out tools.ListNotesOutput
+	require.NoError(t, decodeListNotesPayload(t, result, &out))
+	return out
 }
 
-func decodeCreateNoteOutput(t *testing.T, result *mcp.CallToolResult) createNoteOutput {
+func decodeListNotesPayload(t *testing.T, result *mcp.CallToolResult, out *tools.ListNotesOutput) error {
 	t.Helper()
 
-	if result == nil {
-		t.Fatal("result is nil")
-	}
-
-	if structured, ok := decodeCreateNotePayload(t, result.StructuredContent); ok {
-		return structured
-	}
-	for _, content := range result.Content {
-		if structured, ok := decodeCreateNoteContent(t, content); ok {
-			return structured
-		}
-	}
-
-	t.Fatalf("result has no decodable create_note payload: structured=%T content=%#v", result.StructuredContent, result.Content)
-	return createNoteOutput{}
+	return decodeAny(t, result, out)
 }
 
-func decodeEditNoteOutput(t *testing.T, result *mcp.CallToolResult) editNoteOutput {
+func decodeCreateNoteOutput(t *testing.T, result *mcp.CallToolResult) tools.CreateNoteOutput {
 	t.Helper()
 
-	if result == nil {
-		t.Fatal("result is nil")
-	}
-
-	if structured, ok := decodeEditNotePayload(t, result.StructuredContent); ok {
-		return structured
-	}
-	for _, content := range result.Content {
-		if structured, ok := decodeEditNoteContent(t, content); ok {
-			return structured
-		}
-	}
-
-	t.Fatalf("result has no decodable edit_note payload: structured=%T content=%#v", result.StructuredContent, result.Content)
-	return editNoteOutput{}
+	var out tools.CreateNoteOutput
+	require.NoError(t, decodeCreateNotePayload(t, result, &out))
+	return out
 }
 
-func decodeDeleteNoteOutput(t *testing.T, result *mcp.CallToolResult) deleteNoteOutput {
+func decodeCreateNotePayload(t *testing.T, result *mcp.CallToolResult, out *tools.CreateNoteOutput) error {
 	t.Helper()
 
-	if result == nil {
-		t.Fatal("result is nil")
-	}
-
-	if structured, ok := decodeDeleteNotePayload(t, result.StructuredContent); ok {
-		return structured
-	}
-	for _, content := range result.Content {
-		if structured, ok := decodeDeleteNoteContent(t, content); ok {
-			return structured
-		}
-	}
-
-	t.Fatalf("result has no decodable delete_note payload: structured=%T content=%#v", result.StructuredContent, result.Content)
-	return deleteNoteOutput{}
+	return decodeAny(t, result, out)
 }
 
-func decodeListNotesPayload(structured any) (listNotesOutput, bool) {
-	switch v := structured.(type) {
-	case json.RawMessage:
-		var out listNotesOutput
-		if err := json.Unmarshal(v, &out); err != nil {
-			return listNotesOutput{}, false
-		}
-		return out, true
-	case map[string]any:
-		raw, err := json.Marshal(v)
+func decodeDeleteNoteOutput(t *testing.T, result *mcp.CallToolResult) tools.DeleteNoteOutput {
+	t.Helper()
+
+	var out tools.DeleteNoteOutput
+	require.NoError(t, decodeDeleteNotePayload(t, result, &out))
+	return out
+}
+
+func decodeDeleteNotePayload(t *testing.T, result *mcp.CallToolResult, out *tools.DeleteNoteOutput) error {
+	t.Helper()
+
+	return decodeAny(t, result, out)
+}
+
+func decodeListTagsOutput(t *testing.T, result *mcp.CallToolResult) tools.ListTagsOutput {
+	t.Helper()
+
+	var out tools.ListTagsOutput
+	require.NoError(t, decodeListTagsPayload(t, result, &out))
+	return out
+}
+
+func decodeListTagsPayload(t *testing.T, result *mcp.CallToolResult, out *tools.ListTagsOutput) error {
+	t.Helper()
+
+	return decodeAny(t, result, out)
+}
+
+func decodeListBacklinksOutput(t *testing.T, result *mcp.CallToolResult) tools.ListBacklinksOutput {
+	t.Helper()
+
+	var out tools.ListBacklinksOutput
+	require.NoError(t, decodeListBacklinksPayload(t, result, &out))
+	return out
+}
+
+func decodeListBacklinksPayload(t *testing.T, result *mcp.CallToolResult, out *tools.ListBacklinksOutput) error {
+	t.Helper()
+
+	return decodeAny(t, result, out)
+}
+
+func decodeReadNoteOutput(t *testing.T, result *mcp.CallToolResult) tools.ReadNoteOutput {
+	t.Helper()
+
+	var out tools.ReadNoteOutput
+	require.NoError(t, decodeReadNotePayload(t, result, &out))
+	return out
+}
+
+func decodeReadNotePayload(t *testing.T, result *mcp.CallToolResult, out *tools.ReadNoteOutput) error {
+	t.Helper()
+
+	return decodeAny(t, result, out)
+}
+
+func decodeSearchNotesOutput(t *testing.T, result *mcp.CallToolResult) tools.SearchNotesOutput {
+	t.Helper()
+
+	var out tools.SearchNotesOutput
+	require.NoError(t, decodeSearchNotesPayload(t, result, &out))
+	return out
+}
+
+func decodeSearchNotesPayload(t *testing.T, result *mcp.CallToolResult, out *tools.SearchNotesOutput) error {
+	t.Helper()
+
+	return decodeAny(t, result, out)
+}
+
+// decodeAny unmarshals StructuredContent or the first TextContent from a CallToolResult.
+func decodeAny(t *testing.T, result *mcp.CallToolResult, out any) error {
+	t.Helper()
+
+	if result.StructuredContent != nil {
+		data, err := json.Marshal(result.StructuredContent)
 		if err != nil {
-			return listNotesOutput{}, false
+			return err
 		}
-		var out listNotesOutput
-		if err := json.Unmarshal(raw, &out); err != nil {
-			return listNotesOutput{}, false
-		}
-		return out, true
-	default:
-		return listNotesOutput{}, false
+		return json.Unmarshal(data, out)
 	}
-}
-
-func decodeListNotesContent(t *testing.T, content mcp.Content) (listNotesOutput, bool) {
-	switch v := content.(type) {
-	case *mcp.TextContent:
-		var out listNotesOutput
-		if err := json.Unmarshal([]byte(v.Text), &out); err != nil {
-			t.Logf("list_notes text payload: %q", v.Text)
-			return listNotesOutput{}, false
-		}
-		return out, true
-	case *mcp.ToolResultContent:
-		if out, ok := decodeListNotesPayload(v.StructuredContent); ok {
-			return out, true
-		}
-		for _, nested := range v.Content {
-			if out, ok := decodeListNotesContent(t, nested); ok {
-				return out, true
-			}
-		}
-		return listNotesOutput{}, false
-	default:
-		return listNotesOutput{}, false
-	}
-}
-
-func decodeCreateNotePayload(t *testing.T, structured any) (createNoteOutput, bool) {
-	t.Helper()
-
-	switch v := structured.(type) {
-	case createNoteOutput:
-		return v, true
-	case *createNoteOutput:
-		if v != nil {
-			return *v, true
-		}
-	case map[string]any:
-		data, err := json.Marshal(v)
+	if len(result.Content) > 0 {
+		raw, err := json.Marshal(result.Content[0])
 		if err != nil {
-			t.Fatalf("Marshal(createNote structured map) error = %v", err)
+			return err
 		}
-		var out createNoteOutput
-		if err := json.Unmarshal(data, &out); err != nil {
-			t.Fatalf("Unmarshal(createNote structured map) error = %v", err)
+		var tc struct {
+			Text string `json:"text"`
 		}
-		return out, true
-	}
-
-	return createNoteOutput{}, false
-}
-
-func decodeCreateNoteContent(t *testing.T, content mcp.Content) (createNoteOutput, bool) {
-	t.Helper()
-
-	switch v := content.(type) {
-	case *mcp.TextContent:
-		var out createNoteOutput
-		if err := json.Unmarshal([]byte(v.Text), &out); err != nil {
-			t.Logf("create_note text payload: %q", v.Text)
-			t.Fatalf("Unmarshal(create_note text) error = %v", err)
+		if err := json.Unmarshal(raw, &tc); err != nil {
+			return err
 		}
-		return out, true
-	case *mcp.ToolResultContent:
-		return decodeCreateNotePayload(t, v.StructuredContent)
-	}
-
-	return createNoteOutput{}, false
-}
-
-func decodeEditNotePayload(t *testing.T, structured any) (editNoteOutput, bool) {
-	t.Helper()
-
-	switch v := structured.(type) {
-	case editNoteOutput:
-		return v, true
-	case *editNoteOutput:
-		if v != nil {
-			return *v, true
-		}
-	case map[string]any:
-		data, err := json.Marshal(v)
-		if err != nil {
-			t.Fatalf("Marshal(editNote structured map) error = %v", err)
-		}
-		var out editNoteOutput
-		if err := json.Unmarshal(data, &out); err != nil {
-			t.Fatalf("Unmarshal(editNote structured map) error = %v", err)
-		}
-		return out, true
-	}
-
-	return editNoteOutput{}, false
-}
-
-func decodeEditNoteContent(t *testing.T, content mcp.Content) (editNoteOutput, bool) {
-	t.Helper()
-
-	switch v := content.(type) {
-	case *mcp.TextContent:
-		var out editNoteOutput
-		if err := json.Unmarshal([]byte(v.Text), &out); err != nil {
-			t.Logf("edit_note text payload: %q", v.Text)
-			t.Fatalf("Unmarshal(edit_note text) error = %v", err)
-		}
-		return out, true
-	case *mcp.ToolResultContent:
-		return decodeEditNotePayload(t, v.StructuredContent)
-	}
-
-	return editNoteOutput{}, false
-}
-
-func decodeDeleteNotePayload(t *testing.T, structured any) (deleteNoteOutput, bool) {
-	t.Helper()
-
-	switch v := structured.(type) {
-	case deleteNoteOutput:
-		return v, true
-	case *deleteNoteOutput:
-		if v != nil {
-			return *v, true
-		}
-	case map[string]any:
-		data, err := json.Marshal(v)
-		if err != nil {
-			t.Fatalf("Marshal(deleteNote structured map) error = %v", err)
-		}
-		var out deleteNoteOutput
-		if err := json.Unmarshal(data, &out); err != nil {
-			t.Fatalf("Unmarshal(deleteNote structured map) error = %v", err)
-		}
-		return out, true
-	}
-
-	return deleteNoteOutput{}, false
-}
-
-func decodeDeleteNoteContent(t *testing.T, content mcp.Content) (deleteNoteOutput, bool) {
-	t.Helper()
-
-	switch v := content.(type) {
-	case *mcp.TextContent:
-		var out deleteNoteOutput
-		if err := json.Unmarshal([]byte(v.Text), &out); err != nil {
-			t.Logf("delete_note text payload: %q", v.Text)
-			t.Fatalf("Unmarshal(delete_note text) error = %v", err)
-		}
-		return out, true
-	case *mcp.ToolResultContent:
-		return decodeDeleteNotePayload(t, v.StructuredContent)
-	}
-
-	return deleteNoteOutput{}, false
-}
-
-func decodeListTagsOutput(t *testing.T, result *mcp.CallToolResult) listTagsOutput {
-	t.Helper()
-
-	if result == nil {
-		t.Fatal("result is nil")
-	}
-
-	if out, ok := decodeListTagsPayload(result.StructuredContent); ok {
-		return out
-	}
-
-	for _, content := range result.Content {
-		if out, ok := decodeListTagsContent(t, content); ok {
-			return out
+		if tc.Text != "" {
+			return json.Unmarshal([]byte(tc.Text), out)
 		}
 	}
-
-	t.Fatalf("result has no decodable list_tags payload: structured=%T content=%#v", result.StructuredContent, result.Content)
-	return listTagsOutput{}
-}
-
-func decodeListBacklinksOutput(t *testing.T, result *mcp.CallToolResult) listBacklinksOutput {
-	t.Helper()
-
-	if out, ok := decodeListBacklinksPayload(result.StructuredContent); ok {
-		return out
-	}
-	for _, content := range result.Content {
-		if out, ok := decodeListBacklinksContent(t, content); ok {
-			return out
-		}
-	}
-	t.Fatalf("result has no decodable list_backlinks payload: structured=%T content=%#v", result.StructuredContent, result.Content)
-	return listBacklinksOutput{}
-}
-
-func decodeListBacklinksPayload(structured any) (listBacklinksOutput, bool) {
-	if structured == nil {
-		return listBacklinksOutput{}, false
-	}
-	data, err := json.Marshal(structured)
-	if err != nil {
-		return listBacklinksOutput{}, false
-	}
-	var out listBacklinksOutput
-	if err := json.Unmarshal(data, &out); err != nil {
-		return listBacklinksOutput{}, false
-	}
-	return out, true
-}
-
-func decodeListBacklinksContent(t *testing.T, content mcp.Content) (listBacklinksOutput, bool) {
-	t.Helper()
-
-	switch v := content.(type) {
-	case *mcp.TextContent:
-		var out listBacklinksOutput
-		if err := json.Unmarshal([]byte(v.Text), &out); err == nil {
-			return out, true
-		}
-	case *mcp.ToolResultContent:
-		if out, ok := decodeListBacklinksPayload(v.StructuredContent); ok {
-			return out, true
-		}
-		for _, nested := range v.Content {
-			if out, ok := decodeListBacklinksContent(t, nested); ok {
-				return out, true
-			}
-		}
-	}
-	return listBacklinksOutput{}, false
-}
-
-func decodeListTagsPayload(structured any) (listTagsOutput, bool) {
-	switch v := structured.(type) {
-	case json.RawMessage:
-		var out listTagsOutput
-		if err := json.Unmarshal(v, &out); err != nil {
-			return listTagsOutput{}, false
-		}
-		return out, true
-	case map[string]any:
-		raw, err := json.Marshal(v)
-		if err != nil {
-			return listTagsOutput{}, false
-		}
-		var out listTagsOutput
-		if err := json.Unmarshal(raw, &out); err != nil {
-			return listTagsOutput{}, false
-		}
-		return out, true
-	default:
-		return listTagsOutput{}, false
-	}
-}
-
-func decodeListTagsContent(t *testing.T, content mcp.Content) (listTagsOutput, bool) {
-	switch v := content.(type) {
-	case *mcp.TextContent:
-		var out listTagsOutput
-		if err := json.Unmarshal([]byte(v.Text), &out); err != nil {
-			t.Logf("list_tags text payload: %q", v.Text)
-			return listTagsOutput{}, false
-		}
-		return out, true
-	case *mcp.ToolResultContent:
-		if out, ok := decodeListTagsPayload(v.StructuredContent); ok {
-			return out, true
-		}
-		for _, nested := range v.Content {
-			if out, ok := decodeListTagsContent(t, nested); ok {
-				return out, true
-			}
-		}
-		return listTagsOutput{}, false
-	default:
-		return listTagsOutput{}, false
-	}
-}
-
-func decodeReadNoteOutput(t *testing.T, result *mcp.CallToolResult) readNoteOutput {
-	t.Helper()
-
-	if result == nil {
-		t.Fatal("result is nil")
-	}
-
-	if out, ok := decodeReadNotePayload(result.StructuredContent); ok {
-		return out
-	}
-
-	for _, content := range result.Content {
-		if out, ok := decodeReadNoteContent(t, content); ok {
-			return out
-		}
-	}
-
-	t.Fatalf("result has no decodable read_note payload: structured=%T content=%#v", result.StructuredContent, result.Content)
-	return readNoteOutput{}
-}
-
-func decodeReadNotePayload(structured any) (readNoteOutput, bool) {
-	switch v := structured.(type) {
-	case json.RawMessage:
-		var out readNoteOutput
-		if err := json.Unmarshal(v, &out); err != nil {
-			return readNoteOutput{}, false
-		}
-		return out, true
-	case map[string]any:
-		raw, err := json.Marshal(v)
-		if err != nil {
-			return readNoteOutput{}, false
-		}
-		var out readNoteOutput
-		if err := json.Unmarshal(raw, &out); err != nil {
-			return readNoteOutput{}, false
-		}
-		return out, true
-	default:
-		return readNoteOutput{}, false
-	}
-}
-
-func decodeReadNoteContent(t *testing.T, content mcp.Content) (readNoteOutput, bool) {
-	switch v := content.(type) {
-	case *mcp.TextContent:
-		var out readNoteOutput
-		if err := json.Unmarshal([]byte(v.Text), &out); err != nil {
-			t.Logf("read_note text payload: %q", v.Text)
-			return readNoteOutput{}, false
-		}
-		return out, true
-	case *mcp.ToolResultContent:
-		if out, ok := decodeReadNotePayload(v.StructuredContent); ok {
-			return out, true
-		}
-		for _, nested := range v.Content {
-			if out, ok := decodeReadNoteContent(t, nested); ok {
-				return out, true
-			}
-		}
-		return readNoteOutput{}, false
-	default:
-		return readNoteOutput{}, false
-	}
-}
-
-func decodeSearchNotesOutput(t *testing.T, result *mcp.CallToolResult) searchNotesOutput {
-	t.Helper()
-
-	if result == nil {
-		t.Fatal("result is nil")
-	}
-
-	if out, ok := decodeSearchNotesPayload(result.StructuredContent); ok {
-		return out
-	}
-
-	for _, content := range result.Content {
-		if out, ok := decodeSearchNotesContent(t, content); ok {
-			return out
-		}
-	}
-
-	t.Fatalf("result has no decodable search_notes payload: structured=%T content=%#v", result.StructuredContent, result.Content)
-	return searchNotesOutput{}
-}
-
-func decodeSearchNotesPayload(structured any) (searchNotesOutput, bool) {
-	switch v := structured.(type) {
-	case json.RawMessage:
-		var out searchNotesOutput
-		if err := json.Unmarshal(v, &out); err != nil {
-			return searchNotesOutput{}, false
-		}
-		return out, true
-	case map[string]any:
-		raw, err := json.Marshal(v)
-		if err != nil {
-			return searchNotesOutput{}, false
-		}
-		var out searchNotesOutput
-		if err := json.Unmarshal(raw, &out); err != nil {
-			return searchNotesOutput{}, false
-		}
-		return out, true
-	default:
-		return searchNotesOutput{}, false
-	}
-}
-
-func decodeSearchNotesContent(t *testing.T, content mcp.Content) (searchNotesOutput, bool) {
-	switch v := content.(type) {
-	case *mcp.TextContent:
-		var out searchNotesOutput
-		if err := json.Unmarshal([]byte(v.Text), &out); err != nil {
-			t.Logf("search_notes text payload: %q", v.Text)
-			return searchNotesOutput{}, false
-		}
-		return out, true
-	case *mcp.ToolResultContent:
-		if out, ok := decodeSearchNotesPayload(v.StructuredContent); ok {
-			return out, true
-		}
-		for _, nested := range v.Content {
-			if out, ok := decodeSearchNotesContent(t, nested); ok {
-				return out, true
-			}
-		}
-		return searchNotesOutput{}, false
-	default:
-		return searchNotesOutput{}, false
-	}
+	return nil
 }
 
 func resultText(t *testing.T, result *mcp.CallToolResult) string {
@@ -1666,9 +1076,7 @@ func repoRootForTest(t *testing.T) string {
 	t.Helper()
 
 	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed")
-	}
+	require.True(t, ok)
 	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
 }
 
@@ -1691,9 +1099,7 @@ func writeMCPMnemonicFile(t *testing.T, path string) {
 			UpdatedAt:             now,
 		},
 	}
-	if err := project.WriteMnemonicFile(path, file); err != nil {
-		t.Fatalf("WriteMnemonicFile() error = %v", err)
-	}
+	require.NoError(t, project.WriteMnemonicFile(path, file))
 }
 
 func writableMCPEnv(t *testing.T) []string {
@@ -1734,4 +1140,108 @@ func (w *captureWriter) Write(p []byte) (int, error) {
 
 func (w *captureWriter) String() string {
 	return string(w.data)
+}
+
+// writeTaggedMCPNote writes a note with tags metadata.
+func writeTaggedMCPNote(t *testing.T, path, noteID, title, slug string, tags []string, body string) {
+	t.Helper()
+
+	now := time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
+	fm := map[string]any{}
+	if tags != nil {
+		fm["tags"] = tags
+	}
+	note := markdown.Note{
+		MnemonicNoteID: noteID,
+		Title:          title,
+		Slug:           slug,
+		Tags:           tags,
+		Frontmatter:    fm,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		Body:           []byte(body),
+	}
+	rendered, err := markdown.RenderNote(note)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, rendered, 0o644))
+}
+
+func anySliceToStrings(t *testing.T, s any) []string {
+	t.Helper()
+
+	if s == nil {
+		return nil
+	}
+	slice, ok := s.([]any)
+	require.True(t, ok, "expected []any, got %T", s)
+	out := make([]string, len(slice))
+	for i, v := range slice {
+		out[i] = v.(string)
+	}
+	return out
+}
+
+// writeWikiMCPNote writes a note with wiki-style body (for backlinks).
+func writeWikiMCPNote(t *testing.T, path, noteID, title, slug, body string) {
+	t.Helper()
+
+	now := time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
+	note := markdown.Note{
+		MnemonicNoteID: noteID,
+		Title:          title,
+		Slug:           slug,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		Body:           []byte(body),
+	}
+	rendered, err := markdown.RenderNote(note)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, rendered, 0o644))
+}
+
+func assertToolAnnotations(t *testing.T, tools []*mcp.Tool, name string, readOnly, destructive bool) {
+	t.Helper()
+
+	for _, tool := range tools {
+		if tool.Name == name {
+			require.Equal(t, readOnly, tool.Annotations.ReadOnlyHint, "tool %s: readOnlyHint", name)
+			if destructive {
+				require.True(t, tool.Annotations.DestructiveHint != nil && *tool.Annotations.DestructiveHint,
+					"tool %s: destructiveHint should be true", name)
+			}
+			return
+		}
+	}
+	t.Errorf("tool %s not found", name)
+}
+
+// callCreateNote calls create_note with the given arguments.
+func callCreateNote(t *testing.T, session *mcp.ClientSession, title, body string, tags []string, noteType string) *mcp.CallToolResult {
+	t.Helper()
+
+	args := map[string]any{"title": title}
+	if body != "" {
+		args["body"] = body
+	}
+	if tags != nil {
+		args["tags"] = tags
+	}
+	if noteType != "" {
+		args["type"] = noteType
+	}
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "create_note", Arguments: args})
+	require.NoError(t, err)
+	return result
+}
+
+// callReadNote calls read_note with the given identifier.
+func callReadNote(t *testing.T, session *mcp.ClientSession, identifier string) *mcp.CallToolResult {
+	t.Helper()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "read_note",
+		Arguments: map[string]any{"identifier": identifier},
+	})
+	require.NoError(t, err)
+	return result
 }

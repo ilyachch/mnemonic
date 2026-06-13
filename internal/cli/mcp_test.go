@@ -3,52 +3,36 @@ package cli
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/project"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMCPCommandHelpShowsProjectFlag(t *testing.T) {
 	setWritableMCPEnv(t)
 	res := executeCommand("mcp", "--help")
-	if res.Err != nil {
-		t.Fatalf("unexpected error: %v", res.Err)
-	}
-
-	if !strings.Contains(res.Stdout, "--project") {
-		t.Fatalf("help output does not mention --project: %q", res.Stdout)
-	}
+	require.NoError(t, res.Err)
+	require.Contains(t, res.Stdout, "--project")
 }
 
 func TestMCPCommandReturnsClearErrorWithoutProjectContext(t *testing.T) {
 	setWritableMCPEnv(t)
 	cwd := t.TempDir()
 	prevWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd() error = %v", err)
-	}
-	if err := os.Chdir(cwd); err != nil {
-		t.Fatalf("Chdir() error = %v", err)
-	}
+	require.NoError(t, err)
+	err = os.Chdir(cwd)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = os.Chdir(prevWD)
 	})
 
 	res := executeCommand("mcp")
-	if res.Stdout != "" {
-		t.Fatalf("expected empty stdout, got %q", res.Stdout)
-	}
-	if res.Err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !strings.Contains(res.Err.Error(), ".mnemonic not found") {
-		t.Fatalf("error = %v, want clear missing-project-context error", res.Err)
-	}
-	if !strings.Contains(res.Stderr, ".mnemonic not found") {
-		t.Fatalf("stderr = %q, want clear missing-project-context error", res.Stderr)
-	}
+	require.Empty(t, res.Stdout)
+	require.Error(t, res.Err, "expected error, got nil")
+	require.Contains(t, res.Err.Error(), ".mnemonic not found")
+	require.Contains(t, res.Stderr, ".mnemonic not found")
 }
 
 func TestMCPCommandRejectsBadEnvironmentProjectBeforeServing(t *testing.T) {
@@ -57,27 +41,18 @@ func TestMCPCommandRejectsBadEnvironmentProjectBeforeServing(t *testing.T) {
 	writeMCPMnemonicFile(t, filepath.Join(cwd, ".mnemonic"))
 
 	prevWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd() error = %v", err)
-	}
-	if err := os.Chdir(cwd); err != nil {
-		t.Fatalf("Chdir() error = %v", err)
-	}
+	require.NoError(t, err)
+	err = os.Chdir(cwd)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = os.Chdir(prevWD)
 	})
 	t.Setenv("MNEMONIC_PROJECT", "missing")
 
 	res := executeCommand("mcp")
-	if res.Err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !strings.Contains(res.Err.Error(), "project \"missing\" not found") {
-		t.Fatalf("error = %v, want missing-project error", res.Err)
-	}
-	if res.Stdout != "" {
-		t.Fatalf("expected empty stdout, got %q", res.Stdout)
-	}
+	require.Error(t, res.Err, "expected error, got nil")
+	require.Contains(t, res.Err.Error(), `project "missing" not found`)
+	require.Empty(t, res.Stdout)
 }
 
 func writeMCPMnemonicFile(t *testing.T, path string) {
@@ -99,9 +74,8 @@ func writeMCPMnemonicFile(t *testing.T, path string) {
 			UpdatedAt:             now,
 		},
 	}
-	if err := project.WriteMnemonicFile(path, file); err != nil {
-		t.Fatalf("WriteMnemonicFile() error = %v", err)
-	}
+	err := project.WriteMnemonicFile(path, file)
+	require.NoError(t, err)
 }
 
 func setWritableMCPEnv(t *testing.T) {

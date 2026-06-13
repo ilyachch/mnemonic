@@ -2,9 +2,10 @@ package project
 
 import (
 	"reflect"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestMnemonicFileRoundTrip(t *testing.T) {
@@ -37,18 +38,12 @@ func TestMnemonicFileRoundTrip(t *testing.T) {
 	}
 
 	data, err := original.MarshalTOML()
-	if err != nil {
-		t.Fatalf("MarshalTOML() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	parsed, err := ParseMnemonicFile(data)
-	if err != nil {
-		t.Fatalf("ParseMnemonicFile() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	if !reflect.DeepEqual(parsed, original) {
-		t.Fatalf("roundtrip mismatch\noriginal: %#v\nparsed: %#v\ntext:\n%s", original, parsed, string(data))
-	}
+	require.True(t, reflect.DeepEqual(parsed, original))
 }
 
 func TestMnemonicFileRejectsDetachedKind(t *testing.T) {
@@ -66,12 +61,8 @@ markdown_format_version = 1
 created_at = "2026-06-02T10:00:00Z"
 updated_at = "2026-06-02T10:00:00Z"
 `))
-	if err == nil {
-		t.Fatal("ParseMnemonicFile() error = nil, want detached kind rejection")
-	}
-	if !strings.Contains(err.Error(), "not allowed") {
-		t.Fatalf("ParseMnemonicFile() error = %q, want detached rejection", err)
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not allowed")
 }
 
 func TestMnemonicFileRequiresProjectFields(t *testing.T) {
@@ -88,12 +79,8 @@ markdown_format_version = 1
 created_at = "2026-06-02T10:00:00Z"
 updated_at = "2026-06-02T10:00:00Z"
 `))
-	if err == nil {
-		t.Fatal("ParseMnemonicFile() error = nil, want required-field rejection")
-	}
-	if !strings.Contains(err.Error(), "name is required") {
-		t.Fatalf("ParseMnemonicFile() error = %q, want missing name rejection", err)
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "name is required")
 }
 
 func TestMnemonicFileRejectsUnsupportedVersion(t *testing.T) {
@@ -111,10 +98,6 @@ markdown_format_version = 1
 created_at = "2026-06-02T10:00:00Z"
 updated_at = "2026-06-02T10:00:00Z"
 `))
-	if err == nil {
-		t.Fatal("ParseMnemonicFile() error = nil, want unsupported version rejection")
-	}
-	if !strings.Contains(err.Error(), "version 999 is unsupported; expected 1") {
-		t.Fatalf("ParseMnemonicFile() error = %q, want unsupported version rejection", err)
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "version 999 is unsupported; expected 1")
 }

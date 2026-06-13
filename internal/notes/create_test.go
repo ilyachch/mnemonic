@@ -1,7 +1,6 @@
 package notes
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +9,8 @@ import (
 	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/markdown"
 	"github.com/ilyachch/mnemonic/internal/project"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCreateWritesCanonicalNote(t *testing.T) {
@@ -19,36 +20,18 @@ func TestCreateWritesCanonicalNote(t *testing.T) {
 		RootDir: root,
 		Title:   "Auth migration",
 	})
-	if err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
-	if got.Slug != "auth-migration" {
-		t.Fatalf("Slug = %q, want %q", got.Slug, "auth-migration")
-	}
-	if got.Path != "auth-migration.md" {
-		t.Fatalf("Path = %q, want %q", got.Path, "auth-migration.md")
-	}
-	if got.NoteID == "" {
-		t.Fatal("NoteID is empty")
-	}
-	if got.ContentHash == "" {
-		t.Fatal("ContentHash is empty")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "auth-migration", got.Slug)
+	assert.Equal(t, "auth-migration.md", got.Path)
+	assert.NotEmpty(t, got.NoteID)
+	assert.NotEmpty(t, got.ContentHash)
 
 	data, err := os.ReadFile(filepath.Join(root, "auth-migration.md"))
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
+	require.NoError(t, err)
 	parsed, err := markdown.ParseNote(data)
-	if err != nil {
-		t.Fatalf("ParseNote() error = %v", err)
-	}
-	if parsed.Title != "Auth migration" {
-		t.Fatalf("Title = %q", parsed.Title)
-	}
-	if parsed.Slug != "auth-migration" {
-		t.Fatalf("Slug = %q", parsed.Slug)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "Auth migration", parsed.Title)
+	assert.Equal(t, "auth-migration", parsed.Slug)
 }
 
 func TestCreateUsesInjectedClockAndUUID(t *testing.T) {
@@ -67,9 +50,7 @@ func TestCreateUsesInjectedClockAndUUID(t *testing.T) {
 		Now:     now,
 		UUID:    uuidFn,
 	})
-	if err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	want := CreateResult{
 		NoteID:      "550e8400-e29b-41d4-a716-446655440000",
@@ -77,34 +58,25 @@ func TestCreateUsesInjectedClockAndUUID(t *testing.T) {
 		Path:        "auth-migration.md",
 		ContentHash: got.ContentHash,
 	}
-	if got.NoteID != want.NoteID || got.Slug != want.Slug || got.Path != want.Path {
-		t.Fatalf("Create() = %#v, want %#v", got, want)
-	}
+	assert.Equal(t, want.NoteID, got.NoteID)
+	assert.Equal(t, want.Slug, got.Slug)
+	assert.Equal(t, want.Path, got.Path)
 
 	data, err := os.ReadFile(filepath.Join(root, "auth-migration.md"))
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
+	require.NoError(t, err)
 	parsed, err := markdown.ParseNote(data)
-	if err != nil {
-		t.Fatalf("ParseNote() error = %v", err)
-	}
-	if parsed.MnemonicNoteID != want.NoteID {
-		t.Fatalf("MnemonicNoteID = %q, want %q", parsed.MnemonicNoteID, want.NoteID)
-	}
-	if !parsed.CreatedAt.Equal(now()) || !parsed.UpdatedAt.Equal(now()) {
-		t.Fatalf("timestamps = %s/%s, want %s", parsed.CreatedAt, parsed.UpdatedAt, now())
-	}
+	require.NoError(t, err)
+	assert.Equal(t, want.NoteID, parsed.MnemonicNoteID)
+	assert.True(t, parsed.CreatedAt.Equal(now()), "CreatedAt = %s, want %s", parsed.CreatedAt, now())
+	assert.True(t, parsed.UpdatedAt.Equal(now()), "UpdatedAt = %s, want %s", parsed.UpdatedAt, now())
 }
 
 func TestCreateRejectsDuplicateSlug(t *testing.T) {
 	root := t.TempDir()
-	if _, err := Create(CreateInput{RootDir: root, Title: "Auth migration"}); err != nil {
-		t.Fatalf("first Create() error = %v", err)
-	}
-	if _, err := Create(CreateInput{RootDir: root, Title: "Auth migration"}); err == nil {
-		t.Fatal("Create() error = nil, want duplicate slug error")
-	}
+	_, err := Create(CreateInput{RootDir: root, Title: "Auth migration"})
+	require.NoError(t, err)
+	_, err = Create(CreateInput{RootDir: root, Title: "Auth migration"})
+	require.Error(t, err)
 }
 
 func TestCreateRespectsProjectClock(t *testing.T) {
@@ -116,39 +88,28 @@ func TestCreateRespectsProjectClock(t *testing.T) {
 		RootDir: root,
 		Title:   "Auth migration",
 	})
-	if err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
-	if got.NoteID != "550e8400-e29b-41d4-a716-446655440000" {
-		t.Fatalf("NoteID = %q", got.NoteID)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "550e8400-e29b-41d4-a716-446655440000", got.NoteID)
 }
 
 func TestCreateReturnsBusyErrorWhenWriteLockHeld(t *testing.T) {
 	root := t.TempDir()
 
 	guard, err := acquireWriteLock(root)
-	if err != nil {
-		t.Fatalf("acquireWriteLock() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer func() {
-		if err := guard.Release(); err != nil {
-			t.Fatalf("Release() error = %v", err)
-		}
+		require.NoError(t, guard.Release())
 	}()
 
 	_, err = Create(CreateInput{
 		RootDir: root,
 		Title:   "Auth migration",
 	})
-	if err == nil {
-		t.Fatal("Create() error = nil, want busy error")
-	}
+	require.Error(t, err)
 
 	var appErr *app.AppError
-	if !errors.As(err, &appErr) || appErr.Code != app.CodeUnsafe {
-		t.Fatalf("Create() error = %v, want unsafe error", err)
-	}
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, app.CodeUnsafe, appErr.Code)
 }
 
 type testClock struct{}

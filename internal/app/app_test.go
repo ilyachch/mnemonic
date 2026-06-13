@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ilyachch/mnemonic/internal/testutil"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewBuildsConfigPathsRegistryAndServices(t *testing.T) {
@@ -17,32 +18,16 @@ func TestNewBuildsConfigPathsRegistryAndServices(t *testing.T) {
 	t.Setenv("MNEMONIC_MEMORIES_HOME", memoriesHome)
 
 	container, err := New(Input{})
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = container.Close()
 	})
 
-	if container.Config.Paths.MemoriesHome != "" {
-		t.Fatalf("config memories_home = %q, want empty default", container.Config.Paths.MemoriesHome)
-	}
-	if container.Paths.DataHome != filepath.Clean(dataHome) {
-		t.Fatalf("data_home = %q, want %q", container.Paths.DataHome, filepath.Clean(dataHome))
-	}
-	if container.Paths.StateHome != filepath.Clean(stateHome) {
-		t.Fatalf("state_home = %q, want %q", container.Paths.StateHome, filepath.Clean(stateHome))
-	}
-	if container.Paths.ConfigHome != filepath.Clean(configHome) {
-		t.Fatalf("config_home = %q, want %q", container.Paths.ConfigHome, filepath.Clean(configHome))
-	}
-	if container.Paths.CacheHome != filepath.Clean(cacheHome) {
-		t.Fatalf("cache_home = %q, want %q", container.Paths.CacheHome, filepath.Clean(cacheHome))
-	}
-	if container.Paths.MemoriesHome != filepath.Clean(memoriesHome) {
-		t.Fatalf("memories_home = %q, want %q", container.Paths.MemoriesHome, filepath.Clean(memoriesHome))
-	}
-	if container.Services.Registry == nil {
-		t.Fatal("registry service is nil")
-	}
+	require.Empty(t, container.Config.Paths.MemoriesHome)
+	require.Equal(t, filepath.Clean(dataHome), container.Paths.DataHome)
+	require.Equal(t, filepath.Clean(stateHome), container.Paths.StateHome)
+	require.Equal(t, filepath.Clean(configHome), container.Paths.ConfigHome)
+	require.Equal(t, filepath.Clean(cacheHome), container.Paths.CacheHome)
+	require.Equal(t, filepath.Clean(memoriesHome), container.Paths.MemoriesHome)
+	require.NotNil(t, container.Services.Registry)
 }

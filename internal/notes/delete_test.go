@@ -1,7 +1,6 @@
 package notes
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +9,8 @@ import (
 	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDeleteDryRunReturnsTrashPath(t *testing.T) {
@@ -24,9 +25,7 @@ func TestDeleteDryRunReturnsTrashPath(t *testing.T) {
 		RootDir: root,
 		Title:   "Auth migration",
 	})
-	if err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	result, err := Delete(DeleteInput{
 		RootDir:  root,
@@ -36,22 +35,14 @@ func TestDeleteDryRunReturnsTrashPath(t *testing.T) {
 			return time.Date(2026, time.June, 2, 15, 4, 5, 0, time.UTC)
 		},
 	})
-	if err != nil {
-		t.Fatalf("Delete() error = %v", err)
-	}
-	if result.Mode != "trash" {
-		t.Fatalf("Mode = %q, want trash", result.Mode)
-	}
-	if result.TrashPath == "" {
-		t.Fatal("TrashPath is empty")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "trash", result.Mode)
+	assert.NotEmpty(t, result.TrashPath)
 
-	if _, err := os.Stat(filepath.Join(root, "auth-migration.md")); err != nil {
-		t.Fatalf("original file stat error = %v", err)
-	}
-	if _, err := os.Stat(result.TrashPath); !os.IsNotExist(err) {
-		t.Fatalf("trash file stat = %v, want not exist", err)
-	}
+	_, err = os.Stat(filepath.Join(root, "auth-migration.md"))
+	require.NoError(t, err)
+	_, err = os.Stat(result.TrashPath)
+	assert.True(t, os.IsNotExist(err))
 }
 
 func TestDeleteMovesNoteToTrash(t *testing.T) {
@@ -67,38 +58,24 @@ func TestDeleteMovesNoteToTrash(t *testing.T) {
 		Title:   "Auth migration",
 		Body:    []byte("body\n"),
 	})
-	if err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	result, err := Delete(DeleteInput{
 		RootDir:  root,
 		Selector: created.Slug,
 	})
-	if err != nil {
-		t.Fatalf("Delete() error = %v", err)
-	}
-	if result.Mode != "trash" {
-		t.Fatalf("Mode = %q, want trash", result.Mode)
-	}
-	if result.TrashPath == "" {
-		t.Fatal("TrashPath is empty")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "trash", result.Mode)
+	assert.NotEmpty(t, result.TrashPath)
 
-	if _, err := os.Stat(filepath.Join(root, "auth-migration.md")); !os.IsNotExist(err) {
-		t.Fatalf("source file stat = %v, want not exist", err)
-	}
-	if _, err := os.Stat(result.TrashPath); err != nil {
-		t.Fatalf("trash file stat = %v", err)
-	}
+	_, err = os.Stat(filepath.Join(root, "auth-migration.md"))
+	assert.True(t, os.IsNotExist(err))
+	_, err = os.Stat(result.TrashPath)
+	require.NoError(t, err)
 
 	list, err := List(root)
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-	if len(list) != 0 {
-		t.Fatalf("List() len = %d, want 0", len(list))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, list)
 }
 
 func TestDeleteHardRequiresConfirmation(t *testing.T) {
@@ -114,18 +91,14 @@ func TestDeleteHardRequiresConfirmation(t *testing.T) {
 		Title:   "Auth migration",
 		Body:    []byte("body\n"),
 	})
-	if err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	_, err = Delete(DeleteInput{
 		RootDir:  root,
 		Selector: created.Slug,
 		Hard:     true,
 	})
-	if err == nil {
-		t.Fatal("Delete() error = nil, want unsafe error")
-	}
+	require.Error(t, err)
 }
 
 func TestDeleteHardRemovesFileWhenConfirmed(t *testing.T) {
@@ -141,9 +114,7 @@ func TestDeleteHardRemovesFileWhenConfirmed(t *testing.T) {
 		Title:   "Auth migration",
 		Body:    []byte("body\n"),
 	})
-	if err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	result, err := Delete(DeleteInput{
 		RootDir:  root,
@@ -151,26 +122,18 @@ func TestDeleteHardRemovesFileWhenConfirmed(t *testing.T) {
 		Hard:     true,
 		Yes:      true,
 	})
-	if err != nil {
-		t.Fatalf("Delete() error = %v", err)
-	}
-	if result.Mode != "hard" {
-		t.Fatalf("Mode = %q, want hard", result.Mode)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "hard", result.Mode)
 
-	if _, err := os.Stat(filepath.Join(root, "auth-migration.md")); !os.IsNotExist(err) {
-		t.Fatalf("source file stat = %v, want not exist", err)
-	}
-	if _, err := os.Stat(filepath.Join(root, ".trash")); !os.IsNotExist(err) {
-		t.Fatalf("trash dir stat = %v, want not exist", err)
-	}
+	_, err = os.Stat(filepath.Join(root, "auth-migration.md"))
+	assert.True(t, os.IsNotExist(err))
+	_, err = os.Stat(filepath.Join(root, ".trash"))
+	assert.True(t, os.IsNotExist(err))
 }
 
 func TestDeleteRejectsMissingSelector(t *testing.T) {
 	_, err := Delete(DeleteInput{})
-	if err == nil {
-		t.Fatal("Delete() error = nil, want error")
-	}
+	require.Error(t, err)
 }
 
 func TestDeleteReturnsBusyErrorWhenWriteLockHeld(t *testing.T) {
@@ -185,30 +148,21 @@ func TestDeleteReturnsBusyErrorWhenWriteLockHeld(t *testing.T) {
 		RootDir: root,
 		Title:   "Auth migration",
 	})
-	if err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	guard, err := acquireWriteLock(root)
-	if err != nil {
-		t.Fatalf("acquireWriteLock() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer func() {
-		if err := guard.Release(); err != nil {
-			t.Fatalf("Release() error = %v", err)
-		}
+		require.NoError(t, guard.Release())
 	}()
 
 	_, err = Delete(DeleteInput{
 		RootDir:  root,
 		Selector: created.Slug,
 	})
-	if err == nil {
-		t.Fatal("Delete() error = nil, want busy error")
-	}
+	require.Error(t, err)
 
 	var appErr *app.AppError
-	if !errors.As(err, &appErr) || appErr.Code != app.CodeUnsafe {
-		t.Fatalf("Delete() error = %v, want unsafe error", err)
-	}
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, app.CodeUnsafe, appErr.Code)
 }

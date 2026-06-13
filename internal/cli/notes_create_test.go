@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/ilyachch/mnemonic/internal/markdown"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
@@ -23,14 +25,12 @@ func TestNotesCreateCommandCreatesMarkdownNote(t *testing.T) {
 	restoreClock := project.SetClock(clock)
 	defer restoreClock()
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
 	result := executeCommand("notes", "create", "--project", "personal", "--title", "Auth migration", "--json")
-	if result.Err != nil {
-		t.Fatalf("notes create returned error: %v\nstderr: %s", result.Err, result.Stderr)
-	}
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 
 	var got struct {
 		NoteID      string `json:"note_id"`
@@ -38,39 +38,19 @@ func TestNotesCreateCommandCreatesMarkdownNote(t *testing.T) {
 		Path        string `json:"path"`
 		ContentHash string `json:"content_hash"`
 	}
-	if err := json.Unmarshal([]byte(result.Stdout), &got); err != nil {
-		t.Fatalf("json.Unmarshal() error = %v\nstdout: %s", err, result.Stdout)
-	}
-	if got.NoteID != "550e8400-e29b-41d4-a716-446655440000" {
-		t.Fatalf("note_id = %q", got.NoteID)
-	}
-	if got.Slug != "auth-migration" {
-		t.Fatalf("slug = %q", got.Slug)
-	}
-	if got.Path != "auth-migration.md" {
-		t.Fatalf("path = %q", got.Path)
-	}
-	if got.ContentHash == "" {
-		t.Fatal("content_hash is empty")
-	}
+	require.NoError(t, json.Unmarshal([]byte(result.Stdout), &got), "stdout: %s", result.Stdout)
+	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", got.NoteID)
+	require.Equal(t, "auth-migration", got.Slug)
+	require.Equal(t, "auth-migration.md", got.Path)
+	require.NotEmpty(t, got.ContentHash)
 
 	data, err := os.ReadFile(filepath.Join(projectRoot, ".mnemonic-memories", "personal", "auth-migration.md"))
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
+	require.NoError(t, err)
 	note, err := markdown.ParseNote(data)
-	if err != nil {
-		t.Fatalf("ParseNote() error = %v", err)
-	}
-	if note.MnemonicNoteID != got.NoteID {
-		t.Fatalf("MnemonicNoteID = %q, want %q", note.MnemonicNoteID, got.NoteID)
-	}
-	if note.Title != "Auth migration" {
-		t.Fatalf("Title = %q", note.Title)
-	}
-	if note.Slug != "auth-migration" {
-		t.Fatalf("Slug = %q", note.Slug)
-	}
+	require.NoError(t, err)
+	require.Equal(t, got.NoteID, note.MnemonicNoteID)
+	require.Equal(t, "Auth migration", note.Title)
+	require.Equal(t, "auth-migration", note.Slug)
 }
 
 func TestNotesCreateCommandReadsBodyFromStdin(t *testing.T) {
@@ -83,7 +63,7 @@ func TestNotesCreateCommandReadsBodyFromStdin(t *testing.T) {
 	restoreClock := project.SetClock(clock)
 	defer restoreClock()
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
@@ -92,42 +72,28 @@ func TestNotesCreateCommandReadsBodyFromStdin(t *testing.T) {
 	defer restoreStdin()
 
 	result := executeCommand("notes", "create", "--project", "personal", "--title", "Auth migration", "--stdin", "--json")
-	if result.Err != nil {
-		t.Fatalf("notes create returned error: %v\nstderr: %s", result.Err, result.Stderr)
-	}
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 
 	data, err := os.ReadFile(filepath.Join(projectRoot, ".mnemonic-memories", "personal", "auth-migration.md"))
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
+	require.NoError(t, err)
 	note, err := markdown.ParseNote(data)
-	if err != nil {
-		t.Fatalf("ParseNote() error = %v", err)
-	}
-	if string(note.Body) != string(body) {
-		t.Fatalf("body = %q, want %q", note.Body, body)
-	}
+	require.NoError(t, err)
+	require.Equal(t, string(body), string(note.Body))
 }
 
 func TestNotesCreateCommandRejectsStdinAndBodyFile(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
 	bodyFile := filepath.Join(projectRoot, "body.md")
-	if err := os.WriteFile(bodyFile, []byte("replacement\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
+	require.NoError(t, os.WriteFile(bodyFile, []byte("replacement\n"), 0o644))
 
 	result := executeCommand("notes", "create", "--project", "personal", "--title", "Auth migration", "--stdin", "--body-file", bodyFile, "--json")
-	if result.Err == nil {
-		t.Fatal("notes create error = nil, want usage error")
-	}
-	if ExitCodeForError(result.Err) != 2 {
-		t.Fatalf("exit code = %d, want 2", ExitCodeForError(result.Err))
-	}
+	require.Error(t, result.Err)
+	require.Equal(t, 2, ExitCodeForError(result.Err))
 }
 
 func TestNotesCreateCommandWritesDeduplicatedTags(t *testing.T) {
@@ -140,44 +106,26 @@ func TestNotesCreateCommandWritesDeduplicatedTags(t *testing.T) {
 	restoreClock := project.SetClock(clock)
 	defer restoreClock()
 
-	writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
 	result := executeCommand("notes", "create", "--project", "personal", "--title", "Tagged", "--tag", "django", "--tag", "auth", "--tag", "django", "--json")
-	if result.Err != nil {
-		t.Fatalf("notes create returned error: %v\nstderr: %s", result.Err, result.Stderr)
-	}
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 
 	data, err := os.ReadFile(filepath.Join(projectRoot, ".mnemonic-memories", "personal", "tagged.md"))
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
+	require.NoError(t, err)
 	note, err := markdown.ParseNote(data)
-	if err != nil {
-		t.Fatalf("ParseNote() error = %v", err)
-	}
-	if got, want := note.Tags, []string{"django", "auth"}; len(got) != len(want) {
-		t.Fatalf("tags = %#v, want %#v", got, want)
-	} else {
-		for i := range want {
-			if got[i] != want[i] {
-				t.Fatalf("tags = %#v, want %#v", got, want)
-			}
-		}
-	}
+	require.NoError(t, err)
+	require.Equal(t, []string{"django", "auth"}, note.Tags)
 }
 
 func chdirForNotesTest(t *testing.T, dir string) func() {
 	t.Helper()
 
 	prev, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd() error = %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("Chdir(%q) error = %v", dir, err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(dir))
 	return func() {
 		_ = os.Chdir(prev)
 	}
@@ -188,18 +136,14 @@ func setStdin(t *testing.T, content []byte) func() {
 
 	original := os.Stdin
 	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	_, err = io.Copy(w, bytes.NewReader(content))
 	if err != nil {
-		t.Fatalf("Pipe() error = %v", err)
-	}
-	if _, err := io.Copy(w, bytes.NewReader(content)); err != nil {
 		_ = r.Close()
 		_ = w.Close()
-		t.Fatalf("copy stdin content error = %v", err)
+		require.NoError(t, err)
 	}
-	if err := w.Close(); err != nil {
-		_ = r.Close()
-		t.Fatalf("close write pipe error = %v", err)
-	}
+	require.NoError(t, w.Close())
 	os.Stdin = r
 	return func() {
 		os.Stdin = original

@@ -7,21 +7,17 @@ import (
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/markdown"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestListReturnsEmptySliceForEmptyProject(t *testing.T) {
 	root := t.TempDir()
 
 	got, err := List(root)
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-	if got == nil {
-		t.Fatal("List() = nil, want empty slice")
-	}
-	if len(got) != 0 {
-		t.Fatalf("List() len = %d, want 0", len(got))
-	}
+	require.NoError(t, err)
+	assert.NotNil(t, got)
+	assert.Empty(t, got)
 }
 
 func TestListReturnsNoteSummariesAndIgnoresTrash(t *testing.T) {
@@ -35,21 +31,15 @@ func TestListReturnsNoteSummariesAndIgnoresTrash(t *testing.T) {
 		Body:           []byte("# Heading\n"),
 	}
 	rendered, err := markdown.RenderNote(note)
-	if err != nil {
-		t.Fatalf("RenderNote() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	path := filepath.Join(root, "projects", "auth.md")
 	writeTestFile(t, path, rendered)
 	writeTestFile(t, filepath.Join(root, ".trash", "projects", "deleted.md"), rendered)
 
 	got, err := List(root)
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-	if len(got) != 1 {
-		t.Fatalf("List() len = %d, want 1", len(got))
-	}
+	require.NoError(t, err)
+	require.Len(t, got, 1)
 
 	want := NoteSummary{
 		NoteID:      "550e8400-e29b-41d4-a716-446655440000",
@@ -59,17 +49,11 @@ func TestListReturnsNoteSummariesAndIgnoresTrash(t *testing.T) {
 		UpdatedAt:   "2026-06-02T11:00:00Z",
 		ContentHash: HashBytes(rendered),
 	}
-	if got[0] != want {
-		t.Fatalf("List() = %#v, want %#v", got[0], want)
-	}
+	assert.Equal(t, want, got[0])
 }
 
 func writeTestFile(t *testing.T, path string, content []byte) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) error = %v", path, err)
-	}
-	if err := os.WriteFile(path, content, 0o644); err != nil {
-		t.Fatalf("WriteFile(%q) error = %v", path, err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, content, 0o644))
 }
