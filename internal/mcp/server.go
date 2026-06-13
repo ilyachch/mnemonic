@@ -24,6 +24,10 @@ type Server struct {
 
 	indexDBMu sync.Mutex
 	indexConn *sql.DB
+
+	// testCloseDBErr, when set, makes closeIndexDB return this error.
+	// This is a test-only hook and must never be set in production.
+	testCloseDBErr error
 }
 
 // NewServer creates a new MCP shell server wrapper.
@@ -125,6 +129,10 @@ func (s *Server) RebuildIndex(root string) error {
 func (s *Server) closeIndexDB() error {
 	if s == nil {
 		return nil
+	}
+
+	if s.testCloseDBErr != nil {
+		return s.testCloseDBErr
 	}
 
 	s.indexDBMu.Lock()

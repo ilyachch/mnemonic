@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -751,14 +752,13 @@ func TestGetIndexDB_statError(t *testing.T) {
 }
 
 func TestRebuildIndex_closeError(t *testing.T) {
-	// Test that RebuildIndex handles closeIndexDB failure
+	// Test that RebuildIndex returns the closeIndexDB failure.
 	s := &Server{
-		Project: project.ResolvedProject{
-			Project: project.MnemonicProject{ID: "bad-uuid"},
-		},
+		testCloseDBErr: fmt.Errorf("simulated close error"),
 	}
 	err := s.RebuildIndex("/tmp")
 	require.Error(t, err)
+	require.Contains(t, err.Error(), "simulated close error")
 }
 
 func TestRebuildIndex_rebuildError(t *testing.T) {
