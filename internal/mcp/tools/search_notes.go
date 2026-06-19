@@ -20,10 +20,10 @@ type SearchNotesOutput struct {
 	Hits []search.Result `json:"hits"`
 }
 
-func RegisterSearchNotes(s *sdkmcp.Server, deps Dependencies) {
+func RegisterSearchNotes(s *sdkmcp.Server, deps Dependencies, description string) {
 	sdkmcp.AddTool(s, &sdkmcp.Tool{
 		Name:        "search_notes",
-		Description: searchNotesDescription,
+		Description: buildToolDescription(description, searchNotesDescription),
 		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input SearchNotesInput) (*sdkmcp.CallToolResult, SearchNotesOutput, error) {
 		db, err := deps.GetIndexDB()

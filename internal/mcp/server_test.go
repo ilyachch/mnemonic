@@ -885,7 +885,7 @@ func connectToMCPServerWithEnv(t *testing.T, repoRoot, projectRoot string, env [
 		},
 	)
 	server := NewServer(toAppResolution(resolvedProject), effectivePaths)
-	tools.RegisterAll(sdkServer, server)
+	tools.RegisterAll(sdkServer, server, "")
 
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	serverSession, err := sdkServer.Connect(context.Background(), serverTransport, nil)

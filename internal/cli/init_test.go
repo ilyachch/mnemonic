@@ -147,6 +147,65 @@ func TestInitCommandRejectsDuplicateSlug(t *testing.T) {
 	require.Contains(t, result.Stderr, `project slug "backend" already exists`)
 }
 
+func TestInitCommandDetachedWithDescription(t *testing.T) {
+	cwd := t.TempDir()
+	memoriesHome := t.TempDir()
+
+	testutil.CleanEnvForTest(t)
+	t.Setenv("MNEMONIC_MEMORIES_HOME", memoriesHome)
+
+	originalWD, err := os.Getwd()
+	require.NoError(t, err)
+	err = os.Chdir(cwd)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWD)
+	})
+
+	restore := project.SetClock(projectClockForCLI("550e8400-e29b-41d4-a716-446655440000"))
+	t.Cleanup(restore)
+
+	desc := "Backend architecture decisions, API contracts, and database schemas."
+	result := executeCommand("init", "backend", "--detached", "--description", desc)
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
+
+	manifestPath := filepath.Join(memoriesHome, "backend", "mnemonic.toml")
+	manifestData, err := os.ReadFile(manifestPath)
+	require.NoError(t, err)
+	parsedManifest, err := project.ParseMnemonicManifest(manifestData)
+	require.NoError(t, err)
+	require.Equal(t, desc, parsedManifest.Description)
+}
+
+func TestInitCommandDetachedWithoutDescription(t *testing.T) {
+	cwd := t.TempDir()
+	memoriesHome := t.TempDir()
+
+	testutil.CleanEnvForTest(t)
+	t.Setenv("MNEMONIC_MEMORIES_HOME", memoriesHome)
+
+	originalWD, err := os.Getwd()
+	require.NoError(t, err)
+	err = os.Chdir(cwd)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWD)
+	})
+
+	restore := project.SetClock(projectClockForCLI("550e8400-e29b-41d4-a716-446655440000"))
+	t.Cleanup(restore)
+
+	result := executeCommand("init", "personal", "--detached")
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
+
+	manifestPath := filepath.Join(memoriesHome, "personal", "mnemonic.toml")
+	manifestData, err := os.ReadFile(manifestPath)
+	require.NoError(t, err)
+	parsedManifest, err := project.ParseMnemonicManifest(manifestData)
+	require.NoError(t, err)
+	require.Empty(t, parsedManifest.Description)
+}
+
 func projectClockForCLI(uuids ...string) project.Clock {
 	return projectClock{
 		now:   time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),

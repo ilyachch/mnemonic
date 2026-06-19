@@ -62,10 +62,16 @@ var initCmd = &cobra.Command{
 			return err
 		}
 
+		description, err := cmd.Flags().GetString("description")
+		if err != nil {
+			return err
+		}
+
 		input := project.InitInput{
 			CWD:          cwd,
 			MemoriesHome: effective.MemoriesHome,
 			Name:         args[0],
+			Description:  description,
 			Mode:         project.InitModeRegular,
 		}
 		if local {
@@ -104,5 +110,6 @@ var initCmd = &cobra.Command{
 func init() {
 	initCmd.Flags().Bool("local", false, "create a local project")
 	initCmd.Flags().Bool("detached", false, "create a detached project")
+	initCmd.Flags().String("description", "", "optional description of this memory's knowledge scope")
 	RootCmd.AddCommand(initCmd)
 }

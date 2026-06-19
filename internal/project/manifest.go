@@ -26,6 +26,7 @@ type MnemonicManifest struct {
 	Slug                  string                 `toml:"slug"`
 	Kind                  ManifestKind           `toml:"kind"`
 	MarkdownFormatVersion int                    `toml:"markdown_format_version"`
+	Description           string                 `toml:"description,omitempty"`
 	CreatedAt             time.Time              `toml:"created_at"`
 	UpdatedAt             time.Time              `toml:"updated_at"`
 	Layout                MnemonicManifestLayout `toml:"layout"`
@@ -138,6 +139,7 @@ func (m *MnemonicManifest) MarshalTOML() ([]byte, error) {
 		Slug:                  copy.Slug,
 		Kind:                  copy.Kind,
 		MarkdownFormatVersion: copy.MarkdownFormatVersion,
+		Description:           copy.Description,
 		CreatedAt:             newTOMLTime(copy.CreatedAt),
 		UpdatedAt:             newTOMLTime(copy.UpdatedAt),
 		Layout:                copy.Layout,
@@ -168,6 +170,7 @@ func ParseMnemonicManifest(data []byte) (*MnemonicManifest, error) {
 		Slug:                  raw.Slug,
 		Kind:                  raw.Kind,
 		MarkdownFormatVersion: raw.MarkdownFormatVersion,
+		Description:           raw.Description,
 		CreatedAt:             raw.CreatedAt.Time(),
 		UpdatedAt:             raw.UpdatedAt.Time(),
 		Layout:                raw.Layout,
@@ -189,6 +192,7 @@ type mnemonicManifestTOML struct {
 	Slug                  string                 `toml:"slug"`
 	Kind                  ManifestKind           `toml:"kind"`
 	MarkdownFormatVersion int                    `toml:"markdown_format_version"`
+	Description           string                 `toml:"description,omitempty"`
 	CreatedAt             tomlTime               `toml:"created_at"`
 	UpdatedAt             tomlTime               `toml:"updated_at"`
 	Layout                MnemonicManifestLayout `toml:"layout"`
