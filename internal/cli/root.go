@@ -29,8 +29,24 @@ func Execute() {
 	}
 }
 
-var jsonFlag bool
+var (
+	jsonFlag    bool
+	projectFlag string
+)
 
 func init() {
 	RootCmd.PersistentFlags().BoolVar(&jsonFlag, "json", false, "output in JSON format")
+	RootCmd.PersistentFlags().StringVarP(&projectFlag, "project", "p", "", "select a project by slug or UUID")
+	if err := RootCmd.RegisterFlagCompletionFunc("project", completeProjectNames); err != nil {
+		panic(fmt.Sprintf("register completion for --project: %v", err))
+	}
+}
+
+// projectSelectorValue returns the project selector in precedence order:
+// explicit CLI flag, then MNEMONIC_PROJECT environment variable, then empty.
+func projectSelectorValue() string {
+	if projectFlag != "" {
+		return projectFlag
+	}
+	return os.Getenv("MNEMONIC_PROJECT")
 }

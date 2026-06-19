@@ -17,10 +17,6 @@ var notesSearchCmd = &cobra.Command{
 	Short: "Search notes",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		projectSelector, err := cmd.Flags().GetString("project")
-		if err != nil {
-			return err
-		}
 		limit, err := cmd.Flags().GetInt("limit")
 		if err != nil {
 			return err
@@ -30,7 +26,7 @@ var notesSearchCmd = &cobra.Command{
 			return err
 		}
 
-		projectRecord, err := queryProjectBySelector(projectSelector)
+		projectRecord, err := queryProjectBySelector(projectSelectorValue())
 		if err != nil {
 			return err
 		}
@@ -64,8 +60,6 @@ var notesSearchCmd = &cobra.Command{
 }
 
 func init() {
-	notesSearchCmd.Flags().String("project", "", "select a project")
-	mustRegisterProjectFlagCompletion(notesSearchCmd, "project")
 	notesSearchCmd.Flags().String("tag", "", "filter by tag")
 	notesSearchCmd.Flags().Int("limit", 20, "maximum number of hits")
 	notesCmd.AddCommand(notesSearchCmd)

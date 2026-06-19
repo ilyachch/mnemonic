@@ -15,12 +15,7 @@ var notesShowCmd = &cobra.Command{
 	Short: "Show a note",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		projectSelector, err := cmd.Flags().GetString("project")
-		if err != nil {
-			return err
-		}
-
-		root, err := resolveNotesProjectRoot(projectSelector)
+		root, err := resolveNotesProjectRoot()
 		if err != nil {
 			return err
 		}
@@ -53,8 +48,6 @@ var notesShowCmd = &cobra.Command{
 }
 
 func init() {
-	notesShowCmd.Flags().String("project", "", "select a project")
-	mustRegisterProjectFlagCompletion(notesShowCmd, "project")
 	notesCmd.AddCommand(notesShowCmd)
 }
 

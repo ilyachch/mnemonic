@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/registry"
 )
 
@@ -32,13 +31,14 @@ type InitInput struct {
 // InitRegularInput is the compatibility wrapper for regular init tests.
 type InitRegularInput = InitInput
 
-// InitRegularProject creates a regular .mnemonic project and its mnemonic.toml manifest.
+// InitRegularProject creates a regular project and its mnemonic.toml manifest.
 func InitRegularProject(input InitRegularInput) error {
 	input.Mode = InitModeRegular
 	return InitProject(input)
 }
 
-// InitProject creates the project file and any mode-specific filesystem layout.
+// InitProject creates the manifest (regular/detached) or local memories directory
+// (local) and registers the project directly in the global registry database.
 func InitProject(input InitInput) error {
 	slug, err := Slugify(input.Name)
 	if err != nil {
@@ -62,15 +62,12 @@ func InitProject(input InitInput) error {
 		projectEntry.Kind = ProjectKindRegular
 		projectEntry.MemoriesPath = slug
 
-		file, err := loadMnemonicFile(filepath.Join(input.CWD, ".mnemonic"))
-		if err != nil {
-			return err
+		manifestPath := filepath.Join(input.MemoriesHome, slug, "mnemonic.toml")
+		if _, err := os.Stat(manifestPath); err == nil {
+			return slugAlreadyExistsError(slug)
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("stat regular manifest: %w", err)
 		}
-		if projectSlugExists(file, slug) {
-			return app.NewAmbiguousError(fmt.Sprintf("project slug %q already exists", slug), nil)
-		}
-		file.Projects = append(file.Projects, projectEntry)
-		file.UpdatedAt = now
 
 		manifest := NewMnemonicManifest()
 		manifest.ProjectID = projectID
@@ -82,11 +79,7 @@ func InitProject(input InitInput) error {
 		manifest.UpdatedAt = now
 		manifest.Generator.App = "mnemonic"
 
-		if err := WriteMnemonicManifest(filepath.Join(input.MemoriesHome, slug, "mnemonic.toml"), manifest); err != nil {
-			return err
-		}
-
-		if err := WriteMnemonicFile(filepath.Join(input.CWD, ".mnemonic"), file); err != nil {
+		if err := WriteMnemonicManifest(manifestPath, manifest); err != nil {
 			return err
 		}
 
@@ -99,34 +92,18 @@ func InitProject(input InitInput) error {
 			UpdatedAt: now,
 			SeenAt:    now,
 			Location: registry.ProjectLocationInput{
-				MnemonicFileAbs: filepath.Join(input.CWD, ".mnemonic"),
-				RepoRootAbs:     input.CWD,
-				MemoriesAbs:     filepath.Join(input.MemoriesHome, slug),
-				ManifestAbs:     filepath.Join(input.MemoriesHome, slug, "mnemonic.toml"),
-				SourceKind:      registry.ProjectSourceKindInit,
+				RepoRootAbs: filepath.Join(input.MemoriesHome, slug),
+				MemoriesAbs: filepath.Join(input.MemoriesHome, slug),
+				ManifestAbs: manifestPath,
+				SourceKind:  registry.ProjectSourceKindInit,
 			},
 		})
 	case InitModeLocal:
 		projectEntry.Kind = ProjectKindLocal
 		projectEntry.MemoriesPath = filepath.Join(".mnemonic-memories", slug)
 
-		file, err := loadMnemonicFile(filepath.Join(input.CWD, ".mnemonic"))
-		if err != nil {
-			return err
-		}
-		if projectSlugExists(file, slug) {
-			return app.NewAmbiguousError(fmt.Sprintf("project slug %q already exists", slug), nil)
-		}
-
 		if err := os.MkdirAll(filepath.Join(input.CWD, projectEntry.MemoriesPath), 0o755); err != nil {
 			return fmt.Errorf("create local memories directory: %w", err)
-		}
-
-		file.Projects = append(file.Projects, projectEntry)
-		file.UpdatedAt = now
-
-		if err := WriteMnemonicFile(filepath.Join(input.CWD, ".mnemonic"), file); err != nil {
-			return err
 		}
 
 		return registerInitProject(registry.RegisterProjectInput{
@@ -138,16 +115,15 @@ func InitProject(input InitInput) error {
 			UpdatedAt: now,
 			SeenAt:    now,
 			Location: registry.ProjectLocationInput{
-				MnemonicFileAbs: filepath.Join(input.CWD, ".mnemonic"),
-				RepoRootAbs:     input.CWD,
-				MemoriesAbs:     filepath.Join(input.CWD, projectEntry.MemoriesPath),
-				SourceKind:      registry.ProjectSourceKindInit,
+				RepoRootAbs: input.CWD,
+				MemoriesAbs: filepath.Join(input.CWD, projectEntry.MemoriesPath),
+				SourceKind:  registry.ProjectSourceKindInit,
 			},
 		})
 	case InitModeDetached:
 		manifestPath := filepath.Join(input.MemoriesHome, slug, "mnemonic.toml")
 		if _, err := os.Stat(manifestPath); err == nil {
-			return app.NewAmbiguousError(fmt.Sprintf("project slug %q already exists", slug), nil)
+			return slugAlreadyExistsError(slug)
 		} else if !os.IsNotExist(err) {
 			return fmt.Errorf("stat detached manifest: %w", err)
 		}
@@ -197,28 +173,6 @@ func registerInitProject(input registry.RegisterProjectInput) error {
 	return registry.RegisterProject(db, input)
 }
 
-func loadMnemonicFile(path string) (*MnemonicFile, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return NewMnemonicFile(), nil
-		}
-		return nil, fmt.Errorf("read .mnemonic: %w", err)
-	}
-
-	file, err := ParseMnemonicFile(data)
-	if err != nil {
-		return nil, err
-	}
-
-	return file, nil
-}
-
-func projectSlugExists(file *MnemonicFile, slug string) bool {
-	for i := range file.Projects {
-		if file.Projects[i].Slug == slug {
-			return true
-		}
-	}
-	return false
+func slugAlreadyExistsError(slug string) error {
+	return fmt.Errorf("project slug %q already exists", slug)
 }

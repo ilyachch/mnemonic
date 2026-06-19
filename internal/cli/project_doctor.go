@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/markdown"
 	"github.com/ilyachch/mnemonic/internal/notes"
@@ -21,22 +22,9 @@ var projectDoctorCmd = &cobra.Command{
 	Args:              cobra.MaximumNArgs(1),
 	ValidArgsFunction: completeProjectNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		projectSelector := ""
+		projectSelector := projectSelectorValue()
 		if len(args) == 1 {
 			projectSelector = args[0]
-		}
-
-		cwd, err := os.Getwd()
-		if err != nil {
-			return err
-		}
-
-		resolved, err := project.ResolveProject(project.ResolveProjectInput{
-			CWD:             cwd,
-			ProjectSelector: projectSelector,
-		})
-		if err != nil {
-			return err
 		}
 
 		container, err := mustAppContainer()
@@ -44,9 +32,20 @@ var projectDoctorCmd = &cobra.Command{
 			return err
 		}
 
-		repoRoot := filepath.Dir(resolved.MnemonicFilePath)
+		resolved, err := container.Services.ProjectResolver.Resolve(app.ProjectResolveInput{
+			ProjectSelector:  projectSelector,
+			EnvironmentValue: os.Getenv(project.EnvironmentProjectSelector),
+		})
+		if err != nil {
+			return err
+		}
+
+		repoRoot := resolved.RepoRootAbs
+		if repoRoot == "" {
+			repoRoot = filepath.Dir(resolved.MnemonicFilePath)
+		}
 		memoriesRoot, err := project.ResolveMemoriesRoot(project.MemoriesRootInput{
-			Kind:         string(resolved.Project.Kind),
+			Kind:         resolved.Project.Kind,
 			Slug:         resolved.Project.Slug,
 			MemoriesPath: resolved.Project.MemoriesPath,
 			MemoriesHome: container.Paths.MemoriesHome,
@@ -81,15 +80,13 @@ type doctorCheck struct {
 	Count  int    `json:"count,omitempty"`
 }
 
-func doctorProject(resolved project.ResolvedProject, repoRoot, memoriesRoot string) (doctorResult, error) {
+func doctorProject(resolved app.ProjectResolution, repoRoot, memoriesRoot string) (doctorResult, error) {
 	result := doctorResult{Status: "ok"}
 	result.addCheck(doctorCheck{Name: "registry schema", Status: doctorRegistrySchemaCheck()})
 	result.addCheck(doctorCheck{Name: "project path exists", Status: pathStatus(repoRoot)})
 
-	if resolved.Project.Kind == project.ProjectKindLocal || resolved.Project.Kind == project.ProjectKindRegular {
-		result.addCheck(doctorParseCheck(".mnemonic", resolved.MnemonicFilePath))
-	} else {
-		result.addCheck(doctorParseCheck("mnemonic.toml", filepath.Join(memoriesRoot, "mnemonic.toml")))
+	if resolved.Project.Kind != string(project.ProjectKindLocal) {
+		result.addCheck(doctorParseCheck("mnemonic.toml", resolved.ManifestAbs))
 	}
 
 	indexPath, err := index.Path(resolved.Project.ID)
@@ -198,15 +195,12 @@ func doctorRegistrySchemaCheck() string {
 }
 
 func doctorParseCheck(name, path string) doctorCheck {
+	if path == "" {
+		return doctorCheck{Name: name, Status: "missing", Detail: "no manifest path recorded"}
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return doctorCheck{Name: name, Status: "missing", Detail: err.Error()}
-	}
-	if name == ".mnemonic" {
-		if _, err := project.ParseMnemonicFile(data); err != nil {
-			return doctorCheck{Name: name, Status: "error", Detail: err.Error()}
-		}
-		return doctorCheck{Name: name, Status: "ok"}
 	}
 	if _, err := project.ParseMnemonicManifest(data); err != nil {
 		return doctorCheck{Name: name, Status: "error", Detail: err.Error()}

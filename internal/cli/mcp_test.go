@@ -31,14 +31,14 @@ func TestMCPCommandReturnsClearErrorWithoutProjectContext(t *testing.T) {
 	res := executeCommand("mcp")
 	require.Empty(t, res.Stdout)
 	require.Error(t, res.Err, "expected error, got nil")
-	require.Contains(t, res.Err.Error(), ".mnemonic not found")
-	require.Contains(t, res.Stderr, ".mnemonic not found")
+	require.Contains(t, res.Err.Error(), "no project selected")
+	require.Contains(t, res.Stderr, "no project selected")
 }
 
 func TestMCPCommandRejectsBadEnvironmentProjectBeforeServing(t *testing.T) {
 	setWritableMCPEnv(t)
 	cwd := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(cwd, ".mnemonic"))
+	registerRegistryProject(t, cwd, "personal")
 
 	prevWD, err := os.Getwd()
 	require.NoError(t, err)
@@ -55,27 +55,25 @@ func TestMCPCommandRejectsBadEnvironmentProjectBeforeServing(t *testing.T) {
 	require.Empty(t, res.Stdout)
 }
 
-func writeMCPMnemonicFile(t *testing.T, path string) {
+// registerRegistryProject inserts a local-mode project row for tests so the
+// registry-first resolution has something to look up.
+func registerRegistryProject(t *testing.T, cwd, slug string) {
 	t.Helper()
 
-	now := time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
-	file := project.NewMnemonicFile()
-	file.CreatedAt = now
-	file.UpdatedAt = now
-	file.Projects = []project.MnemonicProject{
-		{
-			ID:                    "550e8400-e29b-41d4-a716-446655440000",
-			Name:                  "personal",
-			Slug:                  "personal",
-			Kind:                  project.ProjectKindLocal,
-			MemoriesPath:          ".mnemonic-memories/personal",
-			MarkdownFormatVersion: 1,
-			CreatedAt:             now,
-			UpdatedAt:             now,
-		},
-	}
-	err := project.WriteMnemonicFile(path, file)
-	require.NoError(t, err)
+	memoriesDir := filepath.Join(cwd, ".mnemonic-memories", slug)
+	require.NoError(t, os.MkdirAll(memoriesDir, 0o755))
+
+	manifest := project.NewMnemonicManifest()
+	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
+	manifest.Name = slug
+	manifest.Slug = slug
+	manifest.Kind = project.ManifestKindRegular
+	manifest.MarkdownFormatVersion = 1
+	manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
+	manifest.UpdatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
+	manifest.Generator.App = "mnemonic"
+
+	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(memoriesDir, "mnemonic.toml"), manifest))
 }
 
 func setWritableMCPEnv(t *testing.T) {

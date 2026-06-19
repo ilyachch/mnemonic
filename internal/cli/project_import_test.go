@@ -14,11 +14,11 @@ import (
 )
 
 func TestProjectImportCommandDefaultsToDot(t *testing.T) {
-	_, subdir := seedImportProject(t)
+	_, importRoot := seedImportProject(t)
 
 	originalWD, err := os.Getwd()
 	require.NoError(t, err)
-	err = os.Chdir(subdir)
+	err = os.Chdir(importRoot)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = os.Chdir(originalWD)
@@ -30,7 +30,7 @@ func TestProjectImportCommandDefaultsToDot(t *testing.T) {
 	var got projectImportOutput
 	err = json.Unmarshal([]byte(result.Stdout), &got)
 	require.NoError(t, err, "failed to decode JSON\nstdout: %s", result.Stdout)
-	require.Equal(t, subdir, got.Path)
+	require.Equal(t, importRoot, got.Path)
 	require.Equal(t, 1, got.Imported)
 	require.Equal(t, 0, got.CopiedFiles)
 	require.Equal(t, 1, got.Indexed)
@@ -41,11 +41,11 @@ func TestProjectImportCommandDefaultsToDot(t *testing.T) {
 }
 
 func TestProjectImportCommandDryRunReturnsCandidatesAndDoesNotWriteRegistry(t *testing.T) {
-	repoRoot, subdir := seedImportProject(t)
+	_, importRoot := seedImportProject(t)
 
 	originalWD, err := os.Getwd()
 	require.NoError(t, err)
-	err = os.Chdir(subdir)
+	err = os.Chdir(importRoot)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = os.Chdir(originalWD)
@@ -57,17 +57,17 @@ func TestProjectImportCommandDryRunReturnsCandidatesAndDoesNotWriteRegistry(t *t
 	var got projectImportOutput
 	err = json.Unmarshal([]byte(result.Stdout), &got)
 	require.NoError(t, err, "failed to decode JSON\nstdout: %s", result.Stdout)
-	require.Equal(t, subdir, got.Path)
+	require.Equal(t, importRoot, got.Path)
 	require.Equal(t, 1, got.Imported)
 	require.Equal(t, 0, got.CopiedFiles)
 	require.Equal(t, 0, got.Indexed)
 	require.Len(t, got.Candidates, 1)
 	candidate := got.Candidates[0]
 	require.Equal(t, "backend", candidate.Slug)
-	require.Equal(t, repoRoot, candidate.RepoRootAbs)
+	require.Equal(t, importRoot, candidate.RepoRootAbs)
 
 	listResult := executeCommand("project", "list", "--json")
-	require.NoError(t, listResult.Err, "project list returned error\nstderr: %s", listResult.Stderr)
+	require.NoError(t, listResult.Err, "project list returned error\nstderr: %s", listResult.Err)
 	var listOutput projectListOutput
 	err = json.Unmarshal([]byte(listResult.Stdout), &listOutput)
 	require.NoError(t, err, "failed to decode list JSON\nstdout: %s", listResult.Stdout)
@@ -90,20 +90,19 @@ func TestProjectImportCommandReturnsNotFoundForMissingPath(t *testing.T) {
 }
 
 func TestProjectImportCommandNormalizesRelativePath(t *testing.T) {
-	_, subdir := seedImportProject(t)
-	target := filepath.Join(subdir, "notes")
-	err := os.MkdirAll(target, 0o755)
-	require.NoError(t, err)
+	_, importRoot := seedImportProject(t)
+	target := filepath.Join(filepath.Dir(importRoot), "notes-target")
+	require.NoError(t, os.Rename(importRoot, target))
 
 	originalWD, err := os.Getwd()
 	require.NoError(t, err)
-	err = os.Chdir(subdir)
+	err = os.Chdir(filepath.Dir(target))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = os.Chdir(originalWD)
 	})
 
-	result := executeCommand("project", "import", "notes", "--json")
+	result := executeCommand("project", "import", "notes-target", "--json")
 	require.NoError(t, result.Err, "project import returned error\nstderr: %s", result.Stderr)
 
 	var got projectImportOutput
@@ -119,32 +118,20 @@ func seedImportProject(t *testing.T) (string, string) {
 	t.Helper()
 
 	cwd := testutil.CleanEnvForTest(t)
-	repoRoot := filepath.Join(cwd, "repo")
-	subdir := filepath.Join(repoRoot, "sub", "dir")
-	err := os.MkdirAll(subdir, 0o755)
-	require.NoError(t, err)
+	importRoot := filepath.Join(cwd, "repo")
+	require.NoError(t, os.MkdirAll(importRoot, 0o755))
 
-	file := &project.MnemonicFile{
-		Version:   1,
-		CreatedAt: time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
-		UpdatedAt: time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
-		Projects: []project.MnemonicProject{
-			{
-				ID:                    "550e8400-e29b-41d4-a716-446655440000",
-				Name:                  "backend",
-				Slug:                  "backend",
-				Kind:                  project.ProjectKindLocal,
-				MemoriesPath:          filepath.Join(".mnemonic-memories", "backend"),
-				MarkdownFormatVersion: 1,
-				CreatedAt:             time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
-				UpdatedAt:             time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
-			},
-		},
-	}
-	err = project.WriteMnemonicFile(filepath.Join(repoRoot, ".mnemonic"), file)
-	require.NoError(t, err)
-	err = os.MkdirAll(filepath.Join(repoRoot, ".mnemonic-memories", "backend"), 0o755)
-	require.NoError(t, err)
+	manifest := project.NewMnemonicManifest()
+	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
+	manifest.Name = "backend"
+	manifest.Slug = "backend"
+	manifest.Kind = project.ManifestKindRegular
+	manifest.MarkdownFormatVersion = 1
+	manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
+	manifest.UpdatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
+	manifest.Generator.App = "mnemonic"
 
-	return repoRoot, subdir
+	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(importRoot, "mnemonic.toml"), manifest))
+
+	return cwd, importRoot
 }

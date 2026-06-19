@@ -1,35 +1,69 @@
 package project
 
 import (
+	"database/sql"
 	"fmt"
-	"path/filepath"
+	"os"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/registry"
 )
+
+// EnvironmentProjectSelector is the environment variable used to provide an
+// implicit project selector when the CLI flag is not set.
+const EnvironmentProjectSelector = "MNEMONIC_PROJECT"
 
 // ResolveProjectInput configures project resolution precedence.
 type ResolveProjectInput struct {
-	CWD              string
 	ProjectSelector  string
 	EnvironmentValue string
+	Registry         *sql.DB
 }
 
-// ResolvedProject is the selected project together with the source file path.
+// ResolvedProject is the selected project together with the resolved
+// filesystem pointers from the registry.
 type ResolvedProject struct {
 	MnemonicFilePath string
-	Project          MnemonicProject
+	RepoRootAbs      string
+	MemoriesAbs      string
+	ManifestAbs      string
+	Project          ResolvedProjectEntry
 }
 
-// ResolveProject chooses a project using explicit selector, env selector, or nearest .mnemonic.
-func ResolveProject(input ResolveProjectInput) (ResolvedProject, error) {
-	mnemonicPath, err := FindNearestMnemonicFile(input.CWD)
-	if err != nil {
-		return ResolvedProject{}, err
-	}
+// ResolvedProjectEntry captures the registry columns needed by callers.
+type ResolvedProjectEntry struct {
+	ID        string
+	Name      string
+	Slug      string
+	Kind      ProjectKind
+	CreatedAt string
+	UpdatedAt string
+}
 
-	file, err := loadMnemonicFile(mnemonicPath)
-	if err != nil {
-		return ResolvedProject{}, err
+// ErrNoProjectSelected indicates that neither the --project flag nor the
+// MNEMONIC_PROJECT environment variable was set.
+type ErrNoProjectSelected struct{}
+
+// Error implements the error interface.
+func (ErrNoProjectSelected) Error() string {
+	return "no project selected; specify --project or set " + EnvironmentProjectSelector
+}
+
+// ErrProjectNotFound is returned when the requested selector does not match
+// any active project in the registry.
+type ErrProjectNotFound struct {
+	Selector string
+}
+
+// Error implements the error interface.
+func (e ErrProjectNotFound) Error() string {
+	return fmt.Sprintf("project %q not found", e.Selector)
+}
+
+// ResolveProject selects a project using the explicit selector or the
+// environment variable. There is no filesystem-walking fallback.
+func ResolveProject(input ResolveProjectInput) (ResolvedProject, error) {
+	if input.Registry == nil {
+		return ResolvedProject{}, fmt.Errorf("registry database is required")
 	}
 
 	selector := input.ProjectSelector
@@ -37,42 +71,104 @@ func ResolveProject(input ResolveProjectInput) (ResolvedProject, error) {
 		selector = input.EnvironmentValue
 	}
 
-	project, err := selectMnemonicProject(file, selector)
+	if selector == "" {
+		return ResolvedProject{}, ErrNoProjectSelected{}
+	}
+
+	row, err := queryProjectRegistry(input.Registry, selector)
 	if err != nil {
 		return ResolvedProject{}, err
 	}
 
 	return ResolvedProject{
-		MnemonicFilePath: filepath.Clean(mnemonicPath),
-		Project:          project,
+		Project: ResolvedProjectEntry{
+			ID:        row.projectID,
+			Name:      row.name,
+			Slug:      row.slug,
+			Kind:      ProjectKind(row.kind),
+			CreatedAt: row.createdAt,
+			UpdatedAt: row.updatedAt,
+		},
+		MemoriesAbs:      row.memoriesAbs,
+		ManifestAbs:      row.manifestAbs,
+		RepoRootAbs:      row.repoRootAbs,
+		MnemonicFilePath: row.mnemonicFileAbs,
 	}, nil
 }
 
-func selectMnemonicProject(file *MnemonicFile, selector string) (MnemonicProject, error) {
-	if file == nil || len(file.Projects) == 0 {
-		return MnemonicProject{}, app.NewNotFoundError("no projects found in .mnemonic", nil)
+// ResolveProjectFromEnv is a convenience that resolves a project using only the
+// CLI selector (or the MNEMONIC_PROJECT environment variable as fallback) and
+// opens the registry database internally.
+func ResolveProjectFromEnv(projectSelector string) (ResolvedProject, error) {
+	registryDB, err := registry.OpenDB()
+	if err != nil {
+		return ResolvedProject{}, fmt.Errorf("open registry: %w", err)
+	}
+	defer func() {
+		_ = registryDB.Close()
+	}()
+
+	return ResolveProject(ResolveProjectInput{
+		ProjectSelector:  projectSelector,
+		EnvironmentValue: os.Getenv(EnvironmentProjectSelector),
+		Registry:         registryDB,
+	})
+}
+
+type registryProjectRow struct {
+	projectID       string
+	name            string
+	slug            string
+	kind            string
+	mnemonicFileAbs string
+	repoRootAbs     string
+	memoriesAbs     string
+	manifestAbs     string
+	createdAt       string
+	updatedAt       string
+}
+
+func queryProjectRegistry(db *sql.DB, selector string) (registryProjectRow, error) {
+	row := registryProjectRow{}
+	err := db.QueryRow(
+		`SELECT p.project_id, p.name, p.slug, p.kind,
+		        COALESCE(l.mnemonic_file_abs, ''),
+		        COALESCE(l.repo_root_abs, ''),
+		        l.memories_abs,
+		        COALESCE(l.manifest_abs, ''),
+		        COALESCE(CAST(p.created_at AS TEXT), ''),
+		        COALESCE(CAST(p.updated_at AS TEXT), '')
+		 FROM projects p
+		 JOIN project_locations l ON l.project_id = p.project_id
+		 WHERE p.removed_at IS NULL AND p.project_id = ?`,
+		selector,
+	).Scan(&row.projectID, &row.name, &row.slug, &row.kind, &row.mnemonicFileAbs, &row.repoRootAbs, &row.memoriesAbs, &row.manifestAbs, &row.createdAt, &row.updatedAt)
+	if err != nil && err != sql.ErrNoRows {
+		return registryProjectRow{}, fmt.Errorf("query project %q: %w", selector, err)
+	}
+	if err == nil {
+		return row, nil
 	}
 
-	if selector == "" {
-		if len(file.Projects) == 1 {
-			return file.Projects[0], nil
+	err = db.QueryRow(
+		`SELECT p.project_id, p.name, p.slug, p.kind,
+		        COALESCE(l.mnemonic_file_abs, ''),
+		        COALESCE(l.repo_root_abs, ''),
+		        l.memories_abs,
+		        COALESCE(l.manifest_abs, ''),
+		        COALESCE(CAST(p.created_at AS TEXT), ''),
+		        COALESCE(CAST(p.updated_at AS TEXT), '')
+		 FROM projects p
+		 JOIN project_locations l ON l.project_id = p.project_id
+		 WHERE p.removed_at IS NULL AND p.slug = ?`,
+		selector,
+	).Scan(&row.projectID, &row.name, &row.slug, &row.kind, &row.mnemonicFileAbs, &row.repoRootAbs, &row.memoriesAbs, &row.manifestAbs, &row.createdAt, &row.updatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return registryProjectRow{}, ErrProjectNotFound{Selector: selector}
 		}
-		return MnemonicProject{}, app.NewAmbiguousError("multiple projects found in .mnemonic; use --project", nil)
+		return registryProjectRow{}, fmt.Errorf("query project %q: %w", selector, err)
 	}
 
-	var matched *MnemonicProject
-	for i := range file.Projects {
-		project := &file.Projects[i]
-		if project.ID == selector || project.Slug == selector {
-			if matched != nil {
-				return MnemonicProject{}, app.NewAmbiguousError(fmt.Sprintf("project selector %q matches multiple entries", selector), nil)
-			}
-			matched = project
-		}
-	}
-	if matched == nil {
-		return MnemonicProject{}, app.NewNotFoundError(fmt.Sprintf("project %q not found", selector), nil)
-	}
-
-	return *matched, nil
+	return row, nil
 }

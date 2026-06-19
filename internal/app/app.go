@@ -61,7 +61,8 @@ func New(input Input) (*App, error) {
 		Config: cfg,
 		Paths:  effective,
 		Services: Services{
-			Registry: db,
+			Registry:        db,
+			ProjectResolver: RegistryResolver{DB: db},
 		},
 	}, nil
 }

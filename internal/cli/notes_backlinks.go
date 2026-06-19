@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/graph"
@@ -18,36 +17,25 @@ var notesBacklinksCmd = &cobra.Command{
 	Short: "Show backlinks for a note",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		projectSelector, err := cmd.Flags().GetString("project")
-		if err != nil {
-			return err
-		}
-
-		cwd, err := os.Getwd()
-		if err != nil {
-			return err
-		}
-
-		resolvedProject, err := project.ResolveProject(project.ResolveProjectInput{
-			CWD:             cwd,
-			ProjectSelector: projectSelector,
-		})
-		if err != nil {
-			return err
-		}
-
-		repoRoot := filepath.Dir(resolvedProject.MnemonicFilePath)
 		container, err := mustAppContainer()
 		if err != nil {
 			return err
 		}
 
+		resolvedProject, err := container.Services.ProjectResolver.Resolve(app.ProjectResolveInput{
+			ProjectSelector:  projectSelectorValue(),
+			EnvironmentValue: os.Getenv(project.EnvironmentProjectSelector),
+		})
+		if err != nil {
+			return err
+		}
+
 		_, err = project.ResolveMemoriesRoot(project.MemoriesRootInput{
-			Kind:         string(resolvedProject.Project.Kind),
+			Kind:         resolvedProject.Project.Kind,
 			Slug:         resolvedProject.Project.Slug,
 			MemoriesPath: resolvedProject.Project.MemoriesPath,
 			MemoriesHome: container.Paths.MemoriesHome,
-			RepoRoot:     repoRoot,
+			RepoRoot:     resolvedProject.RepoRootAbs,
 		})
 		if err != nil {
 			return err
@@ -90,8 +78,6 @@ var notesBacklinksCmd = &cobra.Command{
 }
 
 func init() {
-	notesBacklinksCmd.Flags().String("project", "", "select a project")
-	mustRegisterProjectFlagCompletion(notesBacklinksCmd, "project")
 	notesCmd.AddCommand(notesBacklinksCmd)
 }
 

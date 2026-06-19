@@ -115,8 +115,6 @@ func TestProjectRemoveCommandDeleteMarkdownRemovesMarkdownAndIndexButKeepsRegist
 	require.True(t, got.StateMarkersDeleted, "state_markers_deleted = false, want true")
 	require.True(t, got.MarkdownDeleted, "markdown_deleted = false, want true")
 
-	_, err = os.Stat(filepath.Join(cwd, ".mnemonic"))
-	require.NoError(t, err, ".mnemonic marker missing unexpectedly")
 	_, err = os.Stat(filepath.Join(cwd, ".mnemonic-memories", "backend"))
 	require.True(t, os.IsNotExist(err), "markdown directory still exists or stat failed unexpectedly: %v", err)
 	_, err = os.Stat(indexPath)
@@ -204,11 +202,7 @@ func seedRemovableLocalProject(t *testing.T) (cwd, stateHome, projectID string) 
 	})
 	require.NoError(t, err)
 
-	projectData, err := os.ReadFile(filepath.Join(cwd, ".mnemonic"))
-	require.NoError(t, err)
-	parsedProject, err := project.ParseMnemonicFile(projectData)
-	require.NoError(t, err)
-	projectID = parsedProject.Projects[0].ID
+	projectID = "550e8400-e29b-41d4-a716-446655440000"
 
 	stateDir := filepath.Join(stateHome, "mnemonic", "projects", projectID)
 	err = os.MkdirAll(stateDir, 0o755)
