@@ -27,12 +27,6 @@ func completeProjectNames(cmd *cobra.Command, args []string, toComplete string) 
 	return matches, cobra.ShellCompDirectiveNoFileComp
 }
 
-func mustRegisterProjectFlagCompletion(cmd *cobra.Command, flagName string) {
-	if err := cmd.RegisterFlagCompletionFunc(flagName, completeProjectNames); err != nil {
-		panic(fmt.Sprintf("register completion for --%s: %v", flagName, err))
-	}
-}
-
 func loadActiveProjectNames() ([]string, error) {
 	container, err := mustAppContainer()
 	if err != nil {
