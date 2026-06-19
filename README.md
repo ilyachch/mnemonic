@@ -379,3 +379,135 @@ Safe note edit with optimistic concurrency:
 mnemonic notes show my-note --project my-notes --json
 mnemonic notes edit my-note --project my-notes --if-match <hash> --append "\nUpdate"
 ```
+
+## Development
+
+### High-Level Architecture
+
+```mermaid
+flowchart LR
+    %% Styling
+    classDef interface fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#000
+    classDef core fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#000
+    classDef logic fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px,color:#000
+    classDef storage fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#000
+    classDef db fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#000
+
+    %% 1. External Interfaces
+    subgraph Interfaces ["1. Interfaces (Input)"]
+        direction TB
+        CLI("💻 CLI\n(For Humans)"):::interface
+        MCP("🤖 MCP Server\n(For LLMs / AI)"):::interface
+    end
+
+    %% 2. Core
+    App{"⚙️ App Container\n(DI, Config,\nPath Resolution)"}:::core
+
+    %% 3. Business Logic
+    subgraph Services ["2. Business Services"]
+        direction TB
+        Proj["📁 Project Manager"]:::logic
+        Note["📝 Notes Manager"]:::logic
+        Idx["🔍 Indexer & Search"]:::logic
+    end
+
+    %% 4. File System
+    subgraph Storage ["3. Files (Disk)"]
+        direction TB
+        Conf["⚙️ config.toml\n(Settings)"]:::storage
+        MD["📄 Notes (*.md)\n(Source of Truth)"]:::storage
+    end
+
+    %% 5. Databases
+    subgraph DBs ["4. Databases (SQLite)"]
+        direction TB
+        Reg[("🗂️ Registry DB\n(Global List)")]:::db
+        FTS[("⚡ Index DB\n(FTS5 Search & Graphs)")]:::db
+    end
+
+    %% Flow connections
+    CLI --> App
+    MCP --> App
+
+    App --> Proj
+    App --> Note
+    App --> Idx
+
+    %% Storage connections
+    App -. Reads .-> Conf
+    Proj --> Reg
+    Note --> MD
+    Idx --> FTS
+    Idx -. Parses .-> MD
+```
+
+## Detailed Architecture
+
+```mermaid
+flowchart TD
+    %% Styling
+    classDef entry fill:#e3f2fd,stroke:#1e88e5,stroke-width:2px,color:#000,rx:8px,ry:8px
+    classDef core fill:#fff8e1,stroke:#ffb300,stroke-width:2px,color:#000,rx:8px,ry:8px
+    classDef domain fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px,color:#000,rx:8px,ry:8px
+    classDef engine fill:#e8f5e9,stroke:#43a047,stroke-width:2px,color:#000,rx:8px,ry:8px
+    classDef infra fill:#eceff1,stroke:#546e7a,stroke-width:2px,color:#000,rx:8px,ry:8px
+    classDef db fill:#ffebee,stroke:#e53935,stroke-width:2px,color:#000,rx:8px,ry:8px
+
+    %% Layers
+    subgraph Entry ["1. Presentation Layer (Entry Points)"]
+        direction LR
+        CLI("💻 CLI\n(internal/cli)"):::entry
+        MCP("🤖 MCP Tools\n(internal/mcp)"):::entry
+    end
+
+    subgraph Core ["2. Application Core (Bootstrapping)"]
+        direction LR
+        App{"⚙️ App Container\n(internal/app)"}:::core
+        Paths("📂 Paths & Config\n(internal/paths, config)"):::core
+    end
+
+    subgraph Domain ["3. Domain Layer (Business Features)"]
+        direction LR
+        Proj("📁 Project\n(internal/project)"):::domain
+        Notes("📝 Notes\n(internal/notes)"):::domain
+        Search("🔍 Search & Graph\n(internal/search, graph)"):::domain
+    end
+
+    subgraph Engines ["4. Processing Engines"]
+        direction LR
+        MD("🛠️ Markdown\n(internal/markdown)"):::engine
+        Idx("⚡ Indexer\n(internal/index)"):::engine
+    end
+
+    subgraph Infra ["5. Infrastructure & Adapters"]
+        direction LR
+        Reg("🗂️ Registry\n(internal/registry)"):::infra
+        Sys("💾 FS & Locks\n(internal/fs, lock)"):::infra
+        DB[("🗄️ SQLite\n(Databases)")]:::db
+    end
+
+    %% Flow: Bootstrapping
+    CLI & MCP --> App
+    App --> Paths
+    App --> Reg
+    App --> DB
+
+    %% Flow: Feature Execution
+    CLI & MCP --> Proj
+    CLI & MCP --> Notes
+    CLI & MCP --> Search
+
+    %% Flow: Domain to Engines & Infra
+    Proj --> Reg
+    Proj --> Paths
+
+    Notes --> MD
+    Notes --> Sys
+
+    Search --> Idx
+
+    %% Flow: Engines to Infra
+    Idx --> MD
+    Idx --> DB
+    Reg --> DB
+```

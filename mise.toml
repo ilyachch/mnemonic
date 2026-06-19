@@ -52,6 +52,9 @@ depends = ["lint", "test"]
 [tasks.collect-content]
 run = "collect_content . --skip-empty --format md --sort dirs-first --ext \".go\"  > mnemonic.md"
 
+[tasks.collect-content-no-tests]
+run = "collect_content . --skip-empty --format md --sort dirs-first --ext \".go\" --exclude \"*_test.go\" > mnemonic_no_tests.md"
+
 [tasks.install]
 run = "go install ./cmd/mnemonic"
 
