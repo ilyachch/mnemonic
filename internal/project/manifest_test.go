@@ -49,6 +49,39 @@ func TestMnemonicManifestRoundTrip(t *testing.T) {
 	require.True(t, reflect.DeepEqual(parsed, original))
 }
 
+func TestMnemonicManifestRoundTripWithDescription(t *testing.T) {
+	t.Parallel()
+
+	original := &MnemonicManifest{
+		Version:               1,
+		ProjectID:             "550e8400-e29b-41d4-a716-446655440000",
+		Name:                  "backend",
+		Slug:                  "backend",
+		Kind:                  ManifestKindRegular,
+		MarkdownFormatVersion: 1,
+		Description:           "Backend architecture decisions, API contracts, and database schemas.",
+		CreatedAt:             time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
+		UpdatedAt:             time.Date(2026, time.June, 2, 10, 5, 0, 0, time.UTC),
+		Layout: MnemonicManifestLayout{
+			NotesGlob: []string{"**/*.md"},
+			Ignore:    []string{"mnemonic.toml", ".trash/**"},
+		},
+		Generator: MnemonicGenerator{
+			App:        "mnemonic",
+			AppVersion: "0.1.0-dev",
+		},
+	}
+
+	data, err := original.MarshalTOML()
+	require.NoError(t, err)
+
+	parsed, err := ParseMnemonicManifest(data)
+	require.NoError(t, err)
+
+	require.Equal(t, "Backend architecture decisions, API contracts, and database schemas.", parsed.Description)
+	require.True(t, reflect.DeepEqual(parsed, original))
+}
+
 func TestMnemonicManifestDefaultsWhenParsing(t *testing.T) {
 	t.Parallel()
 

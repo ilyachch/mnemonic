@@ -141,6 +141,27 @@ func TestBoolPtr(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// buildToolDescription
+// ---------------------------------------------------------------------------
+
+func TestBuildToolDescription_withDescription(t *testing.T) {
+	result := buildToolDescription("Backend architecture decisions", "Base instructions.")
+	want := "Target Knowledge Base: Backend architecture decisions\n\nBase instructions."
+	require.Equal(t, want, result)
+}
+
+func TestBuildToolDescription_emptyDescription(t *testing.T) {
+	result := buildToolDescription("", "Base instructions.")
+	require.Equal(t, "Base instructions.", result)
+}
+
+func TestBuildToolDescription_emptyInstructions(t *testing.T) {
+	result := buildToolDescription("A desc", "")
+	want := "Target Knowledge Base: A desc\n\n"
+	require.Equal(t, want, result)
+}
+
+// ---------------------------------------------------------------------------
 // QueryIndexedNoteByIdentifier
 // ---------------------------------------------------------------------------
 
@@ -212,7 +233,7 @@ func TestRegisterAll_doesNotPanic(t *testing.T) {
 	)
 	deps := &mockDeps{}
 	require.NotPanics(t, func() {
-		RegisterAll(sdkServer, deps)
+		RegisterAll(sdkServer, deps, "")
 	})
 }
 
@@ -406,7 +427,7 @@ func TestCreateNoteHandler_mockDeps(t *testing.T) {
 	// Verify the registration succeeds with mock deps
 	sdkServer := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "test", Version: "0.0.0"}, nil)
 	deps := &mockDeps{}
-	RegisterCreateNote(sdkServer, deps)
+	RegisterCreateNote(sdkServer, deps, "")
 	RegisterEditNote(sdkServer, deps)
 	RegisterDeleteNote(sdkServer, deps)
 }
@@ -618,7 +639,7 @@ func TestTools_RegisterAndCallThroughMCPSession(t *testing.T) {
 		indexDB:      nil,
 	}
 
-	RegisterAll(sdkServer, deps)
+	RegisterAll(sdkServer, deps, "")
 
 	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "client", Version: "0.0.1"}, nil)
 	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
@@ -693,7 +714,7 @@ func TestTools_RegisterCreateNoteHandlerErrors(t *testing.T) {
 		rootErr: errors.New("root error"),
 	}
 
-	RegisterCreateNote(sdkServer, deps)
+	RegisterCreateNote(sdkServer, deps, "")
 
 	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "client", Version: "0.0.1"}, nil)
 	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
@@ -859,7 +880,7 @@ func TestTools_RegisterSearchNotesHandlerErrors(t *testing.T) {
 		dbErr: errors.New("db error"),
 	}
 
-	RegisterSearchNotes(sdkServer, deps)
+	RegisterSearchNotes(sdkServer, deps, "")
 
 	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "client", Version: "0.0.1"}, nil)
 	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()

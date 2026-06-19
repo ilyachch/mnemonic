@@ -55,3 +55,13 @@ func EnsurePathInsideRoot(root, target string) error {
 
 	return nil
 }
+
+// buildToolDescription prepends a custom knowledge-base description to the
+// base strict instructions when a description is configured. This helps LLM
+// agents route queries to the correct memory instance.
+func buildToolDescription(description, baseInstructions string) string {
+	if description == "" {
+		return baseInstructions
+	}
+	return "Target Knowledge Base: " + description + "\n\n" + baseInstructions
+}

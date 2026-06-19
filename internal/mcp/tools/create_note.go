@@ -33,10 +33,10 @@ type CreateNoteOutput struct {
 	ContentHash string `json:"content_hash"`
 }
 
-func RegisterCreateNote(s *sdkmcp.Server, deps Dependencies) {
+func RegisterCreateNote(s *sdkmcp.Server, deps Dependencies, description string) {
 	sdkmcp.AddTool(s, &sdkmcp.Tool{
 		Name:        "create_note",
-		Description: createNoteDescription,
+		Description: buildToolDescription(description, createNoteDescription),
 		Annotations: &sdkmcp.ToolAnnotations{
 			ReadOnlyHint:    false,
 			DestructiveHint: BoolPtr(false),

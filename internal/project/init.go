@@ -25,6 +25,7 @@ type InitInput struct {
 	CWD          string
 	MemoriesHome string
 	Name         string
+	Description  string
 	Mode         InitMode
 }
 
@@ -75,6 +76,7 @@ func InitProject(input InitInput) error {
 		manifest.Slug = slug
 		manifest.Kind = ManifestKindRegular
 		manifest.MarkdownFormatVersion = 1
+		manifest.Description = input.Description
 		manifest.CreatedAt = now
 		manifest.UpdatedAt = now
 		manifest.Generator.App = "mnemonic"
@@ -134,6 +136,7 @@ func InitProject(input InitInput) error {
 		manifest.Slug = slug
 		manifest.Kind = ManifestKindDetached
 		manifest.MarkdownFormatVersion = 1
+		manifest.Description = input.Description
 		manifest.CreatedAt = now
 		manifest.UpdatedAt = now
 		manifest.Generator.App = "mnemonic"

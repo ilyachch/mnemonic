@@ -52,9 +52,28 @@ func (s *Server) Run(ctx context.Context) error {
 		},
 	)
 
-	tools.RegisterAll(sdkServer, s)
+	description := s.readManifestDescription()
+	tools.RegisterAll(sdkServer, s, description)
 
 	return sdkServer.Run(ctx, &sdkmcp.StdioTransport{})
+}
+
+// readManifestDescription reads the optional description field from the
+// project's mnemonic.toml manifest. Returns an empty string if the manifest
+// cannot be read or parsed, so the MCP server always starts gracefully.
+func (s *Server) readManifestDescription() string {
+	if s.Project.ManifestAbs == "" {
+		return ""
+	}
+	data, err := os.ReadFile(s.Project.ManifestAbs)
+	if err != nil {
+		return ""
+	}
+	manifest, err := project.ParseMnemonicManifest(data)
+	if err != nil {
+		return ""
+	}
+	return manifest.Description
 }
 
 // GetMemoriesRoot returns the resolved memories root path.

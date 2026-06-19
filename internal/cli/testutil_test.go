@@ -18,6 +18,7 @@ func executeCommand(args ...string) cmdResult {
 	projectFlag = ""
 	_ = initCmd.Flags().Set("local", "false")
 	_ = initCmd.Flags().Set("detached", "false")
+	_ = initCmd.Flags().Set("description", "")
 	_ = projectDiscoverCmd.Flags().Set("dry-run", "false")
 	_ = projectImportCmd.Flags().Set("dry-run", "false")
 	_ = notesCreateCmd.Flags().Set("title", "")
