@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"errors"
 	"os"
 
 	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/config"
 	"github.com/ilyachch/mnemonic/internal/paths"
 	"github.com/ilyachch/mnemonic/internal/project"
+	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -73,6 +75,10 @@ var initCmd = &cobra.Command{
 			input.Mode = project.InitModeDetached
 		}
 		if err := project.InitProject(input); err != nil {
+			var conflict registry.ErrProjectSlugConflict
+			if errors.As(err, &conflict) {
+				return app.NewAmbiguousError(conflict.Error(), nil)
+			}
 			return err
 		}
 
@@ -85,6 +91,7 @@ var initCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+
 		record, err := queryProjectBySelector(slug)
 		if err != nil {
 			return err

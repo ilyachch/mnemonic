@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/buildinfo"
 	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/mcp/tools"
@@ -19,7 +20,7 @@ import (
 
 // Server is a transport shell for the MCP stdio adapter.
 type Server struct {
-	Project project.ResolvedProject
+	Project app.ProjectResolution
 	Paths   paths.EffectivePaths
 
 	indexDBMu sync.Mutex
@@ -31,7 +32,7 @@ type Server struct {
 }
 
 // NewServer creates a new MCP shell server wrapper.
-func NewServer(resolved project.ResolvedProject, effectivePaths paths.EffectivePaths) *Server {
+func NewServer(resolved app.ProjectResolution, effectivePaths paths.EffectivePaths) *Server {
 	return &Server{Project: resolved, Paths: effectivePaths}
 }
 
@@ -58,9 +59,12 @@ func (s *Server) Run(ctx context.Context) error {
 
 // GetMemoriesRoot returns the resolved memories root path.
 func (s *Server) GetMemoriesRoot() (string, error) {
-	repoRoot := filepath.Dir(s.Project.MnemonicFilePath)
+	repoRoot := s.Project.RepoRootAbs
+	if repoRoot == "" {
+		repoRoot = filepath.Dir(s.Project.MnemonicFilePath)
+	}
 	return project.ResolveMemoriesRoot(project.MemoriesRootInput{
-		Kind:         string(s.Project.Project.Kind),
+		Kind:         s.Project.Project.Kind,
 		Slug:         s.Project.Project.Slug,
 		MemoriesPath: s.Project.Project.MemoriesPath,
 		MemoriesHome: s.Paths.MemoriesHome,

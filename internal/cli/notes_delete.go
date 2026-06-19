@@ -12,10 +12,6 @@ var notesDeleteCmd = &cobra.Command{
 	Short: "Delete a note",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		projectSelector, err := cmd.Flags().GetString("project")
-		if err != nil {
-			return err
-		}
 		dryRun, err := cmd.Flags().GetBool("dry-run")
 		if err != nil {
 			return err
@@ -29,7 +25,7 @@ var notesDeleteCmd = &cobra.Command{
 			return err
 		}
 
-		root, err := resolveNotesProjectRoot(projectSelector)
+		root, err := resolveNotesProjectRoot()
 		if err != nil {
 			return err
 		}
@@ -50,8 +46,6 @@ var notesDeleteCmd = &cobra.Command{
 }
 
 func init() {
-	notesDeleteCmd.Flags().String("project", "", "select a project")
-	mustRegisterProjectFlagCompletion(notesDeleteCmd, "project")
 	notesDeleteCmd.Flags().Bool("dry-run", false, "show the deletion result without changing files")
 	notesDeleteCmd.Flags().Bool("hard", false, "delete the note permanently")
 	notesDeleteCmd.Flags().Bool("yes", false, "confirm a hard delete")

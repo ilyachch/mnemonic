@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/buildinfo"
 	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/markdown"
@@ -19,6 +21,7 @@ import (
 	"github.com/ilyachch/mnemonic/internal/notes"
 	"github.com/ilyachch/mnemonic/internal/paths"
 	"github.com/ilyachch/mnemonic/internal/project"
+	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 )
@@ -26,7 +29,7 @@ import (
 func TestCommandTransportInitializeAndListTools(t *testing.T) {
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 
 	session, stderr := connectToMCPServerWithEnv(t, repoRoot, projectRoot, writableMCPEnv(t))
 
@@ -65,7 +68,7 @@ func TestListNotesReturnsEmptyArrayForEmptyProject(t *testing.T) {
 	_ = writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 
 	session, _ := connectToMCPServer(t, repoRoot, projectRoot)
 
@@ -80,7 +83,7 @@ func TestListNotesSupportsPagination(t *testing.T) {
 	_ = writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 
 	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
 	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
@@ -120,7 +123,7 @@ func TestListTagsReturnsTagsAndRespectsLimit(t *testing.T) {
 	env := writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 
 	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
 	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
@@ -148,7 +151,7 @@ func TestListTagsReturnsTagsAndRespectsLimit(t *testing.T) {
 func TestServerIndexDBReusesSingleConnection(t *testing.T) {
 	_ = writableMCPEnv(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 
 	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
 	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
@@ -156,15 +159,19 @@ func TestServerIndexDBReusesSingleConnection(t *testing.T) {
 	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
 	require.NoError(t, err)
 
+	db, err := openTestRegistry(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
 	resolvedProject, err := project.ResolveProject(project.ResolveProjectInput{
-		CWD:             projectRoot,
 		ProjectSelector: "personal",
+		Registry:        db,
 	})
 	require.NoError(t, err)
 	effectivePaths, err := paths.ResolveEffectivePaths(paths.EffectiveInput{})
 	require.NoError(t, err)
 
-	server := NewServer(resolvedProject, effectivePaths)
+	server := NewServer(toAppResolution(resolvedProject), effectivePaths)
 	t.Cleanup(func() {
 		_ = server.closeIndexDB()
 	})
@@ -180,7 +187,7 @@ func TestListBacklinksReturnsLinksAndRespectsLimit(t *testing.T) {
 	env := writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 
 	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
 	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
@@ -208,7 +215,7 @@ func TestListBacklinksReturnsToolErrorForMissingNote(t *testing.T) {
 	env := writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 
 	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
 	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
@@ -231,7 +238,7 @@ func TestCreateNoteCreatesReadableNote(t *testing.T) {
 	env := writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 
 	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
 
@@ -272,7 +279,7 @@ func TestWriteToolsRefreshIndexForReadOnlyTools(t *testing.T) {
 	env := writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 
 	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
 	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
@@ -339,7 +346,7 @@ func TestEditNoteSupportsModes(t *testing.T) {
 
 	t.Run("append", func(t *testing.T) {
 		projectRoot := t.TempDir()
-		writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+		seedMCPProject(t, projectRoot)
 		session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
 
 		created := decodeCreateNoteOutput(t, callCreateNote(t, session, "Append Target", "", nil, ""))
@@ -362,7 +369,7 @@ func TestEditNoteSupportsModes(t *testing.T) {
 
 	t.Run("replace_body", func(t *testing.T) {
 		projectRoot := t.TempDir()
-		writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+		seedMCPProject(t, projectRoot)
 		session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
 
 		created := decodeCreateNoteOutput(t, callCreateNote(t, session, "Replace Target", "original body\n", nil, ""))
@@ -385,7 +392,7 @@ func TestEditNoteSupportsModes(t *testing.T) {
 
 	t.Run("merge_frontmatter", func(t *testing.T) {
 		projectRoot := t.TempDir()
-		writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+		seedMCPProject(t, projectRoot)
 		session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
 
 		created := decodeCreateNoteOutput(t, callCreateNote(t, session, "FM Target", "", nil, "decision"))
@@ -412,7 +419,7 @@ func TestEditNoteRejectsStaleHashWithoutChangingFile(t *testing.T) {
 	env := writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
 
 	created := decodeCreateNoteOutput(t, callCreateNote(t, session, "Stale Hash Edit", "original\n", nil, ""))
@@ -438,7 +445,7 @@ func TestEditNoteReplaceBodyRequiresIfMatchHash(t *testing.T) {
 	env := writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
 
 	_ = decodeCreateNoteOutput(t, callCreateNote(t, session, "Hashless Replace", "body\n", nil, ""))
@@ -459,7 +466,7 @@ func TestDeleteNoteDefaultsToTrash(t *testing.T) {
 	env := writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 
 	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
 	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
@@ -495,7 +502,7 @@ func TestDeleteNoteHardDeleteRemovesFile(t *testing.T) {
 	env := writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 
 	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
 	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
@@ -528,7 +535,7 @@ func TestDeleteNoteHardDeleteRequiresIfMatchHash(t *testing.T) {
 	env := writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 
 	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
 	_ = decodeCreateNoteOutput(t, callCreateNote(t, session, "Hashless Delete", "", nil, ""))
@@ -566,7 +573,7 @@ func TestDeleteNoteRejectsStaleHashWithoutDeletingFile(t *testing.T) {
 	env := writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 
 	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
 	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
@@ -598,7 +605,7 @@ func TestReadNoteReturnsPayload(t *testing.T) {
 	env := writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 
 	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
 	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
@@ -641,7 +648,7 @@ func TestReadNoteMissingReturnsToolError(t *testing.T) {
 	env := writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 
 	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
 	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
@@ -662,7 +669,7 @@ func TestSearchNotesReturnsHits(t *testing.T) {
 	env := writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 
 	memoryRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
 	require.NoError(t, os.MkdirAll(memoryRoot, 0o755))
@@ -688,7 +695,7 @@ func TestSearchNotesReturnsHits(t *testing.T) {
 func TestSearchNotesMissingIndexSuggestsReindex(t *testing.T) {
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 
 	session, _ := connectToMCPServer(t, repoRoot, projectRoot)
 
@@ -729,8 +736,8 @@ func TestCloseIndexDB_noConnection(t *testing.T) {
 
 func TestGetIndexDB_missingIndex(t *testing.T) {
 	s := &Server{
-		Project: project.ResolvedProject{
-			Project: project.MnemonicProject{ID: "non-existent-uuid"},
+		Project: app.ProjectResolution{
+			Project: app.ProjectRecord{ID: "non-existent-uuid"},
 		},
 	}
 	_, err := s.GetIndexDB()
@@ -743,8 +750,8 @@ func TestGetIndexDB_statError(t *testing.T) {
 	// path that exists but is not a valid index file.
 	// This exercises the stat error that is not IsNotExist.
 	s := &Server{
-		Project: project.ResolvedProject{
-			Project: project.MnemonicProject{ID: "bad-uuid"},
+		Project: app.ProjectResolution{
+			Project: app.ProjectRecord{ID: "bad-uuid"},
 		},
 	}
 	_, err := s.GetIndexDB()
@@ -764,8 +771,8 @@ func TestRebuildIndex_closeError(t *testing.T) {
 func TestRebuildIndex_rebuildError(t *testing.T) {
 	// Rebuild with a valid project that has no notes directory
 	s := &Server{
-		Project: project.ResolvedProject{
-			Project: project.MnemonicProject{ID: "test-rebuild-error"},
+		Project: app.ProjectResolution{
+			Project: app.ProjectRecord{ID: "test-rebuild-error"},
 		},
 	}
 	err := s.RebuildIndex("/nonexistent-dir")
@@ -781,7 +788,7 @@ func TestReadNote_missingReturnsToolError(t *testing.T) {
 	_ = writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 
 	session, _ := connectToMCPServer(t, repoRoot, projectRoot)
 
@@ -797,7 +804,7 @@ func TestListBacklinks_missingIndexReturnsError(t *testing.T) {
 	_ = writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 
 	session, _ := connectToMCPServer(t, repoRoot, projectRoot)
 
@@ -813,7 +820,7 @@ func TestListTags_missingIndexReturnsError(t *testing.T) {
 	_ = writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 
 	session, _ := connectToMCPServer(t, repoRoot, projectRoot)
 
@@ -828,7 +835,7 @@ func TestCreateNote_rebuildIndexSucceeds(t *testing.T) {
 	_ = writableMCPEnv(t)
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
-	writeMCPMnemonicFile(t, filepath.Join(projectRoot, ".mnemonic"))
+	seedMCPProject(t, projectRoot)
 
 	session, _ := connectToMCPServer(t, repoRoot, projectRoot)
 
@@ -857,9 +864,13 @@ func connectToMCPServerWithEnv(t *testing.T, repoRoot, projectRoot string, env [
 
 	stderr := &captureWriter{}
 	client := mcp.NewClient(&mcp.Implementation{Name: "client", Version: "v0.0.1"}, nil)
+	db, err := openTestRegistry(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
 	resolvedProject, err := project.ResolveProject(project.ResolveProjectInput{
-		CWD:             projectRoot,
 		ProjectSelector: "personal",
+		Registry:        db,
 	})
 	require.NoError(t, err)
 	effectivePaths, err := paths.ResolveEffectivePaths(paths.EffectiveInput{})
@@ -873,7 +884,7 @@ func connectToMCPServerWithEnv(t *testing.T, repoRoot, projectRoot string, env [
 			},
 		},
 	)
-	server := NewServer(resolvedProject, effectivePaths)
+	server := NewServer(toAppResolution(resolvedProject), effectivePaths)
 	tools.RegisterAll(sdkServer, server)
 
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
@@ -891,6 +902,37 @@ func connectToMCPServerWithEnv(t *testing.T, repoRoot, projectRoot string, env [
 
 	_ = env
 	return clientSession, stderr
+}
+
+// toAppResolution adapts a project.ResolvedProject to the app.ProjectResolution
+// shape expected by NewServer.
+func toAppResolution(resolved project.ResolvedProject) app.ProjectResolution {
+	return app.ProjectResolution{
+		MnemonicFilePath: resolved.MnemonicFilePath,
+		RepoRootAbs:      resolved.RepoRootAbs,
+		MemoriesAbs:      resolved.MemoriesAbs,
+		ManifestAbs:      resolved.ManifestAbs,
+		Project: app.ProjectRecord{
+			ID:           resolved.Project.ID,
+			Name:         resolved.Project.Name,
+			Slug:         resolved.Project.Slug,
+			Kind:         string(resolved.Project.Kind),
+			MemoriesPath: memoriesPathFromResolution(resolved),
+		},
+	}
+}
+
+func memoriesPathFromResolution(resolved project.ResolvedProject) string {
+	if resolved.RepoRootAbs != "" && resolved.MemoriesAbs != "" {
+		rel, err := filepath.Rel(resolved.RepoRootAbs, resolved.MemoriesAbs)
+		if err == nil && rel != "" && rel != "." {
+			return filepath.ToSlash(rel)
+		}
+	}
+	if resolved.MemoriesAbs != "" {
+		return filepath.Base(resolved.MemoriesAbs)
+	}
+	return ""
 }
 
 // Decode helpers
@@ -1080,32 +1122,78 @@ func repoRootForTest(t *testing.T) string {
 	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
 }
 
-func writeMCPMnemonicFile(t *testing.T, path string) {
+func seedMCPProject(t *testing.T, projectRoot string) {
 	t.Helper()
 
+	_ = writableMCPEnv(t)
+
 	now := time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
-	file := project.NewMnemonicFile()
-	file.CreatedAt = now
-	file.UpdatedAt = now
-	file.Projects = []project.MnemonicProject{
-		{
-			ID:                    "550e8400-e29b-41d4-a716-446655440000",
-			Name:                  "personal",
-			Slug:                  "personal",
-			Kind:                  project.ProjectKindLocal,
-			MemoriesPath:          ".mnemonic-memories/personal",
-			MarkdownFormatVersion: 1,
-			CreatedAt:             now,
-			UpdatedAt:             now,
+
+	memoriesDir := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
+	require.NoError(t, os.MkdirAll(memoriesDir, 0o755))
+
+	db, err := openTestRegistry(t)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	require.NoError(t, registry.RegisterProject(db, registry.RegisterProjectInput{
+		ProjectID: "550e8400-e29b-41d4-a716-446655440000",
+		Name:      "personal",
+		Slug:      "personal",
+		Kind:      registry.ProjectKindLocal,
+		CreatedAt: now,
+		UpdatedAt: now,
+		SeenAt:    now,
+		Location: registry.ProjectLocationInput{
+			RepoRootAbs: projectRoot,
+			MemoriesAbs: memoriesDir,
+			SourceKind:  registry.ProjectSourceKindInit,
 		},
+	}))
+}
+
+func openTestRegistry(t *testing.T) (*sql.DB, error) {
+	t.Helper()
+
+	db, err := registry.OpenDB()
+	if err != nil {
+		return nil, err
 	}
-	require.NoError(t, project.WriteMnemonicFile(path, file))
+	if err := registry.ApplySchema(db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return db, nil
+}
+
+// mcpTestBaseByName maps test names to their persistent base directory so the
+// registry written during fixture setup remains visible to the connect helpers
+// within a single test run.
+var mcpTestBaseByName = map[string]string{}
+
+func mcpTestBaseFor(t *testing.T) string {
+	t.Helper()
+
+	name := t.Name()
+	if existing, ok := mcpTestBaseByName[name]; ok {
+		return existing
+	}
+	base := t.TempDir()
+	mcpTestBaseByName[name] = base
+	return base
+}
+
+func TestMain(m *testing.M) {
+	// Reset the per-test base map so the registry state is consistent across
+	// tests in the same package run.
+	mcpTestBaseByName = map[string]string{}
+	os.Exit(m.Run())
 }
 
 func writableMCPEnv(t *testing.T) []string {
 	t.Helper()
 
-	base := t.TempDir()
+	base := mcpTestBaseFor(t)
 	t.Setenv("HOME", base)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(base, "config"))
 	t.Setenv("XDG_DATA_HOME", filepath.Join(base, "data"))

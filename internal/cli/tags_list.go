@@ -24,19 +24,14 @@ var tagsListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List tags",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		projectSelector, err := cmd.Flags().GetString("project")
+		container, err := mustAppContainer()
 		if err != nil {
 			return err
 		}
 
-		cwd, err := os.Getwd()
-		if err != nil {
-			return err
-		}
-
-		resolvedProject, err := project.ResolveProject(project.ResolveProjectInput{
-			CWD:             cwd,
-			ProjectSelector: projectSelector,
+		resolvedProject, err := container.Services.ProjectResolver.Resolve(app.ProjectResolveInput{
+			ProjectSelector:  projectSelectorValue(),
+			EnvironmentValue: os.Getenv(project.EnvironmentProjectSelector),
 		})
 		if err != nil {
 			return err
@@ -75,8 +70,6 @@ var tagsListCmd = &cobra.Command{
 }
 
 func init() {
-	tagsListCmd.Flags().String("project", "", "select a project")
-	mustRegisterProjectFlagCompletion(tagsListCmd, "project")
 	tagsCmd.AddCommand(tagsListCmd)
 	RootCmd.AddCommand(tagsCmd)
 }

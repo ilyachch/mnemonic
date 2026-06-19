@@ -5,130 +5,97 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/registry"
+	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
 
-func TestResolveProjectExplicitSelectorWinsOverEnv(t *testing.T) {
-	cwd := t.TempDir()
-	writeResolvableMnemonicFile(t, filepath.Join(cwd, ".mnemonic"))
+func TestResolveProjectReturnsNotSelectedWhenSelectorAndEnvEmpty(t *testing.T) {
+	db, err := registry.OpenDB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
 
-	got, err := ResolveProject(ResolveProjectInput{
-		CWD:              cwd,
-		ProjectSelector:  "backend",
-		EnvironmentValue: "infra",
+	_, err = ResolveProject(ResolveProjectInput{Registry: db})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no project selected")
+}
+
+func TestResolveProjectReturnsNotFoundForUnknownSelector(t *testing.T) {
+	db, err := registry.OpenDB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	_, err = ResolveProject(ResolveProjectInput{
+		Registry:        db,
+		ProjectSelector: "missing",
 	})
-	require.NoError(t, err)
-	require.Equal(t, "backend", got.Project.Slug)
-}
-
-func TestResolveProjectEnvWinsOverNearest(t *testing.T) {
-	cwd := t.TempDir()
-	writeResolvableMnemonicFile(t, filepath.Join(cwd, ".mnemonic"))
-
-	got, err := ResolveProject(ResolveProjectInput{
-		CWD:              cwd,
-		EnvironmentValue: "infra",
-	})
-	require.NoError(t, err)
-	require.Equal(t, "infra", got.Project.Slug)
-}
-
-func TestResolveProjectSingleProjectWithoutSelector(t *testing.T) {
-	cwd := t.TempDir()
-	writeTestMnemonicFile(t, filepath.Join(cwd, ".mnemonic"), "backend")
-
-	got, err := ResolveProject(ResolveProjectInput{CWD: cwd})
-	require.NoError(t, err)
-	require.Equal(t, "backend", got.Project.Slug)
-}
-
-func TestResolveProjectAmbiguousWithoutSelector(t *testing.T) {
-	cwd := t.TempDir()
-	writeResolvableMnemonicFile(t, filepath.Join(cwd, ".mnemonic"))
-
-	_, err := ResolveProject(ResolveProjectInput{CWD: cwd})
 	require.Error(t, err)
-	require.Equal(t, app.CodeAmbiguous, appErrorCode(err))
+	require.Contains(t, err.Error(), `project "missing" not found`)
 }
 
-func TestResolveProjectDetachedManifestDoesNotCountAsFallback(t *testing.T) {
-	cwd := t.TempDir()
-	memoriesHome := t.TempDir()
-	_ = memoriesHome
-	manifestPath := filepath.Join(memoriesHome, "backend", "mnemonic.toml")
-	manifest := NewMnemonicManifest()
-	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
-	manifest.Name = "backend"
-	manifest.Slug = "backend"
-	manifest.Kind = ManifestKindDetached
-	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
-	manifest.UpdatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
-	manifest.Generator.App = "mnemonic"
-	require.NoError(t, WriteMnemonicManifest(manifestPath, manifest))
+func TestResolveProjectFromEnvOpensRegistry(t *testing.T) {
+	testutil.CleanEnvForTest(t)
 
-	_, err := ResolveProject(ResolveProjectInput{CWD: cwd})
-	require.Error(t, err)
-	require.Equal(t, app.CodeNotFound, appErrorCode(err))
-}
+	now := time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
+	db, err := registry.OpenDB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
 
-func TestResolveProjectMissingEverythingReturnsNotFound(t *testing.T) {
-	cwd := t.TempDir()
-
-	_, err := ResolveProject(ResolveProjectInput{CWD: cwd})
-	require.Error(t, err)
-	require.Equal(t, app.CodeNotFound, appErrorCode(err))
-}
-
-func writeResolvableMnemonicFile(t *testing.T, path string) {
-	t.Helper()
-
-	file := &MnemonicFile{
-		Version:   1,
-		CreatedAt: time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
-		UpdatedAt: time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
-		Projects: []MnemonicProject{
-			{
-				ID:                    "550e8400-e29b-41d4-a716-446655440000",
-				Name:                  "backend",
-				Slug:                  "backend",
-				Kind:                  ProjectKindLocal,
-				MemoriesPath:          filepath.Join(".mnemonic-memories", "backend"),
-				MarkdownFormatVersion: 1,
-				CreatedAt:             time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
-				UpdatedAt:             time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
-			},
-			{
-				ID:                    "550e8400-e29b-41d4-a716-446655440001",
-				Name:                  "infra",
-				Slug:                  "infra",
-				Kind:                  ProjectKindRegular,
-				MemoriesPath:          "infra",
-				MarkdownFormatVersion: 1,
-				CreatedAt:             time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
-				UpdatedAt:             time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
-			},
+	require.NoError(t, registry.RegisterProject(db, registry.RegisterProjectInput{
+		ProjectID: "550e8400-e29b-41d4-a716-446655440000",
+		Name:      "demo",
+		Slug:      "demo",
+		Kind:      registry.ProjectKindLocal,
+		CreatedAt: now,
+		UpdatedAt: now,
+		SeenAt:    now,
+		Location: registry.ProjectLocationInput{
+			RepoRootAbs: t.TempDir(),
+			MemoriesAbs: t.TempDir(),
+			SourceKind:  registry.ProjectSourceKindInit,
 		},
-	}
-	require.NoError(t, WriteMnemonicFile(path, file))
+	}))
+
+	resolved, err := ResolveProjectFromEnv("demo")
+	require.NoError(t, err)
+	require.Equal(t, "demo", resolved.Project.Slug)
 }
 
-func appErrorCode(err error) app.ErrCode {
-	var appErr *app.AppError
-	if !asAppError(err, &appErr) {
-		return app.CodeInternal
-	}
-	return appErr.Code
+func TestResolveProjectRejectsNilRegistry(t *testing.T) {
+	_, err := ResolveProject(ResolveProjectInput{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "registry database is required")
 }
 
-func asAppError(err error, target **app.AppError) bool {
-	if err == nil {
-		return false
+func TestResolveProjectPicksSelectorOverEnv(t *testing.T) {
+	db, err := registry.OpenDB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	now := time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
+	for _, slug := range []string{"alpha", "beta"} {
+		memoriesHome := t.TempDir()
+		require.NoError(t, registry.RegisterProject(db, registry.RegisterProjectInput{
+			ProjectID: "550e8400-e29b-41d4-a716-4466554400" + slug[:1],
+			Name:      slug,
+			Slug:      slug,
+			Kind:      registry.ProjectKindRegular,
+			CreatedAt: now,
+			UpdatedAt: now,
+			SeenAt:    now,
+			Location: registry.ProjectLocationInput{
+				MemoriesAbs: memoriesHome,
+				ManifestAbs: filepath.Join(memoriesHome, "mnemonic.toml"),
+				SourceKind:  registry.ProjectSourceKindInit,
+			},
+		}))
 	}
-	if e, ok := err.(*app.AppError); ok {
-		*target = e
-		return true
-	}
-	return false
+
+	resolved, err := ResolveProject(ResolveProjectInput{
+		Registry:         db,
+		ProjectSelector:  "beta",
+		EnvironmentValue: "alpha",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "beta", resolved.Project.Slug)
 }

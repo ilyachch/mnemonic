@@ -2,11 +2,27 @@ package registry
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
-
-	"github.com/ilyachch/mnemonic/internal/app"
 )
+
+// ErrSlugAlreadyExists indicates that a project with the requested slug is
+// already registered and active in the registry.
+var ErrSlugAlreadyExists = errors.New("project slug already exists")
+
+// ErrProjectSlugConflict wraps ErrSlugAlreadyExists with the conflicting slug.
+type ErrProjectSlugConflict struct {
+	Slug string
+}
+
+func (e ErrProjectSlugConflict) Error() string {
+	return fmt.Sprintf("project slug %q already exists", e.Slug)
+}
+
+func (e ErrProjectSlugConflict) Unwrap() error {
+	return ErrSlugAlreadyExists
+}
 
 // ProjectKind describes the project type stored in the registry.
 type ProjectKind string
@@ -80,7 +96,7 @@ func RegisterProject(db *sql.DB, input RegisterProjectInput) error {
 		return fmt.Errorf("check project slug conflict: %w", err)
 	}
 	if conflictProjectID != "" {
-		return app.NewAmbiguousError(fmt.Sprintf("project slug %q already exists", input.Slug), nil)
+		return ErrProjectSlugConflict{Slug: input.Slug}
 	}
 
 	if _, err := tx.Exec(

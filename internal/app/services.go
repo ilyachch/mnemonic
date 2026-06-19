@@ -13,7 +13,6 @@ type Services struct {
 
 // ProjectResolveInput captures the inputs needed to choose a project.
 type ProjectResolveInput struct {
-	CWD              string
 	ProjectSelector  string
 	EnvironmentValue string
 }
@@ -32,6 +31,9 @@ type ProjectRecord struct {
 // ProjectResolution is the result of a project lookup.
 type ProjectResolution struct {
 	MnemonicFilePath string
+	RepoRootAbs      string
+	MemoriesAbs      string
+	ManifestAbs      string
 	Project          ProjectRecord
 }
 

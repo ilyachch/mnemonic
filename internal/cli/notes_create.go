@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 
 	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/notes"
@@ -17,10 +16,6 @@ var notesCreateCmd = &cobra.Command{
 	Short: "Create a note",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		title, err := cmd.Flags().GetString("title")
-		if err != nil {
-			return err
-		}
-		projectSelector, err := cmd.Flags().GetString("project")
 		if err != nil {
 			return err
 		}
@@ -43,7 +38,7 @@ var notesCreateCmd = &cobra.Command{
 			return app.NewCLIUsageError("--stdin and --body-file cannot be combined", nil)
 		}
 
-		root, err := resolveNotesProjectRoot(projectSelector)
+		root, err := resolveNotesProjectRoot()
 		if err != nil {
 			return err
 		}
@@ -83,8 +78,6 @@ var notesCreateCmd = &cobra.Command{
 }
 
 func init() {
-	notesCreateCmd.Flags().String("project", "", "select a project")
-	mustRegisterProjectFlagCompletion(notesCreateCmd, "project")
 	notesCreateCmd.Flags().String("title", "", "note title")
 	notesCreateCmd.Flags().Bool("stdin", false, "read the note body from stdin")
 	notesCreateCmd.Flags().String("body-file", "", "read the note body from a file")
@@ -99,20 +92,15 @@ type notesCreateOutput struct {
 	ContentHash string `json:"content_hash"`
 }
 
-func resolveNotesProjectRoot(projectSelector string) (string, error) {
+func resolveNotesProjectRoot() (string, error) {
 	container, err := mustAppContainer()
 	if err != nil {
 		return "", err
 	}
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-
-	resolvedProject, err := project.ResolveProject(project.ResolveProjectInput{
-		CWD:             cwd,
-		ProjectSelector: projectSelector,
+	resolvedProject, err := container.Services.ProjectResolver.Resolve(app.ProjectResolveInput{
+		ProjectSelector:  projectSelectorValue(),
+		EnvironmentValue: os.Getenv(project.EnvironmentProjectSelector),
 	})
 	if err != nil {
 		return "", err
@@ -123,6 +111,6 @@ func resolveNotesProjectRoot(projectSelector string) (string, error) {
 		Slug:         resolvedProject.Project.Slug,
 		MemoriesPath: resolvedProject.Project.MemoriesPath,
 		MemoriesHome: container.Paths.MemoriesHome,
-		RepoRoot:     filepath.Dir(resolvedProject.MnemonicFilePath),
+		RepoRoot:     resolvedProject.RepoRootAbs,
 	})
 }

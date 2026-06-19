@@ -1,9 +1,13 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 
+	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/project"
+	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -23,7 +27,7 @@ var projectImportCmd = &cobra.Command{
 
 		result, err := project.ImportProject(project.ImportInput{Path: pathArg, DryRun: dryRun})
 		if err != nil {
-			return err
+			return wrapImportError(err)
 		}
 		if !dryRun && len(result.Candidates) > 0 {
 			container, err := mustAppContainer()
@@ -56,6 +60,24 @@ var projectImportCmd = &cobra.Command{
 func init() {
 	projectCmd.AddCommand(projectImportCmd)
 	projectImportCmd.Flags().Bool("dry-run", false, "Show what would be imported without making changes")
+}
+
+func wrapImportError(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	switch {
+	case strings.HasPrefix(msg, "import path") && strings.Contains(msg, "not found"):
+		return app.NewNotFoundError(msg, nil)
+	case strings.HasPrefix(msg, "mnemonic.toml not found at"):
+		return app.NewNotFoundError(msg, nil)
+	}
+	var conflict registry.ErrProjectSlugConflict
+	if errors.As(err, &conflict) {
+		return app.NewAmbiguousError(conflict.Error(), nil)
+	}
+	return err
 }
 
 type projectImportOutput struct {

@@ -15,10 +15,6 @@ var notesEditCmd = &cobra.Command{
 	Short: "Edit a note",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		projectSelector, err := cmd.Flags().GetString("project")
-		if err != nil {
-			return err
-		}
 		appendText, err := cmd.Flags().GetString("append")
 		if err != nil {
 			return err
@@ -49,7 +45,7 @@ var notesEditCmd = &cobra.Command{
 			return app.NewCLIUsageError("--append and --body-file cannot be combined", nil)
 		}
 
-		root, err := resolveNotesProjectRoot(projectSelector)
+		root, err := resolveNotesProjectRoot()
 		if err != nil {
 			return err
 		}
@@ -89,8 +85,6 @@ var notesEditCmd = &cobra.Command{
 }
 
 func init() {
-	notesEditCmd.Flags().String("project", "", "select a project")
-	mustRegisterProjectFlagCompletion(notesEditCmd, "project")
 	notesEditCmd.Flags().String("append", "", "append text to the note body")
 	notesEditCmd.Flags().String("body-file", "", "replace the note body from a file")
 	notesEditCmd.Flags().String("if-match", "", "require the current content hash to match")
