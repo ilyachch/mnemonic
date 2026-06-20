@@ -2,6 +2,7 @@ package cli
 
 import (
 	"os"
+	"strings"
 
 	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/mcp"
@@ -28,11 +29,26 @@ var mcpCmd = &cobra.Command{
 			return err
 		}
 
-		server := mcp.NewServer(resolvedProject, container.Paths)
+		server := mcp.NewServer(resolvedProject, container.Paths, mcpReadOnlyEnabled())
 		return server.Run(cmd.Context(), &sdkmcp.StdioTransport{})
 	},
 }
 
+var mcpReadOnlyFlag bool
+
 func init() {
 	RootCmd.AddCommand(mcpCmd)
+	mcpCmd.Flags().BoolVar(&mcpReadOnlyFlag, "read-only", false, "run the MCP server without write tools")
+}
+
+func mcpReadOnlyEnabled() bool {
+	if mcpReadOnlyFlag {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("MNEMONIC_READ_ONLY"))) {
+	case "1", "true", "yes":
+		return true
+	default:
+		return false
+	}
 }

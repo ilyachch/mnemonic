@@ -19,6 +19,7 @@ func executeCommand(args ...string) cmdResult {
 
 	jsonFlag = false
 	projectFlag = ""
+	mcpReadOnlyFlag = false
 	_ = initCmd.Flags().Set("local", "false")
 	_ = initCmd.Flags().Set("description", "")
 	_ = projectImportCmd.Flags().Set("dry-run", "false")
@@ -39,6 +40,10 @@ func executeCommand(args ...string) cmdResult {
 	_ = notesDeleteCmd.Flags().Set("yes", "false")
 	_ = projectRemoveCmd.Flags().Set("wipe", "false")
 	_ = mcpCmd.Flags().Set("help", "false")
+	_ = mcpCmd.Flags().Set("read-only", "false")
+	if flag := mcpCmd.Flags().Lookup("read-only"); flag != nil {
+		flag.Changed = false
+	}
 	if flag := mcpCmd.Flags().Lookup("help"); flag != nil {
 		flag.Changed = false
 	}

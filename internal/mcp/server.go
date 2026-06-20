@@ -20,8 +20,9 @@ import (
 
 // Server is a transport shell for the MCP stdio adapter.
 type Server struct {
-	Project app.ProjectResolution
-	Paths   paths.EffectivePaths
+	Project  app.ProjectResolution
+	Paths    paths.EffectivePaths
+	ReadOnly bool
 
 	indexDBMu    sync.Mutex
 	indexConn    *sql.DB
@@ -33,16 +34,17 @@ type Server struct {
 }
 
 // NewServer creates a new MCP shell server wrapper.
-func NewServer(resolved app.ProjectResolution, effectivePaths paths.EffectivePaths) *Server {
-	return &Server{Project: resolved, Paths: effectivePaths}
+func NewServer(resolved app.ProjectResolution, effectivePaths paths.EffectivePaths, readOnly bool) *Server {
+	return &Server{Project: resolved, Paths: effectivePaths, ReadOnly: readOnly}
 }
 
 // NewServerWithIndexDB creates a new MCP shell server wrapper that reuses an
 // already-open index DB connection.
-func NewServerWithIndexDB(resolved app.ProjectResolution, effectivePaths paths.EffectivePaths, indexDB *sql.DB) *Server {
+func NewServerWithIndexDB(resolved app.ProjectResolution, effectivePaths paths.EffectivePaths, indexDB *sql.DB, readOnly bool) *Server {
 	return &Server{
 		Project:      resolved,
 		Paths:        effectivePaths,
+		ReadOnly:     readOnly,
 		indexConn:    indexDB,
 		indexDBOwned: false,
 	}
@@ -69,7 +71,7 @@ func (s *Server) BuildSDKServer() *sdkmcp.Server {
 		},
 	)
 
-	tools.RegisterAll(sdkServer, s, s.readManifestDescription())
+	tools.RegisterAll(sdkServer, s, s.readManifestDescription(), s.ReadOnly)
 	return sdkServer
 }
 

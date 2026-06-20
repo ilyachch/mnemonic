@@ -15,6 +15,19 @@ func TestMCPCommandHelpShowsProjectFlag(t *testing.T) {
 	res := executeCommand("mcp", "--help")
 	require.NoError(t, res.Err)
 	require.Contains(t, res.Stdout, "--project")
+	require.Contains(t, res.Stdout, "--read-only")
+}
+
+func TestMCPCommandReadOnlyFlagAndEnvAreAdditive(t *testing.T) {
+	setWritableMCPEnv(t)
+
+	mcpReadOnlyFlag = false
+	t.Setenv("MNEMONIC_READ_ONLY", "yes")
+	require.True(t, mcpReadOnlyEnabled())
+
+	t.Setenv("MNEMONIC_READ_ONLY", "no")
+	mcpReadOnlyFlag = true
+	require.True(t, mcpReadOnlyEnabled())
 }
 
 func TestMCPCommandReturnsClearErrorWithoutProjectContext(t *testing.T) {
