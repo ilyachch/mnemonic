@@ -39,13 +39,13 @@ type Permission struct {
 	AccessLevel     string
 }
 
-// ResolveDBPath resolves the auth database path using env > explicit > default.
+// ResolveDBPath resolves the auth database path using explicit > env > default.
 func ResolveDBPath(explicit string) (string, error) {
-	if envPath := strings.TrimSpace(os.Getenv("MNEMONIC_WEB_AUTH_DB")); envPath != "" {
-		return envPath, nil
-	}
 	if explicit != "" {
 		return explicit, nil
+	}
+	if envPath := strings.TrimSpace(os.Getenv("MNEMONIC_WEB_AUTH_DB")); envPath != "" {
+		return envPath, nil
 	}
 
 	effective, err := paths.GetMnemonicPaths()
@@ -182,27 +182,32 @@ func (s *Store) ValidateToken(ctx context.Context, rawToken string) (*User, erro
 		return nil, app.NewCLIUsageError("raw token is required", nil)
 	}
 
-	row := s.db.QueryRowContext(ctx, `
+	user, err := s.lookupUser(ctx, `
 		SELECT user_id, username, created_at
 		FROM users
 		WHERE token_hash = ?
 	`, hashToken(rawToken))
-
-	var user User
-	var createdAt string
-	if err := row.Scan(&user.UserID, &user.Username, &createdAt); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, app.NewNotFoundError("token not found", nil)
-		}
+	if err != nil {
 		return nil, fmt.Errorf("validate token: %w", err)
 	}
+	return user, nil
+}
 
-	parsed, err := time.Parse(time.RFC3339, createdAt)
-	if err != nil {
-		return nil, fmt.Errorf("parse created_at for %q: %w", user.Username, err)
+// GetUserByUsername looks up a user by exact username.
+func (s *Store) GetUserByUsername(ctx context.Context, username string) (*User, error) {
+	if err := validateUsername(username); err != nil {
+		return nil, err
 	}
-	user.CreatedAt = parsed.UTC()
-	return &user, nil
+
+	user, err := s.lookupUser(ctx, `
+		SELECT user_id, username, created_at
+		FROM users
+		WHERE username = ?
+	`, username)
+	if err != nil {
+		return nil, fmt.Errorf("get user %q: %w", username, err)
+	}
+	return user, nil
 }
 
 // GrantPermission creates or updates a permission grant.
@@ -320,4 +325,24 @@ func validatePermissionInputs(userID string, projectSelector string, level strin
 func hashToken(rawToken string) string {
 	sum := sha256.Sum256([]byte(rawToken))
 	return hex.EncodeToString(sum[:])
+}
+
+func (s *Store) lookupUser(ctx context.Context, query string, arg any) (*User, error) {
+	row := s.db.QueryRowContext(ctx, query, arg)
+
+	var user User
+	var createdAt string
+	if err := row.Scan(&user.UserID, &user.Username, &createdAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, app.NewNotFoundError("user not found", nil)
+		}
+		return nil, err
+	}
+
+	parsed, err := time.Parse(time.RFC3339, createdAt)
+	if err != nil {
+		return nil, fmt.Errorf("parse created_at for %q: %w", user.Username, err)
+	}
+	user.CreatedAt = parsed.UTC()
+	return &user, nil
 }

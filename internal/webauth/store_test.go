@@ -18,16 +18,21 @@ import (
 func TestResolveDBPathPrecedence(t *testing.T) {
 	root := testutil.CleanEnvForTest(t)
 
-	t.Setenv("MNEMONIC_WEB_AUTH_DB", "/env/auth.sqlite")
 	got, err := ResolveDBPath("/flag/auth.sqlite")
 	require.NoError(t, err)
-	require.Equal(t, "/env/auth.sqlite", got)
+	require.Equal(t, "/flag/auth.sqlite", got)
 
-	t.Setenv("MNEMONIC_WEB_AUTH_DB", "")
+	t.Setenv("MNEMONIC_WEB_AUTH_DB", "/env/auth.sqlite")
 	got, err = ResolveDBPath("/flag/auth.sqlite")
 	require.NoError(t, err)
 	require.Equal(t, "/flag/auth.sqlite", got)
 
+	t.Setenv("MNEMONIC_WEB_AUTH_DB", "/env/auth.sqlite")
+	got, err = ResolveDBPath("")
+	require.NoError(t, err)
+	require.Equal(t, "/env/auth.sqlite", got)
+
+	t.Setenv("MNEMONIC_WEB_AUTH_DB", "")
 	got, err = ResolveDBPath("")
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join(root, "state", "mnemonic", "web_auth.sqlite"), got)
@@ -84,6 +89,11 @@ func TestCreateUserHashesTokenAndValidatesToken(t *testing.T) {
 
 	_, err = store.ValidateToken(ctx, "raw-token-mutated")
 	require.Error(t, err)
+
+	lookedUp, err := store.GetUserByUsername(ctx, "alice")
+	require.NoError(t, err)
+	require.Equal(t, user.UserID, lookedUp.UserID)
+	require.Equal(t, user.Username, lookedUp.Username)
 }
 
 func TestPermissionCascadeOnUserRevoke(t *testing.T) {
