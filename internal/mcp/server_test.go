@@ -923,10 +923,6 @@ func toAppResolution(entry registry.Entry) app.ProjectResolution {
 	}
 }
 
-func memoriesPathFromEntry(entry registry.Entry) string {
-	return filepath.Base(entry.MemoriesAbs)
-}
-
 // Decode helpers
 
 func decodeListNotesOutput(t *testing.T, result *mcp.CallToolResult) tools.ListNotesOutput {

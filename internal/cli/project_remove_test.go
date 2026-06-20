@@ -44,7 +44,7 @@ func TestProjectRemoveCommand(t *testing.T) {
 }
 
 func TestProjectRemoveCommandWipe(t *testing.T) {
-	cwd, _, projectID, memoriesHome := seedRemovableCentralProject(t)
+	_, _, projectID, memoriesHome := seedRemovableCentralProject(t)
 
 	result := executeCommand("project", "remove", "backend", "--wipe", "--json")
 	require.NoError(t, result.Err, "project remove returned error\nstderr: %s", result.Stderr)

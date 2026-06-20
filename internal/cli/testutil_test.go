@@ -17,9 +17,7 @@ func executeCommand(args ...string) cmdResult {
 	jsonFlag = false
 	projectFlag = ""
 	_ = initCmd.Flags().Set("local", "false")
-	_ = initCmd.Flags().Set("detached", "false")
 	_ = initCmd.Flags().Set("description", "")
-	_ = projectDiscoverCmd.Flags().Set("dry-run", "false")
 	_ = projectImportCmd.Flags().Set("dry-run", "false")
 	_ = notesCreateCmd.Flags().Set("title", "")
 	_ = notesCreateCmd.Flags().Set("stdin", "false")
@@ -36,8 +34,6 @@ func executeCommand(args ...string) cmdResult {
 	_ = notesDeleteCmd.Flags().Set("dry-run", "false")
 	_ = notesDeleteCmd.Flags().Set("hard", "false")
 	_ = notesDeleteCmd.Flags().Set("yes", "false")
-	_ = projectRemoveCmd.Flags().Set("hard", "false")
-	_ = projectRemoveCmd.Flags().Set("delete-markdown", "false")
 	_ = projectRemoveCmd.Flags().Set("wipe", "false")
 	_ = mcpCmd.Flags().Set("help", "false")
 	if flag := mcpCmd.Flags().Lookup("help"); flag != nil {
