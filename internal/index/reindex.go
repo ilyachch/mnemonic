@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/ilyachch/mnemonic/internal/markdown"
 	"github.com/ilyachch/mnemonic/internal/notes"
@@ -301,12 +300,6 @@ func tempIndexPath(projectID string) (string, error) {
 }
 
 // UpdateProjectIndexStatus is a tiny helper used by CLI commands.
-func UpdateProjectIndexStatus(db *sql.DB, projectID string, present bool, needsReindex bool) error {
-	_, err := db.Exec(`UPDATE project_status SET index_present = ?, needs_reindex = ?, last_seen_at = ? WHERE project_id = ?`,
-		boolToInt(present), boolToInt(needsReindex), time.Now().UTC().Format(time.RFC3339), projectID)
-	return err
-}
-
 func boolToInt(v bool) int {
 	if v {
 		return 1
