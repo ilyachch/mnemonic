@@ -34,6 +34,7 @@ install:
 
 clean:
     rm -rf ./bin
+    rm -f ./coverage.out ./coverage.html ./mnemonic.md ./mnemonic_no_tests.md
 
 coverage:
     go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out -o coverage.html
