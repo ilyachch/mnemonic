@@ -7,25 +7,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestResolveMemoriesRootForRegularProject(t *testing.T) {
+func TestResolveMemoriesRootForCentralProject(t *testing.T) {
 	base := t.TempDir()
 
 	got, err := ResolveMemoriesRoot(MemoriesRootInput{
-		Kind:         string(ProjectKindRegular),
-		MemoriesHome: base,
-		MemoriesPath: "research",
-	})
-	require.NoError(t, err)
-
-	want := filepath.Join(base, "research")
-	require.Equal(t, want, got)
-}
-
-func TestResolveMemoriesRootForDetachedProject(t *testing.T) {
-	base := t.TempDir()
-
-	got, err := ResolveMemoriesRoot(MemoriesRootInput{
-		Kind:         string(ManifestKindDetached),
+		Kind:         string(ProjectKindCentral),
 		MemoriesHome: base,
 		Slug:         "backend",
 	})

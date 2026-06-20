@@ -3,34 +3,40 @@ package project
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"time"
 
 	toml "github.com/pelletier/go-toml/v2"
 )
 
-// ManifestKind identifies the supported kinds in mnemonic.toml.
-type ManifestKind string
+// ManifestType identifies the project type in mnemonic.toml.
+// If omitted (empty), the project is treated as central.
+// Only "local" is a valid explicit value.
+type ManifestType string
 
 const (
-	// ManifestKindRegular stores a regular non-local project.
-	ManifestKindRegular ManifestKind = "regular"
-	// ManifestKindDetached stores a detached project rooted in the memories home.
-	ManifestKindDetached ManifestKind = "detached"
+	// ManifestTypeLocal marks a project as local (backed by .mnemonic-memories in workspace).
+	ManifestTypeLocal ManifestType = "local"
 )
 
-// MnemonicManifest is the TOML schema stored in mnemonic.toml for non-local projects.
+// MnemonicManifest is the TOML schema stored in mnemonic.toml.
 type MnemonicManifest struct {
 	Version               int                    `toml:"version"`
 	ProjectID             string                 `toml:"project_id"`
 	Name                  string                 `toml:"name"`
 	Slug                  string                 `toml:"slug"`
-	Kind                  ManifestKind           `toml:"kind"`
+	Type                  ManifestType           `toml:"type"`
 	MarkdownFormatVersion int                    `toml:"markdown_format_version"`
 	Description           string                 `toml:"description,omitempty"`
 	CreatedAt             time.Time              `toml:"created_at"`
 	UpdatedAt             time.Time              `toml:"updated_at"`
 	Layout                MnemonicManifestLayout `toml:"layout"`
 	Generator             MnemonicGenerator      `toml:"generator"`
+}
+
+// IsLocal returns true when the manifest explicitly declares itself as local.
+func (m *MnemonicManifest) IsLocal() bool {
+	return m != nil && m.Type == ManifestTypeLocal
 }
 
 // MnemonicManifestLayout holds layout-related manifest settings.
@@ -111,15 +117,11 @@ func (m *MnemonicManifest) Validate() error {
 		return fmt.Errorf("layout.ignore is required")
 	}
 
-	switch m.Kind {
-	case ManifestKindRegular, ManifestKindDetached:
+	switch m.Type {
+	case "", ManifestTypeLocal:
 		return nil
-	case "":
-		return fmt.Errorf("kind is required")
-	case "local":
-		return fmt.Errorf("kind %q is not allowed in mnemonic.toml", m.Kind)
 	default:
-		return fmt.Errorf("unknown kind %q", m.Kind)
+		return fmt.Errorf("unknown type %q; expected empty (central) or %q", m.Type, ManifestTypeLocal)
 	}
 }
 
@@ -137,7 +139,7 @@ func (m *MnemonicManifest) MarshalTOML() ([]byte, error) {
 		ProjectID:             copy.ProjectID,
 		Name:                  copy.Name,
 		Slug:                  copy.Slug,
-		Kind:                  copy.Kind,
+		Type:                  copy.Type,
 		MarkdownFormatVersion: copy.MarkdownFormatVersion,
 		Description:           copy.Description,
 		CreatedAt:             newTOMLTime(copy.CreatedAt),
@@ -147,6 +149,15 @@ func (m *MnemonicManifest) MarshalTOML() ([]byte, error) {
 	}
 
 	return toml.Marshal(raw)
+}
+
+// ParseMnemonicManifestFromFile reads and parses a mnemonic.toml file from disk.
+func ParseMnemonicManifestFromFile(path string) (*MnemonicManifest, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read mnemonic.toml: %w", err)
+	}
+	return ParseMnemonicManifest(data)
 }
 
 // ParseMnemonicManifest parses mnemonic.toml.
@@ -168,7 +179,7 @@ func ParseMnemonicManifest(data []byte) (*MnemonicManifest, error) {
 		ProjectID:             raw.ProjectID,
 		Name:                  raw.Name,
 		Slug:                  raw.Slug,
-		Kind:                  raw.Kind,
+		Type:                  raw.Type,
 		MarkdownFormatVersion: raw.MarkdownFormatVersion,
 		Description:           raw.Description,
 		CreatedAt:             raw.CreatedAt.Time(),
@@ -190,7 +201,7 @@ type mnemonicManifestTOML struct {
 	ProjectID             string                 `toml:"project_id"`
 	Name                  string                 `toml:"name"`
 	Slug                  string                 `toml:"slug"`
-	Kind                  ManifestKind           `toml:"kind"`
+	Type                  ManifestType           `toml:"type"`
 	MarkdownFormatVersion int                    `toml:"markdown_format_version"`
 	Description           string                 `toml:"description,omitempty"`
 	CreatedAt             tomlTime               `toml:"created_at"`

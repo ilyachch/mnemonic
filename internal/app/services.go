@@ -1,14 +1,8 @@
 package app
 
-import (
-	"database/sql"
-	"time"
-)
-
 // Services groups the app-owned shared dependencies exposed to adapters.
 type Services struct {
 	ProjectResolver ProjectResolver
-	Registry        *sql.DB
 }
 
 // ProjectResolveInput captures the inputs needed to choose a project.
@@ -24,8 +18,6 @@ type ProjectRecord struct {
 	Slug         string
 	Kind         string
 	MemoriesPath string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
 }
 
 // ProjectResolution is the result of a project lookup.

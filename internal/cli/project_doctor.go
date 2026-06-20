@@ -55,7 +55,7 @@ var projectDoctorCmd = &cobra.Command{
 			return err
 		}
 
-		result, err := doctorProject(resolved, repoRoot, memoriesRoot)
+		result, err := doctorProject(container.Paths.MemoriesHome, resolved, repoRoot, memoriesRoot)
 		if err != nil {
 			return err
 		}
@@ -80,9 +80,9 @@ type doctorCheck struct {
 	Count  int    `json:"count,omitempty"`
 }
 
-func doctorProject(resolved app.ProjectResolution, repoRoot, memoriesRoot string) (doctorResult, error) {
+func doctorProject(memoriesHome string, resolved app.ProjectResolution, repoRoot, memoriesRoot string) (doctorResult, error) {
 	result := doctorResult{Status: "ok"}
-	result.addCheck(doctorCheck{Name: "registry schema", Status: doctorRegistrySchemaCheck()})
+	result.addCheck(doctorCheck{Name: "registry file-based", Status: doctorRegistryFileCheck(memoriesHome)})
 	result.addCheck(doctorCheck{Name: "project path exists", Status: pathStatus(repoRoot)})
 
 	if resolved.Project.Kind != string(project.ProjectKindLocal) {
@@ -158,38 +158,18 @@ func pathStatus(path string) string {
 	return "missing"
 }
 
-func doctorRegistrySchemaCheck() string {
-	path, err := registry.RegistryPath()
+func doctorRegistryFileCheck(memoriesHome string) string {
+	entries, issues, err := registry.Scan(memoriesHome)
 	if err != nil {
 		return "error"
 	}
-	if _, err := os.Stat(path); err != nil {
-		if os.IsNotExist(err) {
-			return "missing"
+	for _, issue := range issues {
+		if issue.Corrupt || issue.Orphan {
+			return "warning"
 		}
-		return "error"
 	}
-
-	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(path)+"?mode=ro")
-	if err != nil {
-		return "error"
-	}
-	defer func() { _ = db.Close() }()
-	if err := db.Ping(); err != nil {
-		return "error"
-	}
-	var version int
-	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
-		return "error"
-	}
-	if version != 1 {
-		return "error"
-	}
-	for _, table := range []string{"registry_meta", "projects", "project_locations", "project_status"} {
-		var name string
-		if err := db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name = ?`, table).Scan(&name); err != nil {
-			return "error"
-		}
+	if len(entries) == 0 {
+		return "ok"
 	}
 	return "ok"
 }

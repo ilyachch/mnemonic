@@ -1,14 +1,16 @@
 package cli
 
 import (
-	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/config"
+	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/paths"
 	"github.com/ilyachch/mnemonic/internal/project"
-	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -21,19 +23,11 @@ var initCmd = &cobra.Command{
 			return err
 		}
 
-		detached, err := cmd.Flags().GetBool("detached")
-		if err != nil {
-			return err
-		}
-
 		if len(args) == 0 {
 			return app.NewCLIUsageError("init requires NAME", nil)
 		}
 		if len(args) > 1 {
 			return app.NewCLIUsageError("init accepts exactly one NAME", nil)
-		}
-		if local && detached {
-			return app.NewCLIUsageError("--local and --detached cannot be combined", nil)
 		}
 
 		discoveredConfigPath, err := config.DiscoverConfigFile("")
@@ -67,49 +61,68 @@ var initCmd = &cobra.Command{
 			return err
 		}
 
+		mode := project.InitModeCentral
+		if local {
+			mode = project.InitModeLocal
+		}
+
 		input := project.InitInput{
 			CWD:          cwd,
 			MemoriesHome: effective.MemoriesHome,
 			Name:         args[0],
 			Description:  description,
-			Mode:         project.InitModeRegular,
+			Mode:         mode,
 		}
-		if local {
-			input.Mode = project.InitModeLocal
-		}
-		if detached {
-			input.Mode = project.InitModeDetached
-		}
+
 		if err := project.InitProject(input); err != nil {
-			var conflict registry.ErrProjectSlugConflict
-			if errors.As(err, &conflict) {
-				return app.NewAmbiguousError(conflict.Error(), nil)
+			if strings.Contains(err.Error(), "project slug") && strings.Contains(err.Error(), "already exists") {
+				return app.NewAmbiguousError(err.Error(), nil)
 			}
 			return err
 		}
 
+		// Build the initial index.
 		slug, err := project.Slugify(args[0])
 		if err != nil {
 			return err
 		}
 
-		container, err := mustAppContainer()
+		memoriesRoot, err := resolveInitMemoriesRoot(effective.MemoriesHome, cwd, slug, mode)
 		if err != nil {
 			return err
 		}
 
-		record, err := queryProjectBySelector(slug)
+		// Read the project ID from the manifest.
+		manifestPath := filepath.Join(effective.MemoriesHome, slug, "mnemonic.toml")
+		if local {
+			manifestPath = filepath.Join(cwd, ".mnemonic-memories", slug, "mnemonic.toml")
+		}
+		manifest, err := project.ParseMnemonicManifestFromFile(manifestPath)
 		if err != nil {
 			return err
 		}
 
-		return buildProjectIndex(container.Services.Registry, record.ProjectID, record.Location.memoriesAbs)
+		if _, err := index.RebuildProjectIndex(manifest.ProjectID, memoriesRoot); err != nil {
+			return err
+		}
+
+		return nil
 	},
 }
 
 func init() {
 	initCmd.Flags().Bool("local", false, "create a local project")
-	initCmd.Flags().Bool("detached", false, "create a detached project")
 	initCmd.Flags().String("description", "", "optional description of this memory's knowledge scope")
 	RootCmd.AddCommand(initCmd)
+}
+
+func resolveInitMemoriesRoot(memoriesHome, cwd, slug string, mode project.InitMode) (string, error) {
+	switch mode {
+	case project.InitModeCentral:
+		return filepath.Join(memoriesHome, slug), nil
+	case project.InitModeLocal:
+		return filepath.Join(cwd, ".mnemonic-memories", slug), nil
+	default:
+		return "", fmt.Errorf("unknown init mode %q", mode)
+	}
 }

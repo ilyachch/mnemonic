@@ -71,17 +71,12 @@ func resolveFromIndex(root string, selector string) (ResolvedNote, bool, error) 
 		return ResolvedNote{}, false, fmt.Errorf("resolve root %q: %w", root, err)
 	}
 
-	db, err := registry.OpenDB()
+	memoriesHome, err := project.MemoriesHome()
 	if err != nil {
 		return ResolvedNote{}, false, nil
 	}
-	defer func() { _ = db.Close() }()
 
-	if err := registry.ApplySchema(db); err != nil {
-		return ResolvedNote{}, false, nil
-	}
-
-	projectID, ok, err := lookupProjectIDByMemoriesRoot(db, absRoot)
+	entry, ok, err := registry.FindByMemoriesRoot(memoriesHome, absRoot)
 	if err != nil {
 		return ResolvedNote{}, false, nil
 	}
@@ -89,7 +84,7 @@ func resolveFromIndex(root string, selector string) (ResolvedNote, bool, error) 
 		return ResolvedNote{}, false, nil
 	}
 
-	indexPath, err := projectIndexPath(projectID)
+	indexPath, err := projectIndexPath(entry.ProjectID)
 	if err != nil {
 		return ResolvedNote{}, false, err
 	}
@@ -121,41 +116,6 @@ func resolveFromIndex(root string, selector string) (ResolvedNote, bool, error) 
 		return readResolvedNote(root, matches[0])
 	default:
 		return ResolvedNote{}, true, app.NewAmbiguousError(fmt.Sprintf("note selector %q matches multiple notes", selector), nil)
-	}
-}
-
-func lookupProjectIDByMemoriesRoot(db *sql.DB, memoriesRoot string) (string, bool, error) {
-	rows, err := db.Query(
-		`SELECT p.project_id
-		 FROM projects p
-		 JOIN project_locations l ON l.project_id = p.project_id
-		 WHERE p.removed_at IS NULL AND l.memories_abs = ?
-		 LIMIT 2`,
-		memoriesRoot,
-	)
-	if err != nil {
-		return "", false, fmt.Errorf("query project by memories root %q: %w", memoriesRoot, err)
-	}
-	defer rows.Close()
-
-	var projectID string
-	count := 0
-	for rows.Next() {
-		if err := rows.Scan(&projectID); err != nil {
-			return "", false, fmt.Errorf("scan project by memories root %q: %w", memoriesRoot, err)
-		}
-		count++
-	}
-	if err := rows.Err(); err != nil {
-		return "", false, fmt.Errorf("iterate project rows by memories root %q: %w", memoriesRoot, err)
-	}
-	switch count {
-	case 0:
-		return "", false, nil
-	case 1:
-		return projectID, true, nil
-	default:
-		return "", false, app.NewAmbiguousError(fmt.Sprintf("project root %q resolves to multiple projects", memoriesRoot), nil)
 	}
 }
 

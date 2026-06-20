@@ -8,6 +8,7 @@ import (
 
 	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/index"
+	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/ilyachch/mnemonic/internal/search"
 	"github.com/spf13/cobra"
 )
@@ -26,12 +27,17 @@ var notesSearchCmd = &cobra.Command{
 			return err
 		}
 
-		projectRecord, err := queryProjectBySelector(projectSelectorValue())
+		container, err := mustAppContainer()
 		if err != nil {
 			return err
 		}
 
-		indexPath, err := index.Path(projectRecord.ProjectID)
+		entry, err := registry.Resolve(container.Paths.MemoriesHome, projectSelectorValue())
+		if err != nil {
+			return err
+		}
+
+		indexPath, err := index.Path(entry.ProjectID)
 		if err != nil {
 			return err
 		}

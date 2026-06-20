@@ -26,7 +26,7 @@ func TestMnemonicManifestRoundTrip(t *testing.T) {
 		ProjectID:             "550e8400-e29b-41d4-a716-446655440000",
 		Name:                  "personal",
 		Slug:                  "personal",
-		Kind:                  ManifestKindDetached,
+		Type:                  ManifestTypeLocal,
 		MarkdownFormatVersion: 1,
 		CreatedAt:             time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
 		UpdatedAt:             time.Date(2026, time.June, 2, 10, 5, 0, 0, time.UTC),
@@ -57,7 +57,6 @@ func TestMnemonicManifestRoundTripWithDescription(t *testing.T) {
 		ProjectID:             "550e8400-e29b-41d4-a716-446655440000",
 		Name:                  "backend",
 		Slug:                  "backend",
-		Kind:                  ManifestKindRegular,
 		MarkdownFormatVersion: 1,
 		Description:           "Backend architecture decisions, API contracts, and database schemas.",
 		CreatedAt:             time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
@@ -89,7 +88,6 @@ func TestMnemonicManifestDefaultsWhenParsing(t *testing.T) {
 project_id = "550e8400-e29b-41d4-a716-446655440000"
 name = "personal"
 slug = "personal"
-kind = "regular"
 markdown_format_version = 1
 created_at = "2026-06-02T10:00:00Z"
 updated_at = "2026-06-02T10:05:00Z"
@@ -102,6 +100,7 @@ app_version = "0.1.0-dev"
 
 	require.True(t, reflect.DeepEqual(parsed.Layout.NotesGlob, []string{"**/*.md"}))
 	require.True(t, reflect.DeepEqual(parsed.Layout.Ignore, []string{"mnemonic.toml", ".trash/**"}))
+	require.Equal(t, ManifestType(""), parsed.Type)
 }
 
 func TestMnemonicManifestRejectsUnsupportedVersion(t *testing.T) {
@@ -111,7 +110,6 @@ func TestMnemonicManifestRejectsUnsupportedVersion(t *testing.T) {
 project_id = "550e8400-e29b-41d4-a716-446655440000"
 name = "personal"
 slug = "personal"
-kind = "regular"
 markdown_format_version = 1
 created_at = "2026-06-02T10:00:00Z"
 updated_at = "2026-06-02T10:05:00Z"
@@ -120,15 +118,15 @@ updated_at = "2026-06-02T10:05:00Z"
 	require.Contains(t, err.Error(), "version 999 is unsupported; expected 1")
 }
 
-func TestMnemonicManifestValidateAllowsRegularAndDetached(t *testing.T) {
+func TestMnemonicManifestValidateAllowsCentralAndLocal(t *testing.T) {
 	t.Parallel()
 
-	base := func(kind ManifestKind) *MnemonicManifest {
+	base := func(typ ManifestType) *MnemonicManifest {
 		manifest := NewMnemonicManifest()
 		manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
 		manifest.Name = "personal"
 		manifest.Slug = "personal"
-		manifest.Kind = kind
+		manifest.Type = typ
 		manifest.MarkdownFormatVersion = 1
 		manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
 		manifest.UpdatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
@@ -139,35 +137,48 @@ func TestMnemonicManifestValidateAllowsRegularAndDetached(t *testing.T) {
 
 	for _, tt := range []struct {
 		name string
-		kind ManifestKind
+		typ  ManifestType
 	}{
-		{name: "regular", kind: ManifestKindRegular},
-		{name: "detached", kind: ManifestKindDetached},
+		{name: "central (empty)", typ: ""},
+		{name: "local", typ: ManifestTypeLocal},
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			require.NoError(t, base(tt.kind).Validate())
+			require.NoError(t, base(tt.typ).Validate())
 		})
 	}
 }
 
-func TestMnemonicManifestRejectsLocalKind(t *testing.T) {
+func TestMnemonicManifestRejectsUnknownType(t *testing.T) {
 	t.Parallel()
 
 	manifest := NewMnemonicManifest()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
 	manifest.Name = "backend"
 	manifest.Slug = "backend"
-	manifest.Kind = ManifestKind("local")
+	manifest.Type = ManifestType("detached")
 	manifest.MarkdownFormatVersion = 1
 	manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
 	manifest.UpdatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
 
 	err := manifest.Validate()
 	require.Error(t, err)
-	require.Contains(t, err.Error(), `kind "local" is not allowed`)
+	require.Contains(t, err.Error(), `unknown type "detached"`)
+}
+
+func TestMnemonicManifestIsLocal(t *testing.T) {
+	t.Parallel()
+
+	local := &MnemonicManifest{Type: ManifestTypeLocal}
+	require.True(t, local.IsLocal())
+
+	central := &MnemonicManifest{Type: ""}
+	require.False(t, central.IsLocal())
+
+	nilManifest := (*MnemonicManifest)(nil)
+	require.False(t, nilManifest.IsLocal())
 }
 
 func TestMnemonicManifestRequiresFields(t *testing.T) {
@@ -200,13 +211,6 @@ func TestMnemonicManifestRequiresFields(t *testing.T) {
 			wantErr: "slug is required",
 		},
 		{
-			name: "kind",
-			mutate: func(manifest *MnemonicManifest) {
-				manifest.Kind = ""
-			},
-			wantErr: "kind is required",
-		},
-		{
 			name: "markdown format version",
 			mutate: func(manifest *MnemonicManifest) {
 				manifest.MarkdownFormatVersion = 0
@@ -224,7 +228,6 @@ func TestMnemonicManifestRequiresFields(t *testing.T) {
 			manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
 			manifest.Name = "personal"
 			manifest.Slug = "personal"
-			manifest.Kind = ManifestKindRegular
 			manifest.MarkdownFormatVersion = 1
 			manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
 			manifest.UpdatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)

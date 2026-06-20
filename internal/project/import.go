@@ -1,14 +1,11 @@
 package project
 
 import (
-	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/ilyachch/mnemonic/internal/paths"
-	"github.com/ilyachch/mnemonic/internal/registry"
 )
 
 // ImportInput configures import path parsing and validation.
@@ -62,8 +59,8 @@ func ResolveImportPath(input ImportInput) (string, error) {
 }
 
 // ImportProject resolves an import path, parses the mnemonic.toml manifest at the
-// path, and registers the project without copying Markdown or building an index.
-func ImportProject(input ImportInput) (ImportResult, error) {
+// path, and creates a pointer file for local projects.
+func ImportProject(input ImportInput, memoriesHome string) (ImportResult, error) {
 	resolvedPath, err := ResolveImportPath(input)
 	if err != nil {
 		return ImportResult{}, err
@@ -86,7 +83,7 @@ func ImportProject(input ImportInput) (ImportResult, error) {
 		ProjectID:    manifest.ProjectID,
 		Name:         manifest.Name,
 		Slug:         manifest.Slug,
-		Kind:         string(manifest.Kind),
+		Kind:         kindFromManifest(manifest),
 		MemoriesPath: resolvedPath,
 		RepoRootAbs:  resolvedPath,
 		ManifestAbs:  manifestPath,
@@ -105,40 +102,39 @@ func ImportProject(input ImportInput) (ImportResult, error) {
 		return result, nil
 	}
 
-	db, err := registry.OpenDB()
-	if err != nil {
-		return ImportResult{}, err
-	}
-	defer func() {
-		_ = db.Close()
-	}()
-
-	if err := registry.ApplySchema(db); err != nil {
-		return ImportResult{}, err
+	// Create the pointer file for local projects.
+	pointerPath := filepath.Join(memoriesHome, manifest.Slug+".toml")
+	if _, err := os.Stat(pointerPath); err == nil {
+		return ImportResult{}, fmt.Errorf("project slug %q already exists", manifest.Slug)
+	} else if !os.IsNotExist(err) {
+		return ImportResult{}, fmt.Errorf("stat pointer file: %w", err)
 	}
 
-	now := NowUTC()
-	if err := registerImportedProject(db, manifest, manifestPath, resolvedPath, now); err != nil {
+	pointer := &PointerFile{ManifestPath: manifestPath}
+	if err := WritePointerFile(pointerPath, pointer); err != nil {
 		return ImportResult{}, err
 	}
 
 	return result, nil
 }
 
-func registerImportedProject(db *sql.DB, manifest *MnemonicManifest, manifestPath, repoRoot string, seenAt time.Time) error {
-	return registry.RegisterProject(db, registry.RegisterProjectInput{
-		ProjectID: manifest.ProjectID,
-		Name:      manifest.Name,
-		Slug:      manifest.Slug,
-		Kind:      registry.ProjectKind(manifest.Kind),
-		CreatedAt: manifest.CreatedAt,
-		UpdatedAt: manifest.UpdatedAt,
-		SeenAt:    seenAt,
-		Location: registry.ProjectLocationInput{
-			RepoRootAbs: repoRoot,
-			MemoriesAbs: repoRoot,
-			ManifestAbs: manifestPath,
-			SourceKind:  registry.ProjectSourceKindImport,
-		},
-	})
+func kindFromManifest(manifest *MnemonicManifest) string {
+	if manifest.IsLocal() {
+		return "local"
+	}
+	return "central"
+}
+
+func loadMnemonicManifest(path string) (*MnemonicManifest, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read mnemonic.toml: %w", err)
+	}
+
+	manifest, err := ParseMnemonicManifest(data)
+	if err != nil {
+		return nil, err
+	}
+
+	return manifest, nil
 }
