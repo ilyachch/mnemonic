@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -23,6 +24,7 @@ import (
 	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 )
 
 func TestCommandTransportInitializeAndListTools(t *testing.T) {
@@ -60,6 +62,33 @@ func TestCommandTransportInitializeAndListTools(t *testing.T) {
 
 	if got := stderr.String(); got != "" {
 		t.Logf("stderr output: %s", got)
+	}
+}
+
+func TestServerRunAcceptsTransport(t *testing.T) {
+	ctx := context.Background()
+
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	server := NewServer(app.ProjectResolution{}, paths.EffectivePaths{})
+	done := make(chan error, 1)
+	go func() {
+		done <- server.Run(ctx, serverTransport)
+	}()
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "client", Version: "v0.0.1"}, nil)
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+
+	tools, err := clientSession.ListTools(ctx, nil)
+	require.NoError(t, err)
+	require.Len(t, tools.Tools, 8)
+
+	require.NoError(t, clientSession.Close())
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for server shutdown")
 	}
 }
 
@@ -175,6 +204,37 @@ func TestServerIndexDBReusesSingleConnection(t *testing.T) {
 	secondDB, err := server.GetIndexDB()
 	require.NoError(t, err)
 	require.Same(t, firstDB, secondDB)
+}
+
+func TestGetIndexDB_reusesInjectedConnection(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = db.Close()
+	})
+
+	server := NewServerWithIndexDB(app.ProjectResolution{}, paths.EffectivePaths{}, db)
+
+	firstDB, err := server.GetIndexDB()
+	require.NoError(t, err)
+	require.Same(t, db, firstDB)
+
+	secondDB, err := server.GetIndexDB()
+	require.NoError(t, err)
+	require.Same(t, db, secondDB)
+}
+
+func TestCloseIndexDB_keepsInjectedConnectionOpen(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = db.Close()
+	})
+
+	server := NewServerWithIndexDB(app.ProjectResolution{}, paths.EffectivePaths{}, db)
+
+	require.NoError(t, server.closeIndexDB())
+	require.NoError(t, db.Ping())
 }
 
 func TestListBacklinksReturnsLinksAndRespectsLimit(t *testing.T) {

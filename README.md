@@ -1,29 +1,29 @@
 # mnemonic
 
-mnemonic is a local-first knowledge base and search tool for Markdown notes.
+mnemonic is a local-first knowledge base, search tool, and multi-tenant MCP server for Markdown notes.
 
 It provides:
-- a CLI for project and note lifecycle management,
+
+- a CLI for project, note, and web authorization lifecycle management,
 - a file-based registry for central and local project spaces,
 - a disposable per-project SQLite index for search/backlinks/tags,
-- an MCP stdio server for AI-tool integrations.
+- an **HTTP Web MCP Server** utilizing the **Server-Sent Events (SSE)** transport with explicit token authorization.
 
 ## Principles
 
 - Markdown files are the source of truth.
 - The project registry is simple and fully file-based (no database).
 - Index databases are disposable and can be rebuilt at any time.
-- Project operations are explicit and path-safe.
+- Web routing state is deterministic: projects are validated on boot and connections are pooled efficiently.
 - Human-readable output is friendly; `--json` is automation-friendly.
 
 ## Feature Highlights
 
 - Lightweight file-based registry with slug/UUID addressing.
-- Seamless workspace management via central and local layout strategies.
-- Full-text search using SQLite FTS5.
-- Backlinks graph generated from indexed notes.
-- Safe note editing with conditional updates (`--if-match`).
-- App-agnostic MCP adapter over stdio.
+- Full-text search using SQLite FTS5 and automatic backlinks generation.
+- Multi-tenant HTTP SSE server engine with explicit user token isolation.
+- Thread-safe, lazy-loading instance manager (`sync.RWMutex`) to minimize database connection footprints.
+- Built-in administrative commands for web user provisioning and permission mapping.
 
 ## Installation
 
@@ -43,255 +43,180 @@ go install github.com/ilyachch/mnemonic/cmd/mnemonic@latest
 
 ## Quick Start
 
-1. Initialize a project (local layout):
+### 1. Local Workspace Configuration
+
+Initialize a local project layout:
 
 ```bash
 mnemonic init my-notes --local
 ```
 
-2. Create a note:
+Create a note:
 
 ```bash
 mnemonic notes create --project my-notes --title "System Architecture" --tag design --tag ops
 ```
 
-3. Build or refresh the index:
+Build the initial index:
 
 ```bash
 mnemonic project reindex my-notes
 ```
 
-4. Search notes:
+### 2. Multi-Tenant Web Server Setup
+
+Provision a new web user (this will generate and output a secure API token):
 
 ```bash
-mnemonic notes search "architecture" --project my-notes
+mnemonic web users add alice
 ```
 
-5. Show note content:
+_Save the printed token! Only its SHA-256 hash is committed to the authentication storage._
+
+Grant the user access to your project:
 
 ```bash
-mnemonic notes show system-architecture --project my-notes
+mnemonic web perms grant alice my-notes --level rw
 ```
+
+Start the HTTP Web MCP server:
+
+```bash
+export MNEMONIC_SUPERUSER_TOKEN="my-secure-root-token"
+mnemonic web serve --port 8080 --projects my-notes
+```
+
+Your AI client can now establish an MCP session using the standard HTTP/SSE endpoints by providing the Bearer token:
+
+- **SSE Connection:** `GET http://localhost:8080/mcp/my-notes/sse`
+- **Client Messages:** `POST http://localhost:8080/mcp/my-notes/messages`
 
 ## Data Model and Paths
 
-mnemonic strictly separates content, registry metadata, and ephemeral cache paths:
+mnemonic strictly separates content, registry metadata, authentication states, and ephemeral cache paths:
 
-- Config: `$XDG_CONFIG_HOME/mnemonic/config.toml`
-- Registry & Projects (`memories_home`): `~/.mnemonic/` (default)
-- Per-project Indexes: `$XDG_STATE_HOME/mnemonic/projects/<PROJECT_ID>/index.sqlite`
-- Locks: `$XDG_STATE_HOME/mnemonic/projects/<PROJECT_ID>/locks/`
-
-Note markdown files live directly in your project workspaces, while SQLite indexes and file locks stay out of your repository trees under `$XDG_STATE_HOME`.
-
-## Project Types
-
-mnemonic supports two clean project layouts depending on where you want to keep your notes.
-
-### regular (central)
-
-This is the default mode when you run `mnemonic init NAME` without extra flags.
-
-- Stores the project manifest `mnemonic.toml` and all markdown notes under `~/.mnemonic/<slug>/`.
-- Useful for keeping notes in a central, structured directory without introducing files into your local coding repositories.
-
-### local
-
-Use `--local` when you want the project content to live directly inside your local repository or workspace.
-
-- Stores Markdown notes under `.mnemonic-memories/<slug>` inside your current working directory.
-- Creates a global pointer file `~/.mnemonic/<slug>.toml` under your central home, containing the absolute path to the local manifest.
-- Perfect for keeping documentation self-contained alongside repository code.
-
----
+- **Config:** `$XDG_CONFIG_HOME/mnemonic/config.toml`
+- **Registry & Projects (`memories_home`):** `~/.mnemonic/` (default)
+- **Web Authorization Database:** `$XDG_STATE_HOME/mnemonic/web_auth.sqlite` (configurable via `MNEMONIC_WEB_AUTH_DB` or `--auth-db`)
+- **Per-project Indexes:** `$XDG_STATE_HOME/mnemonic/projects/<PROJECT_ID>/index.sqlite`
+- **Locks:** `$XDG_STATE_HOME/mnemonic/projects/<PROJECT_ID>/locks/`
 
 ## CLI Reference
 
-Top-level commands:
+Top-level command scopes:
 
 - `completion`: generate shell completion scripts.
 - `config`: inspect effective config.
 - `init`: initialize a project.
-- `mcp`: run MCP stdio adapter.
+- `mcp`: run legacy MCP stdio adapter.
 - `notes`: note operations.
 - `project`: project operations.
 - `tags`: tag listing.
 - `version`: print build version.
+- `web`: administrative web server controls (serving, users, perms).
 
-All commands support `--json` global output mode.
+### `web` command group
 
-### init
+Administrative management for the HTTP Server-Sent Events architecture.
 
-Create a project from the current working directory.
+#### `web serve`
 
 ```bash
-mnemonic init NAME [--local]
+mnemonic web serve [--port 8080] [--projects common,code] [--auth-db /path/to/db]
 ```
 
-- Default mode creates a regular (central) project.
-- `--local` stores notes under `.mnemonic-memories/<slug>` in the workspace and registers a global pointer file.
+Launches the HTTP web listener. Parses the project targets, mapping allowed routes immediately. If any target in the explicit list is physically missing from the registry, the server aborts initialization with exit code `3` (`CodeNotFound`). Project databases are opened lazily upon the first incoming client request to optimize memory.
 
-### project commands
+#### `web users add`
 
-#### project list
+```bash
+mnemonic web users add <username> [--json]
+```
+
+Creates a new web consumer. Generates a cryptographically strong token, writing its SHA-256 digest to the authentication storage. Outputs the raw plaintext token precisely once.
+
+#### `web users list`
+
+```bash
+mnemonic web users list [--json]
+```
+
+Lists registered web consumer names.
+
+#### `web users revoke`
+
+```bash
+mnemonic web users revoke <username>
+```
+
+Permanently deletes the user record. Associated permission scopes are automatically purged via cascading foreign keys.
+
+#### `web perms grant`
+
+```bash
+mnemonic web perms grant <username> <project-slug> --level [ro|rw]
+```
+
+Maps access rights for a user to a specific knowledge base slot.
+
+#### `web perms revoke`
+
+```bash
+mnemonic web perms revoke <username> <project-slug>
+```
+
+Removes targeted knowledge base accessibility fields for the selected user.
+
+### `project` commands
+
+#### `project list`
 
 ```bash
 mnemonic project list
 ```
 
-Scans the registry home and displays active projects. If a project is corrupt (JSON syntax issue or mismatched slug) or a local project's path is missing, it marks them appropriately:
+Scans the registry home and displays active projects. If a project is corrupt or a local project's path is missing, it marks them appropriately:
+
 - `[CORRUPTED]` (mismatched configurations)
 - `[ORPHANED/MISSING]` (local workspace path moved or deleted)
 
-#### project show
-
-```bash
-mnemonic project show NAME_OR_UUID
-```
-
-Prints detailed project metadata, location info, and internal file paths.
-
-#### project reindex
+#### `project reindex`
 
 ```bash
 mnemonic project reindex [NAME_OR_UUID]
 mnemonic project reindex --all
 ```
 
-- with selector: rebuild one project.
+- with selector: rebuild one project index.
 - with `--all`: rebuild all active projects.
-- without args and without `--all`: rebuild all pending projects.
 
-#### project doctor
+### `notes` commands
 
-```bash
-mnemonic project doctor [NAME_OR_UUID]
-```
-
-Runs health diagnostics verifying registry pointer structures, manifest schemas, index integrity, and duplicate note checks.
-
-#### project import
-
-```bash
-mnemonic project import PATH
-```
-
-Imports an existing project manifest from a specified directory path and registers a pointer file for it.
-
-#### project remove
-
-```bash
-mnemonic project remove SLUG
-mnemonic project remove --wipe SLUG
-```
-
-Behavior:
-- `remove SLUG`: deletes the registry metadata (pointer TOML or central manifest) and the associated state index. Notes remain intact on disk.
-- `remove --wipe SLUG`: deletes registry metadata, index, and recursively removes the physical folder containing your markdown notes.
-
-### notes commands
-
-#### notes list
+#### `notes list`
 
 ```bash
 mnemonic notes list --project PROJECT
 ```
 
-Lists notes in the selected project.
-
-#### notes show
+#### `notes show`
 
 ```bash
 mnemonic notes show SELECTOR --project PROJECT
 ```
 
-Shows a resolved note (selector can be UUID, slug, path, or title).
+Selector can be a note UUID, slug, path, or title.
 
-#### notes create
-
-```bash
-mnemonic notes create --project PROJECT --title "Title" [--tag TAG ...]
-mnemonic notes create --project PROJECT --title "Title" --stdin
-mnemonic notes create --project PROJECT --title "Title" --body-file body.md
-```
-
-#### notes edit
+#### `notes edit`
 
 ```bash
-mnemonic notes edit SELECTOR --project PROJECT --append "text"
-mnemonic notes edit SELECTOR --project PROJECT --body-file body.md
-mnemonic notes edit SELECTOR --project PROJECT --set key=value
 mnemonic notes edit SELECTOR --project PROJECT --if-match <content_hash> --append "text"
 ```
 
-#### notes delete
-
-```bash
-mnemonic notes delete SELECTOR --project PROJECT
-mnemonic notes delete SELECTOR --project PROJECT --dry-run
-mnemonic notes delete SELECTOR --project PROJECT --hard --yes
-```
-
-#### notes search
-
-```bash
-mnemonic notes search QUERY --project PROJECT [--tag TAG] [--limit N]
-```
-
-#### notes backlinks
-
-```bash
-mnemonic notes backlinks SELECTOR --project PROJECT
-```
-
-### tags commands
-
-```bash
-mnemonic tags list --project PROJECT
-```
-
-Returns aggregated tag counts from index.
-
-## Shell Completion
-
-Generate completion scripts:
-
-```bash
-mnemonic completion bash
-mnemonic completion zsh
-mnemonic completion fish
-mnemonic completion powershell
-```
-
-Project-aware completion is available for:
-- `project show/remove/reindex/doctor` positional selectors,
-- `--project` flag in notes and tags commands.
-
-## MCP Server (App-Agnostic)
-
-mnemonic provides an MCP stdio adapter and can be integrated with any MCP-compatible client.
-
-Run server for a project:
-
-```bash
-mnemonic mcp --project my-notes
-```
-
-To configure, point your MCP client's generic stdio server command to `mnemonic mcp --project <slug>`.
+Enforces optimistic concurrency using custom SHA-256 hashes generated across note contents.
 
 ## Configuration
 
-Use:
-
-```bash
-mnemonic config show
-```
-
-to inspect effective config and resolved paths.
-
 Typical config file location: `$XDG_CONFIG_HOME/mnemonic/config.toml`
-
-Example:
 
 ```toml
 version = 1
@@ -315,26 +240,6 @@ json_pretty = true
 level = "info"
 ```
 
-## Typical Workflows
-
-Index refresh after external file changes:
-
-```bash
-mnemonic project reindex
-```
-
-Rebuild all projects:
-
-```bash
-mnemonic project reindex --all
-```
-
-Safe note edit with optimistic concurrency:
-
-```bash
-mnemonic notes show my-note --project my-notes --json
-mnemonic notes edit my-note --project my-notes --if-match <hash> --append "\nUpdate"
-```
 
 ## Development
 
@@ -350,54 +255,54 @@ flowchart LR
     classDef db fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#000
 
     %% 1. External Interfaces
-    subgraph Interfaces ["1. Interfaces (Input)"]
+    subgraph Interfaces ["1. Interfaces & Transports"]
         direction TB
-        CLI("💻 CLI\n(For Humans)"):::interface
-        MCP("🤖 MCP Server\n(For LLMs / AI)"):::interface
+        CLI("💻 CLI Admin\n(internal/cli)"):::interface
+        WEB("🌐 Web Server (HTTP/SSE)\n(internal/web)"):::interface
+        STDIO("🤖 Stdio Adapter\n(Legacy MCP CLI)"):::interface
     end
 
-    %% 2. Core
-    App{"⚙️ App Container\n(DI, Config,\nPath Resolution)"}:::core
+    %% 2. Core & Server Management
+    App{"⚙️ Web Server Manager\n(Auth, Lazy-Loading,\nInstance Routing)"}:::core
 
     %% 3. Business Logic
     subgraph Services ["2. Business Services"]
         direction TB
-        Proj("📁 Project Manager"):::logic
-        Note["📝 Notes Manager"]:::logic
-        Idx("🔍 Indexer & Search"):::logic
+        Auth("🔑 Web Auth Store"):::logic
+        Proj("📁 Project Space"):::logic
+        Note["📝 Notes Engine"]:::logic
     end
 
     %% 4. File System
-    subgraph Storage ["3. Files (Disk)"]
+    subgraph Storage ["3. Files & Layout Trees"]
         direction TB
-        Conf["⚙️ config.toml\n(Settings)"]:::storage
         MD["📄 Notes (*.md)\n(Source of Truth)"]:::storage
         Reg["🗂️ Registry Manifests\n(~/.mnemonic/*.toml)"]:::storage
     end
 
     %% 5. Databases
-    subgraph DBs ["4. Databases (SQLite)"]
+    subgraph DBs ["4. Isolated Storage (SQLite)"]
         direction TB
-        FTS[("⚡ Index DB\n(FTS5 Search & Graphs)")]:::db
+        AuthDB[("🔒 web_auth.sqlite\n(Tokens & Perms)")]:::db
+        FTS[("⚡ index.sqlite\n(Pooled per Project)")]:::db
     end
 
     %% Flow connections
     CLI --> App
-    MCP --> App
+    WEB --> App
+    STDIO --> Proj
 
+    App --> Auth
     App --> Proj
     App --> Note
-    App --> Idx
 
-    %% Storage connections
-    App -. Reads .-> Conf
+    Auth --> AuthDB
     Proj --> Reg
     Note --> MD
-    Idx --> FTS
-    Idx -. Parses .-> MD
+    Note -. Scanned by .-> FTS
 ```
 
-## Detailed Architecture
+### Detailed Architecture
 
 ```mermaid
 flowchart TD
@@ -410,58 +315,51 @@ flowchart TD
     classDef db fill:#ffebee,stroke:#e53935,stroke-width:2px,color:#000,rx:8px,ry:8px
 
     %% Layers
-    subgraph Entry ["1. Presentation Layer (Entry Points)"]
+    subgraph Entry ["1. Presentation Layer (Transports)"]
         direction LR
-        CLI("💻 CLI\n(internal/cli)"):::entry
-        MCP("🤖 MCP Tools\n(internal/mcp)"):::entry
+        CLI("💻 CLI Controls\n(internal/cli)"):::entry
+        WebServe("🌐 HTTP SSE Router\n(internal/web)"):::entry
     end
 
-    subgraph Core ["2. Application Core (Bootstrapping)"]
+    subgraph Core ["2. Access & Lifecycle Security"]
         direction LR
-        App{"⚙️ App Container\n(internal/app)"}:::core
-        Paths("📂 Paths & Config\n(internal/paths, config)"):::core
+        Manager{"⚙️ Server Manager\n(Lazy Thread Cache)"}:::core
+        AuthStore("🔑 Auth Subsystem\n(internal/webauth)"):::core
     end
 
-    subgraph Domain ["3. Domain Layer (Business Features)"]
+    subgraph Domain ["3. Domain layer (Business Objects)"]
         direction LR
-        Proj("📁 Project\n(internal/project)"):::domain
-        Notes("📝 Notes\n(internal/notes)"):::domain
-        Search("🔍 Search & Graph\n(internal/search, graph)"):::domain
+        Proj("📁 Project Layout"):::domain
+        Notes("📝 Notes Logic"):::domain
+        Search("🔍 FTS Search Engine"):::domain
     end
 
-    subgraph Engines ["4. Processing Engines"]
+    subgraph Engines ["4. File Parsing Processing"]
         direction LR
-        MD("🛠️ Markdown\n(internal/markdown)"):::engine
-        Idx("⚡ Indexer\n(internal/index)"):::engine
+        MD("🛠️ Markdown AST"):::engine
+        Idx("⚡ Reindexer Engine"):::engine
     end
 
-    subgraph Infra ["5. Infrastructure & Adapters"]
+    subgraph Infra ["5. Infrastructure & Storage"]
         direction LR
-        Reg("🗂️ Registry Files\n(internal/registry)"):::infra
-        Sys("💾 FS & Locks\n(internal/fs, lock)"):::infra
-        DB[("🗄️ SQLite\n(Databases)")]:::db
+        AuthDB[("🔒 web_auth.sqlite")]:::db
+        IndexDB[("🗄️ index.sqlite")]:::db
+        Sys("💾 Locks & Filesystem"):::infra
     end
 
-    %% Flow: Bootstrapping
-    CLI & MCP --> App
-    App --> Paths
-    App --> Reg
+    %% Flow: Web Routing & Guarding
+    WebServe --> Manager
+    Manager --> AuthStore
+    AuthStore --> AuthDB
 
-    %% Flow: Feature Execution
-    CLI & MCP --> Proj
-    CLI & MCP --> Notes
-    CLI & MCP --> Search
+    %% Flow: Instance Lazy Hydration
+    Manager -. Creates pool .-> IndexDB
+    Manager --> Proj
+    Manager --> Notes
 
-    %% Flow: Domain to Engines & Infra
-    Proj --> Reg
-    Proj --> Paths
-
+    %% Flow: Processing Boundary
     Notes --> MD
     Notes --> Sys
-
     Search --> Idx
-
-    %% Flow: Engines to Infra
-    Idx --> MD
-    Idx --> DB
+    Idx --> IndexDB
 ```

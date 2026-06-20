@@ -6,6 +6,7 @@ import (
 	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/mcp"
 	"github.com/ilyachch/mnemonic/internal/project"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 )
 
@@ -28,7 +29,7 @@ var mcpCmd = &cobra.Command{
 		}
 
 		server := mcp.NewServer(resolvedProject, container.Paths)
-		return server.Run(cmd.Context())
+		return server.Run(cmd.Context(), &sdkmcp.StdioTransport{})
 	},
 }
 

@@ -23,8 +23,9 @@ type Server struct {
 	Project app.ProjectResolution
 	Paths   paths.EffectivePaths
 
-	indexDBMu sync.Mutex
-	indexConn *sql.DB
+	indexDBMu    sync.Mutex
+	indexConn    *sql.DB
+	indexDBOwned bool
 
 	// testCloseDBErr, when set, makes closeIndexDB return this error.
 	// This is a test-only hook and must never be set in production.
@@ -36,12 +37,28 @@ func NewServer(resolved app.ProjectResolution, effectivePaths paths.EffectivePat
 	return &Server{Project: resolved, Paths: effectivePaths}
 }
 
-// Run starts the MCP server with stdio transport.
-func (s *Server) Run(ctx context.Context) error {
+// NewServerWithIndexDB creates a new MCP shell server wrapper that reuses an
+// already-open index DB connection.
+func NewServerWithIndexDB(resolved app.ProjectResolution, effectivePaths paths.EffectivePaths, indexDB *sql.DB) *Server {
+	return &Server{
+		Project:      resolved,
+		Paths:        effectivePaths,
+		indexConn:    indexDB,
+		indexDBOwned: false,
+	}
+}
+
+// Run starts the MCP server with the provided transport.
+func (s *Server) Run(ctx context.Context, transport sdkmcp.Transport) error {
 	defer func() {
 		_ = s.closeIndexDB()
 	}()
 
+	return s.BuildSDKServer().Run(ctx, transport)
+}
+
+// BuildSDKServer creates a configured SDK MCP server for this project.
+func (s *Server) BuildSDKServer() *sdkmcp.Server {
 	sdkServer := sdkmcp.NewServer(
 		&sdkmcp.Implementation{Name: "mnemonic", Version: buildinfo.Version()},
 		&sdkmcp.ServerOptions{
@@ -52,10 +69,8 @@ func (s *Server) Run(ctx context.Context) error {
 		},
 	)
 
-	description := s.readManifestDescription()
-	tools.RegisterAll(sdkServer, s, description)
-
-	return sdkServer.Run(ctx, &sdkmcp.StdioTransport{})
+	tools.RegisterAll(sdkServer, s, s.readManifestDescription())
+	return sdkServer
 }
 
 // readManifestDescription reads the optional description field from the
@@ -132,6 +147,7 @@ func (s *Server) GetIndexDB() (*sql.DB, error) {
 	}
 
 	s.indexConn = db
+	s.indexDBOwned = true
 	return s.indexConn, nil
 }
 
@@ -167,6 +183,11 @@ func (s *Server) closeIndexDB() error {
 
 	db := s.indexConn
 	s.indexConn = nil
+	owned := s.indexDBOwned
+	s.indexDBOwned = false
+	if !owned {
+		return nil
+	}
 	if err := db.Close(); err != nil {
 		return fmt.Errorf("close index database: %w", err)
 	}
