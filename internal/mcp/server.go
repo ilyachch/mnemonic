@@ -54,6 +54,11 @@ func (s *Server) Run(ctx context.Context, transport sdkmcp.Transport) error {
 		_ = s.closeIndexDB()
 	}()
 
+	return s.BuildSDKServer().Run(ctx, transport)
+}
+
+// BuildSDKServer creates a configured SDK MCP server for this project.
+func (s *Server) BuildSDKServer() *sdkmcp.Server {
 	sdkServer := sdkmcp.NewServer(
 		&sdkmcp.Implementation{Name: "mnemonic", Version: buildinfo.Version()},
 		&sdkmcp.ServerOptions{
@@ -64,10 +69,8 @@ func (s *Server) Run(ctx context.Context, transport sdkmcp.Transport) error {
 		},
 	)
 
-	description := s.readManifestDescription()
-	tools.RegisterAll(sdkServer, s, description)
-
-	return sdkServer.Run(ctx, transport)
+	tools.RegisterAll(sdkServer, s, s.readManifestDescription())
+	return sdkServer
 }
 
 // readManifestDescription reads the optional description field from the

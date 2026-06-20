@@ -42,6 +42,12 @@ func executeCommand(args ...string) cmdResult {
 	if flag := mcpCmd.Flags().Lookup("help"); flag != nil {
 		flag.Changed = false
 	}
+	_ = webServeCmd.Flags().Set("addr", "")
+	_ = webServeCmd.Flags().Set("auth-db", "")
+	_ = webServeCmd.Flags().Set("help", "false")
+	if flag := webServeCmd.Flags().Lookup("help"); flag != nil {
+		flag.Changed = false
+	}
 	bufOut := new(bytes.Buffer)
 	bufErr := new(bytes.Buffer)
 
