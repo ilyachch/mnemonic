@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 
+	"github.com/ilyachch/mnemonic/internal/project"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -45,9 +47,18 @@ func main() {
 		fatalf("getwd: %v", err)
 	}
 
+	env := os.Environ()
+	if *project == "" {
+		*project, env, err = prepareSmokeProject()
+		if err != nil {
+			fatalf("prepare smoke project: %v", err)
+		}
+		*reindex = true
+	}
+
 	command, args := mnemonicCommand(repoRoot)
 	if *reindex {
-		if err := runReindex(repoRoot, command, args, *project); err != nil {
+		if err := runReindex(repoRoot, command, args, *project, env); err != nil {
 			fatalf("reindex: %v", err)
 		}
 	}
@@ -58,6 +69,7 @@ func main() {
 	cmd := exec.Command(command, append(args, mcpArgs(*project)...)...)
 	cmd.Dir = repoRoot
 	cmd.Stderr = os.Stderr
+	cmd.Env = env
 
 	session, err := client.Connect(ctx, &sdkmcp.CommandTransport{Command: cmd}, nil)
 	if err != nil {
@@ -224,7 +236,7 @@ func mcpArgs(project string) []string {
 	return args
 }
 
-func runReindex(repoRoot, command string, args []string, project string) error {
+func runReindex(repoRoot, command string, args []string, project string, env []string) error {
 	reindexArgs := append([]string{}, args...)
 	reindexArgs = append(reindexArgs, "project", "reindex")
 	if project != "" {
@@ -235,7 +247,56 @@ func runReindex(repoRoot, command string, args []string, project string) error {
 	cmd.Dir = repoRoot
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.Env = env
 	return cmd.Run()
+}
+
+func prepareSmokeProject() (string, []string, error) {
+	base, err := os.MkdirTemp("", "mnemonic-mcp-smoke-")
+	if err != nil {
+		return "", nil, err
+	}
+
+	projectRoot := filepath.Join(base, "project")
+	memoriesHome := filepath.Join(base, "memories")
+	memoriesDir := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
+	if err := os.MkdirAll(memoriesDir, 0o755); err != nil {
+		return "", nil, err
+	}
+	if err := os.MkdirAll(memoriesHome, 0o755); err != nil {
+		return "", nil, err
+	}
+
+	now := time.Now().UTC()
+	manifest := project.NewMnemonicManifest()
+	manifest.ProjectID = project.NewUUID()
+	manifest.Name = "personal"
+	manifest.Slug = "personal"
+	manifest.Type = project.ManifestTypeLocal
+	manifest.MarkdownFormatVersion = 1
+	manifest.CreatedAt = now
+	manifest.UpdatedAt = now
+	manifest.Generator.App = "mnemonic"
+	if err := project.WriteMnemonicManifest(filepath.Join(memoriesDir, "mnemonic.toml"), manifest); err != nil {
+		return "", nil, err
+	}
+	if err := project.WritePointerFile(filepath.Join(memoriesHome, "personal.toml"), &project.PointerFile{
+		ManifestPath: filepath.Join(memoriesDir, "mnemonic.toml"),
+	}); err != nil {
+		return "", nil, err
+	}
+
+	env := append([]string{}, os.Environ()...)
+	env = append(env,
+		"XDG_CONFIG_HOME="+filepath.Join(base, "config"),
+		"XDG_DATA_HOME="+filepath.Join(base, "data"),
+		"XDG_STATE_HOME="+filepath.Join(base, "state"),
+		"XDG_CACHE_HOME="+filepath.Join(base, "cache"),
+		"GOMODCACHE="+filepath.Join(os.Getenv("HOME"), ".cache", "go", "pkg", "mod"),
+		"MNEMONIC_MEMORIES_HOME="+memoriesHome,
+	)
+
+	return "personal", env, nil
 }
 
 func callAndPrint(

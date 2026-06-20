@@ -34,6 +34,9 @@ var notesSearchCmd = &cobra.Command{
 
 		entry, err := registry.Resolve(container.Paths.MemoriesHome, projectSelectorValue())
 		if err != nil {
+			if _, ok := err.(registry.ErrNotFound); ok {
+				return app.NewNotFoundError(err.Error(), nil)
+			}
 			return err
 		}
 

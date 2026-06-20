@@ -29,6 +29,7 @@ func TestNotesSearchCommandReturnsHits(t *testing.T) {
 		Name:         "personal",
 		Mode:         project.InitModeLocal,
 	}))
+	setLocalProjectMemoriesHome(t, projectRoot)
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
@@ -88,6 +89,7 @@ func TestNotesSearchCommandRespectsLimit(t *testing.T) {
 		Name:         "personal",
 		Mode:         project.InitModeLocal,
 	}))
+	setLocalProjectMemoriesHome(t, projectRoot)
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
@@ -133,6 +135,7 @@ func TestNotesSearchCommandFiltersByTag(t *testing.T) {
 		Name:         "personal",
 		Mode:         project.InitModeLocal,
 	}))
+	setLocalProjectMemoriesHome(t, projectRoot)
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
@@ -169,6 +172,7 @@ func TestNotesSearchCommandMissingIndexSuggestsReindex(t *testing.T) {
 		Name:         "personal",
 		Mode:         project.InitModeLocal,
 	}))
+	setLocalProjectMemoriesHome(t, projectRoot)
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()

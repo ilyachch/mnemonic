@@ -54,7 +54,7 @@ func TestCommandTransportInitializeAndListTools(t *testing.T) {
 
 	gotSnapshot, err := json.MarshalIndent(tools.Tools, "", "  ")
 	require.NoError(t, err)
-	wantSnapshot, err := os.ReadFile(filepath.Join(repoRoot, "internal", "mcp", "testdata", "read_only_tools.snapshot.json"))
+	wantSnapshot, err := os.ReadFile(filepath.Join(repoRoot, "testdata", "mcp", "read_only_tools.snapshot.json"))
 	require.NoError(t, err)
 	require.Equal(t, strings.TrimSpace(string(wantSnapshot)), strings.TrimSpace(string(gotSnapshot)))
 
@@ -158,6 +158,7 @@ func TestServerIndexDBReusesSingleConnection(t *testing.T) {
 	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
 	require.NoError(t, err)
 
+	wireTestRegistryParsers(t)
 	effectivePaths, err := paths.ResolveEffectivePaths(paths.EffectiveInput{})
 	require.NoError(t, err)
 
@@ -485,7 +486,7 @@ func TestDeleteNoteDefaultsToTrash(t *testing.T) {
 	memoryRootContent, err := os.ReadDir(memoryRoot)
 	require.NoError(t, err)
 	for _, entry := range memoryRootContent {
-		if !entry.IsDir() {
+		if entry.Name() != "mnemonic.toml" && !entry.IsDir() {
 			t.Errorf("expected memory root to be empty after deletion, found %s", entry.Name())
 		}
 	}
@@ -857,6 +858,7 @@ func connectToMCPServerWithEnv(t *testing.T, repoRoot, projectRoot string, env [
 
 	stderr := &captureWriter{}
 	client := mcp.NewClient(&mcp.Implementation{Name: "client", Version: "v0.0.1"}, nil)
+	wireTestRegistryParsers(t)
 
 	effectivePaths, err := paths.ResolveEffectivePaths(paths.EffectiveInput{})
 	require.NoError(t, err)
@@ -904,6 +906,40 @@ func connectToMCPServerWithEnv(t *testing.T, repoRoot, projectRoot string, env [
 
 	_ = env
 	return clientSession, stderr
+}
+
+func wireTestRegistryParsers(t *testing.T) {
+	t.Helper()
+
+	origManifest := registry.DefaultManifestParser
+	origPointer := registry.DefaultPointerParser
+	registry.DefaultManifestParser = func(path string) (registry.ManifestData, error) {
+		manifest, err := project.ParseMnemonicManifestFromFile(path)
+		if err != nil {
+			return registry.ManifestData{}, err
+		}
+		typ := "central"
+		if manifest.IsLocal() {
+			typ = "local"
+		}
+		return registry.ManifestData{
+			ProjectID: manifest.ProjectID,
+			Name:      manifest.Name,
+			Slug:      manifest.Slug,
+			Type:      typ,
+		}, nil
+	}
+	registry.DefaultPointerParser = func(data []byte) (string, error) {
+		pointer, err := project.ParsePointerFile(data)
+		if err != nil {
+			return "", err
+		}
+		return pointer.ManifestPath, nil
+	}
+	t.Cleanup(func() {
+		registry.DefaultManifestParser = origManifest
+		registry.DefaultPointerParser = origPointer
+	})
 }
 
 // toAppResolution adapts a registry.Entry to the app.ProjectResolution

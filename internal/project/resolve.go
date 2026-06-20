@@ -2,6 +2,8 @@ package project
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/ilyachch/mnemonic/internal/paths"
 	"github.com/ilyachch/mnemonic/internal/registry"
@@ -29,6 +31,43 @@ func ResolveProject(memoriesHome, selector string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if entry.ProjectID != "" {
+		return entry.ProjectID, nil
+	}
+
+	if entry.Type == "central" {
+		manifestPath := entry.ManifestPath
+		if manifestPath == "" {
+			manifestPath = filepath.Join(memoriesHome, selector, "mnemonic.toml")
+		}
+		manifest, err := ParseMnemonicManifestFromFile(manifestPath)
+		if err != nil {
+			return "", err
+		}
+		return manifest.ProjectID, nil
+	}
+
+	if entry.Type == "local" {
+		manifestPath := entry.ManifestPath
+		if manifestPath == "" {
+			pointerPath := filepath.Join(memoriesHome, selector+".toml")
+			data, err := os.ReadFile(pointerPath)
+			if err != nil {
+				return "", err
+			}
+			pointer, err := ParsePointerFile(data)
+			if err != nil {
+				return "", err
+			}
+			manifestPath = pointer.ManifestPath
+		}
+		manifest, err := ParseMnemonicManifestFromFile(manifestPath)
+		if err != nil {
+			return "", err
+		}
+		return manifest.ProjectID, nil
+	}
+
 	return entry.ProjectID, nil
 }
 

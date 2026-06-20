@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/spf13/cobra"
@@ -37,6 +38,9 @@ Index and lock files are always cleaned up.`,
 
 		entry, err := registry.Resolve(container.Paths.MemoriesHome, args[0])
 		if err != nil {
+			if _, ok := err.(registry.ErrNotFound); ok {
+				return app.NewNotFoundError(err.Error(), nil)
+			}
 			return err
 		}
 
@@ -44,16 +48,14 @@ Index and lock files are always cleaned up.`,
 		registryRemoved := false
 		registryPath := registryPathForEntry(container.Paths.MemoriesHome, entry)
 		if registryPath != "" {
-			if err := os.Remove(registryPath); err != nil && !os.IsNotExist(err) {
+			if entry.Type == "central" {
+				if err := os.Remove(registryPath); err != nil && !os.IsNotExist(err) {
+					return fmt.Errorf("remove registry entry %q: %w", registryPath, err)
+				}
+			} else if err := os.Remove(registryPath); err != nil && !os.IsNotExist(err) {
 				return fmt.Errorf("remove registry entry %q: %w", registryPath, err)
 			}
 			registryRemoved = true
-
-			// For central projects, also try to remove the mnemonic.toml
-			if entry.Type == "central" {
-				manifestPath := filepath.Join(container.Paths.MemoriesHome, entry.Slug, "mnemonic.toml")
-				_ = os.Remove(manifestPath)
-			}
 		}
 
 		// Remove index and lock artifacts.
@@ -113,7 +115,7 @@ type projectRemoveOutput struct {
 func registryPathForEntry(memoriesHome string, entry registry.Entry) string {
 	switch entry.Type {
 	case "central":
-		return filepath.Join(memoriesHome, entry.Slug)
+		return filepath.Join(memoriesHome, entry.Slug, "mnemonic.toml")
 	case "local":
 		return filepath.Join(memoriesHome, entry.Slug+".toml")
 	default:

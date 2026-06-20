@@ -30,6 +30,7 @@ func TestProjectDoctorReturnsOkForHealthyProject(t *testing.T) {
 		Mode:         project.InitModeLocal,
 	})
 	require.NoError(t, err)
+	setLocalProjectMemoriesHome(t, projectRoot)
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
@@ -80,6 +81,7 @@ func TestProjectDoctorMissingIndexReturnsNeedsReindex(t *testing.T) {
 		Mode:         project.InitModeLocal,
 	})
 	require.NoError(t, err)
+	setLocalProjectMemoriesHome(t, projectRoot)
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
@@ -105,6 +107,7 @@ func TestProjectDoctorCorruptedIndexReturnsExitSix(t *testing.T) {
 		Mode:         project.InitModeLocal,
 	})
 	require.NoError(t, err)
+	setLocalProjectMemoriesHome(t, projectRoot)
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
@@ -137,6 +140,7 @@ func TestProjectDoctorReportsStaleTempFileWithoutDeletingIt(t *testing.T) {
 		Mode:         project.InitModeLocal,
 	})
 	require.NoError(t, err)
+	setLocalProjectMemoriesHome(t, projectRoot)
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
@@ -154,7 +158,7 @@ func TestProjectDoctorReportsStaleTempFileWithoutDeletingIt(t *testing.T) {
 	_, err = index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoriesRoot)
 	require.NoError(t, err)
 
-	tempPath := filepath.Join(projectRoot, ".tmp-test")
+	tempPath := filepath.Join(memoriesRoot, ".tmp-test")
 	err = os.WriteFile(tempPath, []byte("stale\n"), 0o644)
 	require.NoError(t, err)
 

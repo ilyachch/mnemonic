@@ -89,6 +89,7 @@ func TestProjectReindexAllProjects(t *testing.T) {
 }
 
 func TestProjectReindexRebuildsIndex(t *testing.T) {
+	testutil.CleanEnvForTest(t)
 	memoriesHome := t.TempDir()
 	t.Setenv("MNEMONIC_MEMORIES_HOME", memoriesHome)
 

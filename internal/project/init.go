@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/ilyachch/mnemonic/internal/registry"
 )
 
 // InitMode identifies the supported init flows.
@@ -47,10 +49,16 @@ func InitProject(input InitInput) error {
 
 	switch input.Mode {
 	case InitModeCentral:
-		manifestPath := filepath.Join(input.MemoriesHome, slug, "mnemonic.toml")
-		if _, err := os.Stat(manifestPath); err == nil {
+		exists, err := registry.Exists(input.MemoriesHome, slug)
+		if err != nil {
+			return err
+		}
+		if exists {
 			return slugAlreadyExistsError(slug)
-		} else if !os.IsNotExist(err) {
+		}
+
+		manifestPath := filepath.Join(input.MemoriesHome, slug, "mnemonic.toml")
+		if _, err := os.Stat(manifestPath); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("stat central manifest: %w", err)
 		}
 
@@ -71,6 +79,14 @@ func InitProject(input InitInput) error {
 		return nil
 
 	case InitModeLocal:
+		exists, err := registry.Exists(input.MemoriesHome, slug)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return slugAlreadyExistsError(slug)
+		}
+
 		memoriesPath := filepath.Join(input.CWD, ".mnemonic-memories", slug)
 		if err := os.MkdirAll(memoriesPath, 0o755); err != nil {
 			return fmt.Errorf("create local memories directory: %w", err)

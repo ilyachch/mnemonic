@@ -29,6 +29,7 @@ func TestNotesBacklinksCommandReturnsLinks(t *testing.T) {
 		Name:         "personal",
 		Mode:         project.InitModeLocal,
 	}))
+	setLocalProjectMemoriesHome(t, projectRoot)
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
@@ -104,6 +105,7 @@ func TestNotesBacklinksCommandMissingNoteAndMissingIndex(t *testing.T) {
 		Name:         "personal",
 		Mode:         project.InitModeLocal,
 	}))
+	setLocalProjectMemoriesHome(t, projectRoot)
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()

@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"path/filepath"
+	"testing"
 )
 
 type cmdResult struct {
@@ -12,11 +14,13 @@ type cmdResult struct {
 
 // executeCommand runs RootCmd with the given arguments and returns stdout, stderr, and error.
 func executeCommand(args ...string) cmdResult {
+	closeAppContainer()
 	defer closeAppContainer()
 
 	jsonFlag = false
 	projectFlag = ""
 	_ = initCmd.Flags().Set("local", "false")
+	_ = initCmd.Flags().Set("detached", "false")
 	_ = initCmd.Flags().Set("description", "")
 	_ = projectImportCmd.Flags().Set("dry-run", "false")
 	_ = notesCreateCmd.Flags().Set("title", "")
@@ -53,4 +57,10 @@ func executeCommand(args ...string) cmdResult {
 		Stderr: bufErr.String(),
 		Err:    err,
 	}
+}
+
+func setLocalProjectMemoriesHome(t *testing.T, projectRoot string) {
+	t.Helper()
+
+	t.Setenv("MNEMONIC_MEMORIES_HOME", filepath.Join(projectRoot, ".mnemonic-memories"))
 }

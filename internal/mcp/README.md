@@ -19,6 +19,6 @@ This package does not own core note storage, project schema rules, search indexi
 ## Tests to update when changing this package
 
 - `internal/mcp/server_test.go`
-- `internal/mcp/testdata/read_only_tools.snapshot.json`
+- `testdata/mcp/read_only_tools.snapshot.json`
 - `internal/cli/mcp_test.go` if CLI launch behavior changes
 - relevant `internal/notes`, `internal/search`, or `internal/graph` tests when MCP-exposed behavior depends on their contracts
