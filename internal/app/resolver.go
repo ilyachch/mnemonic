@@ -1,59 +1,81 @@
 package app
 
 import (
-	"database/sql"
+	"errors"
 	"path/filepath"
+	"strings"
 
-	"github.com/ilyachch/mnemonic/internal/project"
+	"github.com/ilyachch/mnemonic/internal/registry"
 )
 
-// RegistryResolver implements ProjectResolver by delegating to the project
-// package's registry-based lookup.
-type RegistryResolver struct {
-	DB *sql.DB
+// FileResolver implements ProjectResolver by scanning the file-based registry.
+type FileResolver struct {
+	MemoriesHome string
 }
 
-// Resolve looks up a project in the registry using the explicit selector or
-// environment value.
-func (r RegistryResolver) Resolve(input ProjectResolveInput) (ProjectResolution, error) {
-	resolved, err := project.ResolveProject(project.ResolveProjectInput{
-		ProjectSelector:  input.ProjectSelector,
-		EnvironmentValue: input.EnvironmentValue,
-		Registry:         r.DB,
-	})
+// Resolve finds a project by slug using the file-based registry.
+func (r *FileResolver) Resolve(input ProjectResolveInput) (ProjectResolution, error) {
+	selector := input.ProjectSelector
+	if selector == "" {
+		selector = input.EnvironmentValue
+	}
+
+	if selector == "" {
+		return ProjectResolution{}, NewNoProjectSelectedError()
+	}
+
+	entry, err := registry.Resolve(r.MemoriesHome, selector)
 	if err != nil {
-		switch err.(type) {
-		case project.ErrNoProjectSelected, project.ErrProjectNotFound:
-			return ProjectResolution{}, err
-		default:
-			return ProjectResolution{}, err
-		}
+		return ProjectResolution{}, wrapRegistryError(err)
 	}
 
 	return ProjectResolution{
-		MnemonicFilePath: resolved.MnemonicFilePath,
-		RepoRootAbs:      resolved.RepoRootAbs,
-		MemoriesAbs:      resolved.MemoriesAbs,
-		ManifestAbs:      resolved.ManifestAbs,
+		RepoRootAbs: entry.RepoRootAbs,
+		MemoriesAbs: entry.MemoriesAbs,
+		ManifestAbs: entry.ManifestPath,
 		Project: ProjectRecord{
-			ID:           resolved.Project.ID,
-			Name:         resolved.Project.Name,
-			Slug:         resolved.Project.Slug,
-			Kind:         string(resolved.Project.Kind),
-			MemoriesPath: memoriesPathFor(resolved),
+			ID:           entry.ProjectID,
+			Name:         entry.Name,
+			Slug:         entry.Slug,
+			Kind:         entry.Type,
+			MemoriesPath: memoriesPathForEntry(entry),
 		},
 	}, nil
 }
 
-func memoriesPathFor(resolved project.ResolvedProject) string {
-	if resolved.RepoRootAbs != "" && resolved.MemoriesAbs != "" {
-		rel, err := filepath.Rel(resolved.RepoRootAbs, resolved.MemoriesAbs)
-		if err == nil && rel != "" && rel != "." {
+func wrapRegistryError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var notFoundErr registry.ErrNotFound
+	if errors.As(err, &notFoundErr) {
+		return NewNotFoundError(notFoundErr.Error(), nil)
+	}
+	return err
+}
+
+func memoriesPathForEntry(entry registry.Entry) string {
+	if entry.RepoRootAbs != "" && entry.MemoriesAbs != "" {
+		if rel, err := filepath.Rel(entry.RepoRootAbs, entry.MemoriesAbs); err == nil && rel != "" && rel != "." {
 			return filepath.ToSlash(rel)
 		}
 	}
-	if resolved.MemoriesAbs != "" {
-		return filepath.Base(resolved.MemoriesAbs)
+	return filepath.Base(entry.MemoriesAbs)
+}
+
+// NewNoProjectSelectedError returns a CLI usage error when no project is selected.
+func NewNoProjectSelectedError() error {
+	return NewCLIUsageError("no project selected; specify --project or set MNEMONIC_PROJECT", nil)
+}
+
+// IsNoProjectSelected checks whether this error indicates no project was selected.
+func IsNoProjectSelected(err error) bool {
+	if err == nil {
+		return false
 	}
-	return ""
+	var appErr *AppError
+	if errors.As(err, &appErr) {
+		return appErr.Code == CodeCLIUsage && strings.Contains(appErr.Message, "no project selected")
+	}
+	return false
 }

@@ -28,6 +28,7 @@ func TestTagsListCommandReturnsCountsAndSorts(t *testing.T) {
 		Name:         "personal",
 		Mode:         project.InitModeLocal,
 	}))
+	setLocalProjectMemoriesHome(t, projectRoot)
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
@@ -71,6 +72,7 @@ func TestTagsListCommandMissingIndexSuggestsReindex(t *testing.T) {
 		Name:         "personal",
 		Mode:         project.InitModeLocal,
 	}))
+	setLocalProjectMemoriesHome(t, projectRoot)
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()

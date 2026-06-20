@@ -19,13 +19,11 @@ type MemoriesRootInput struct {
 
 // ResolveMemoriesRoot returns the absolute memories directory for a project.
 //
-// Regular projects use memories_home/memories_path, detached projects use
-// memories_home/slug, and local projects use repo_root/memories_path.
+// Central projects use memories_home/slug, local projects use
+// repo_root/memories_path.
 func ResolveMemoriesRoot(input MemoriesRootInput) (string, error) {
 	switch input.Kind {
-	case string(ProjectKindRegular):
-		return resolveRelativePathWithinBase(input.MemoriesHome, input.MemoriesPath, "memories_path")
-	case string(ManifestKindDetached):
+	case string(ProjectKindCentral):
 		return resolveRelativePathWithinBase(input.MemoriesHome, input.Slug, "slug")
 	case string(ProjectKindLocal):
 		return resolveRelativePathWithinBase(input.RepoRoot, input.MemoriesPath, "memories_path")

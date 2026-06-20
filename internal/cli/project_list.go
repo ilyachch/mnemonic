@@ -1,13 +1,13 @@
 package cli
 
 import (
-	"database/sql"
 	"fmt"
 	"path/filepath"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/ilyachch/mnemonic/internal/paths"
+	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -28,7 +28,7 @@ var projectListCmd = &cobra.Command{
 			return err
 		}
 
-		projects, err := loadProjectList(container.Services.Registry, container.Paths)
+		projects, err := loadProjectList(container.Paths)
 		if err != nil {
 			return err
 		}
@@ -56,44 +56,47 @@ type projectListItem struct {
 	ProjectID    string `json:"project_id"`
 	Name         string `json:"name"`
 	Slug         string `json:"slug"`
-	Kind         string `json:"kind"`
+	Type         string `json:"type"`
 	MemoriesPath string `json:"memories_path"`
 	StatePath    string `json:"state_path"`
-	NeedsReindex bool   `json:"needs_reindex"`
-	IndexPresent bool   `json:"index_present"`
+	Status       string `json:"status"`
+	Issue        string `json:"issue,omitempty"`
 }
 
-func loadProjectList(db *sql.DB, effectivePaths paths.EffectivePaths) ([]projectListItem, error) {
-	rows, err := db.Query(
-		`SELECT p.project_id, p.name, p.slug, p.kind, l.memories_abs, s.needs_reindex, s.index_present
-		 FROM projects p
-		 JOIN project_locations l ON l.project_id = p.project_id
-		 JOIN project_status s ON s.project_id = p.project_id
-		 WHERE p.removed_at IS NULL
-		 ORDER BY p.slug`,
-	)
+func loadProjectList(effectivePaths paths.EffectivePaths) ([]projectListItem, error) {
+	entries, issues, err := registry.Scan(effectivePaths.MemoriesHome)
 	if err != nil {
-		return nil, fmt.Errorf("query project list: %w", err)
+		return nil, fmt.Errorf("scan registry: %w", err)
 	}
-	defer rows.Close()
 
-	projects := make([]projectListItem, 0)
-	for rows.Next() {
-		var item projectListItem
-		var memoriesPath string
-		var needsReindex, indexPresent int
-		if err := rows.Scan(&item.ProjectID, &item.Name, &item.Slug, &item.Kind, &memoriesPath, &needsReindex, &indexPresent); err != nil {
-			return nil, fmt.Errorf("scan project list row: %w", err)
+	// Build a map for quick issue lookup by slug.
+	issueMap := make(map[string]registry.Issue, len(issues))
+	for _, issue := range issues {
+		issueMap[issue.Slug] = issue
+	}
+
+	projects := make([]projectListItem, 0, len(entries))
+	for _, e := range entries {
+		item := projectListItem{
+			ProjectID:    e.ProjectID,
+			Name:         e.Name,
+			Slug:         e.Slug,
+			Type:         e.Type,
+			MemoriesPath: e.MemoriesAbs,
+			StatePath:    filepath.Join(effectivePaths.StateHome, "mnemonic", "projects", e.ProjectID),
+			Status:       "ok",
 		}
 
-		item.MemoriesPath = memoriesPath
-		item.StatePath = filepath.Join(effectivePaths.StateHome, "mnemonic", "projects", item.ProjectID, "state.toml")
-		item.NeedsReindex = needsReindex == 1
-		item.IndexPresent = indexPresent == 1
+		if issue, found := issueMap[e.Slug]; found {
+			if issue.Corrupt {
+				item.Status = "[CORRUPTED]"
+			} else if issue.Orphan {
+				item.Status = "[ORPHANED/MISSING]"
+			}
+			item.Issue = issue.Error
+		}
+
 		projects = append(projects, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate project list: %w", err)
 	}
 
 	return projects, nil
@@ -107,10 +110,9 @@ func formatProjectListHuman(projects []projectListItem) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%d projects\n", len(projects))
 	w := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintln(w, "NAME\tSLUG\tTYPE\tPATH\tINDEX")
+	_, _ = fmt.Fprintln(w, "NAME\tSLUG\tTYPE\tPATH\tSTATUS")
 	for _, p := range projects {
-		status := fmt.Sprintf("present=%t needs_reindex=%t", p.IndexPresent, p.NeedsReindex)
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", p.Name, p.Slug, p.Kind, p.MemoriesPath, status)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", p.Name, p.Slug, p.Type, p.MemoriesPath, p.Status)
 	}
 	_ = w.Flush()
 	return b.String()

@@ -4,23 +4,25 @@ mnemonic is a local-first knowledge base and search tool for Markdown notes.
 
 It provides:
 - a CLI for project and note lifecycle management,
+- a file-based registry for central and local project spaces,
 - a disposable per-project SQLite index for search/backlinks/tags,
 - an MCP stdio server for AI-tool integrations.
 
 ## Principles
 
 - Markdown files are the source of truth.
-- Index databases are disposable and can be rebuilt.
+- The project registry is simple and fully file-based (no database).
+- Index databases are disposable and can be rebuilt at any time.
 - Project operations are explicit and path-safe.
 - Human-readable output is friendly; `--json` is automation-friendly.
 
 ## Feature Highlights
 
-- Project registry with slug/UUID addressing.
-- Multiple project layouts (`regular`, `local`, `detached`).
-- Full-text search via SQLite FTS5.
-- Backlinks graph from indexed notes.
-- Safe note editing with conditional update (`--if-match`).
+- Lightweight file-based registry with slug/UUID addressing.
+- Seamless workspace management via central and local layout strategies.
+- Full-text search using SQLite FTS5.
+- Backlinks graph generated from indexed notes.
+- Safe note editing with conditional updates (`--if-match`).
 - App-agnostic MCP adapter over stdio.
 
 ## Installation
@@ -53,7 +55,7 @@ mnemonic init my-notes --local
 mnemonic notes create --project my-notes --title "System Architecture" --tag design --tag ops
 ```
 
-3. Build or refresh index:
+3. Build or refresh the index:
 
 ```bash
 mnemonic project reindex my-notes
@@ -73,50 +75,35 @@ mnemonic notes show system-architecture --project my-notes
 
 ## Data Model and Paths
 
-mnemonic follows XDG directories:
+mnemonic strictly separates content, registry metadata, and ephemeral cache paths:
 
-- Config: `$XDG_CONFIG_HOME/mnemonic/`
-- Registry DB: `$XDG_DATA_HOME/mnemonic/registry.sqlite`
-- Per-project state/index: `$XDG_STATE_HOME/mnemonic/projects/<PROJECT_ID>/`
+- Config: `$XDG_CONFIG_HOME/mnemonic/config.toml`
+- Registry & Projects (`memories_home`): `~/.mnemonic/` (default)
+- Per-project Indexes: `$XDG_STATE_HOME/mnemonic/projects/<PROJECT_ID>/index.sqlite`
+- Locks: `$XDG_STATE_HOME/mnemonic/projects/<PROJECT_ID>/locks/`
 
-By design, note files live in project memories paths, while indexes/state live under XDG state.
+Note markdown files live directly in your project workspaces, while SQLite indexes and file locks stay out of your repository trees under `$XDG_STATE_HOME`.
 
 ## Project Types
 
-`mnemonic init` creates one of three project types.
+mnemonic supports two clean project layouts depending on where you want to keep your notes.
 
-### regular
+### regular (central)
 
 This is the default mode when you run `mnemonic init NAME` without extra flags.
 
-- Creates a `.mnemonic` project marker in the current repository.
-- Stores a `mnemonic.toml` manifest under the shared memories home.
-- Uses the slug as the project memories path.
-- Best fit for repository-centric knowledge bases where the Markdown lives outside the repo tree but is still owned by the project.
+- Stores the project manifest `mnemonic.toml` and all markdown notes under `~/.mnemonic/<slug>/`.
+- Useful for keeping notes in a central, structured directory without introducing files into your local coding repositories.
 
 ### local
 
-Use `--local` when you want the project content to live directly inside the current repository.
+Use `--local` when you want the project content to live directly inside your local repository or workspace.
 
-- Creates a `.mnemonic` project marker in the current repository.
-- Stores Markdown under `.mnemonic-memories/<slug>` inside the repo.
-- Keeps project data self-contained for local development, demos, or lightweight personal vaults.
-- This is the mode shown in most quick-start examples because it is easy to bootstrap and inspect.
+- Stores Markdown notes under `.mnemonic-memories/<slug>` inside your current working directory.
+- Creates a global pointer file `~/.mnemonic/<slug>.toml` under your central home, containing the absolute path to the local manifest.
+- Perfect for keeping documentation self-contained alongside repository code.
 
-### detached
-
-Use `--detached` for a project that exists primarily as a shared memories directory and is not anchored by a local `.mnemonic` repository marker.
-
-- Creates a `mnemonic.toml` manifest under the memories home.
-- Does not create a repository-local `.mnemonic` file.
-- Is useful when the project is shared or accessed from outside a single working tree.
-- The project is still registered, so it can be discovered, shown, reindexed, and used through the CLI and MCP.
-
-In short:
-
-- default = `regular`
-- `--local` = repo-local markdown storage
-- `--detached` = memories-home-first project without a repo marker
+---
 
 ## CLI Reference
 
@@ -138,12 +125,11 @@ All commands support `--json` global output mode.
 Create a project from the current working directory.
 
 ```bash
-mnemonic init NAME [--local | --detached]
+mnemonic init NAME [--local]
 ```
 
-- default mode creates a regular project.
-- `--local` stores notes under `.mnemonic-memories/<slug>` in repo.
-- `--detached` creates a detached project layout.
+- Default mode creates a regular (central) project.
+- `--local` stores notes under `.mnemonic-memories/<slug>` in the workspace and registers a global pointer file.
 
 ### project commands
 
@@ -153,12 +139,9 @@ mnemonic init NAME [--local | --detached]
 mnemonic project list
 ```
 
-Human output includes project count and table columns:
-- name,
-- slug,
-- type,
-- memories path,
-- index status (`present`, `needs_reindex`).
+Scans the registry home and displays active projects. If a project is corrupt (JSON syntax issue or mismatched slug) or a local project's path is missing, it marks them appropriately:
+- `[CORRUPTED]` (mismatched configurations)
+- `[ORPHANED/MISSING]` (local workspace path moved or deleted)
 
 #### project show
 
@@ -166,7 +149,7 @@ Human output includes project count and table columns:
 mnemonic project show NAME_OR_UUID
 ```
 
-Prints detailed project metadata, location info, and index status.
+Prints detailed project metadata, location info, and internal file paths.
 
 #### project reindex
 
@@ -177,7 +160,7 @@ mnemonic project reindex --all
 
 - with selector: rebuild one project.
 - with `--all`: rebuild all active projects.
-- without args and without `--all`: rebuild pending projects.
+- without args and without `--all`: rebuild all pending projects.
 
 #### project doctor
 
@@ -185,15 +168,7 @@ mnemonic project reindex --all
 mnemonic project doctor [NAME_OR_UUID]
 ```
 
-Runs health checks for registry, manifests, index presence/schema, and note integrity diagnostics.
-
-#### project discover
-
-```bash
-mnemonic project discover
-```
-
-Scans discoverable project manifests and registers them.
+Runs health diagnostics verifying registry pointer structures, manifest schemas, index integrity, and duplicate note checks.
 
 #### project import
 
@@ -201,30 +176,18 @@ Scans discoverable project manifests and registers them.
 mnemonic project import PATH
 ```
 
-Imports an existing project by path.
+Imports an existing project manifest from a specified directory path and registers a pointer file for it.
 
 #### project remove
 
 ```bash
-mnemonic project remove NAME_OR_UUID
-mnemonic project remove --hard NAME_OR_UUID
-mnemonic project remove --delete-markdown NAME_OR_UUID
-mnemonic project remove --wipe NAME_OR_UUID
+mnemonic project remove SLUG
+mnemonic project remove --wipe SLUG
 ```
 
-Behavior matrix:
-
-| Command | Registry | Index/state markers | Markdown files |
-|---|---|---|---|
-| `remove` | soft-delete | keep | keep |
-| `remove --hard` | soft-delete | delete | keep |
-| `remove --delete-markdown` | keep active | delete | delete |
-| `remove --wipe` | soft-delete | delete | delete |
-
-Notes:
-- `--hard` and `--delete-markdown` are mutually exclusive.
-- If you need full cleanup in one step, use `--wipe`.
-- `--delete-markdown` intentionally keeps registry entry and project marker file, but removes markdown and invalid index artifacts.
+Behavior:
+- `remove SLUG`: deletes the registry metadata (pointer TOML or central manifest) and the associated state index. Notes remain intact on disk.
+- `remove --wipe SLUG`: deletes registry metadata, index, and recursively removes the physical folder containing your markdown notes.
 
 ### notes commands
 
@@ -234,7 +197,7 @@ Notes:
 mnemonic notes list --project PROJECT
 ```
 
-Lists notes in selected project.
+Lists notes in the selected project.
 
 #### notes show
 
@@ -242,7 +205,7 @@ Lists notes in selected project.
 mnemonic notes show SELECTOR --project PROJECT
 ```
 
-Shows resolved note (selector can be UUID/slug/path/title depending on command semantics).
+Shows a resolved note (selector can be UUID, slug, path, or title).
 
 #### notes create
 
@@ -268,8 +231,6 @@ mnemonic notes delete SELECTOR --project PROJECT
 mnemonic notes delete SELECTOR --project PROJECT --dry-run
 mnemonic notes delete SELECTOR --project PROJECT --hard --yes
 ```
-
-By default, deletion follows configured safe behavior (trash/permanent policy).
 
 #### notes search
 
@@ -303,7 +264,6 @@ mnemonic completion powershell
 ```
 
 Project-aware completion is available for:
-
 - `project show/remove/reindex/doctor` positional selectors,
 - `--project` flag in notes and tags commands.
 
@@ -317,7 +277,7 @@ Run server for a project:
 mnemonic mcp --project my-notes
 ```
 
-Client-side wiring is intentionally not tied to any specific app in this README. Use your MCP client's generic stdio server configuration and point command to `mnemonic mcp --project <slug>`.
+To configure, point your MCP client's generic stdio server command to `mnemonic mcp --project <slug>`.
 
 ## Configuration
 
@@ -329,11 +289,7 @@ mnemonic config show
 
 to inspect effective config and resolved paths.
 
-Typical config file location:
-
-```text
-$XDG_CONFIG_HOME/mnemonic/config.toml
-```
+Typical config file location: `$XDG_CONFIG_HOME/mnemonic/config.toml`
 
 Example:
 
@@ -406,9 +362,9 @@ flowchart LR
     %% 3. Business Logic
     subgraph Services ["2. Business Services"]
         direction TB
-        Proj["📁 Project Manager"]:::logic
+        Proj("📁 Project Manager"):::logic
         Note["📝 Notes Manager"]:::logic
-        Idx["🔍 Indexer & Search"]:::logic
+        Idx("🔍 Indexer & Search"):::logic
     end
 
     %% 4. File System
@@ -416,12 +372,12 @@ flowchart LR
         direction TB
         Conf["⚙️ config.toml\n(Settings)"]:::storage
         MD["📄 Notes (*.md)\n(Source of Truth)"]:::storage
+        Reg["🗂️ Registry Manifests\n(~/.mnemonic/*.toml)"]:::storage
     end
 
     %% 5. Databases
     subgraph DBs ["4. Databases (SQLite)"]
         direction TB
-        Reg[("🗂️ Registry DB\n(Global List)")]:::db
         FTS[("⚡ Index DB\n(FTS5 Search & Graphs)")]:::db
     end
 
@@ -481,7 +437,7 @@ flowchart TD
 
     subgraph Infra ["5. Infrastructure & Adapters"]
         direction LR
-        Reg("🗂️ Registry\n(internal/registry)"):::infra
+        Reg("🗂️ Registry Files\n(internal/registry)"):::infra
         Sys("💾 FS & Locks\n(internal/fs, lock)"):::infra
         DB[("🗄️ SQLite\n(Databases)")]:::db
     end
@@ -490,7 +446,6 @@ flowchart TD
     CLI & MCP --> App
     App --> Paths
     App --> Reg
-    App --> DB
 
     %% Flow: Feature Execution
     CLI & MCP --> Proj
@@ -509,5 +464,4 @@ flowchart TD
     %% Flow: Engines to Infra
     Idx --> MD
     Idx --> DB
-    Reg --> DB
 ```

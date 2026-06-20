@@ -1,62 +1,9 @@
 [tools]
-go = "latest"
+go = "1.26"
+just = "latest"
+golangci-lint = "latest"
 "go:golang.org/x/tools/gopls" = "latest"
 prek = "latest"
-
-[tasks.build-linux]
-depends = ["check"]
-run = "go build -o ./bin/linux/mnemonic ./cmd/mnemonic"
-env = { GOOS = "linux", GOARCH = "amd64" }
-
-[tasks.build-macos]
-depends = ["check"]
-run = "go build -o ./bin/macos/mnemonic ./cmd/mnemonic"
-env = { GOOS = "darwin", GOARCH = "arm64" }
-
-[tasks.build]
-depends = ["check", "build-linux", "build-macos"]
-
-[tasks.clean]
-run = "rm -rf ./bin"
-
-[tasks.fmt]
-run = "go fmt ./..."
-
-[tasks.test-unit]
-run = "go test ./..."
-
-[tasks.coverage]
-run = "go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out -o coverage.html"
-
-[tasks.coverage-report]
-run = "go test -coverprofile=coverage.out ./... && go tool cover -func=coverage.out"
-
-[tasks.test-race]
-run = "go test -race ./..."
-
-[tasks.test-integration]
-run = "go run ./scripts/mcp_smoke.go"
-
-[tasks.test]
-depends = ["test-unit", "test-race", "test-integration"]
-
-[tasks.vet]
-run = "go vet ./..."
-
-[tasks.lint]
-depends = ["fmt", "vet"]
-
-[tasks.check]
-depends = ["lint", "test"]
-
-[tasks.collect-content]
-run = "collect_content . --skip-empty --format md --sort dirs-first --ext \".go\"  > mnemonic.md"
-
-[tasks.collect-content-no-tests]
-run = "collect_content . --skip-empty --format md --sort dirs-first --ext \".go\" --exclude \"*_test.go\" > mnemonic_no_tests.md"
-
-[tasks.install]
-run = "go install ./cmd/mnemonic"
 
 [env]
 VISUAL = "nvim"

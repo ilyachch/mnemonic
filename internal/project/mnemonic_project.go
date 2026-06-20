@@ -6,15 +6,14 @@ import "time"
 type ProjectKind string
 
 const (
-	// ProjectKindRegular stores a project that uses a regular memories directory.
-	ProjectKindRegular ProjectKind = "regular"
+	// ProjectKindCentral stores a central project rooted in the memories home.
+	ProjectKindCentral ProjectKind = "central"
 	// ProjectKindLocal stores a project backed by a local `.mnemonic-memories` directory.
 	ProjectKindLocal ProjectKind = "local"
 )
 
 // MnemonicProject captures the metadata needed by project helpers (init,
-// resolve, paths). The authoritative copy lives in the registry; this type is
-// only used during in-memory construction before registration.
+// resolve, paths).
 type MnemonicProject struct {
 	ID                    string
 	Name                  string

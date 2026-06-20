@@ -8,6 +8,7 @@ import (
 
 	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/project"
+	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -21,12 +22,6 @@ func TestInitCommandRequiresName(t *testing.T) {
 func TestInitCommandRejectsMultipleNames(t *testing.T) {
 	result := executeCommand("init", "one", "two")
 	require.Error(t, result.Err, "expected init with multiple NAME args to fail")
-	require.Equal(t, 2, ExitCodeForError(result.Err))
-}
-
-func TestInitCommandRejectsLocalAndDetachedTogether(t *testing.T) {
-	result := executeCommand("init", "demo", "--local", "--detached")
-	require.Error(t, result.Err, "expected init with incompatible flags to fail")
 	require.Equal(t, 2, ExitCodeForError(result.Err))
 }
 
@@ -61,7 +56,7 @@ func TestInitCommandLocalCreatesLocalProject(t *testing.T) {
 
 	manifestPath := filepath.Join(memoriesHome, "backend", "mnemonic.toml")
 	_, err = os.Stat(manifestPath)
-	require.True(t, os.IsNotExist(err), "unexpected detached-style manifest")
+	require.True(t, os.IsNotExist(err), "unexpected central manifest")
 
 	// Init also creates an index; resolve the project UUID by re-listing the registry.
 	projects := listRegistryProjects(t)
@@ -75,7 +70,7 @@ func TestInitCommandLocalCreatesLocalProject(t *testing.T) {
 	require.NoError(t, err, "index file missing")
 }
 
-func TestInitCommandDetachedCreatesDetachedProject(t *testing.T) {
+func TestInitCommandCentralCreatesCentralProject(t *testing.T) {
 	cwd := t.TempDir()
 	memoriesHome := t.TempDir()
 
@@ -93,7 +88,7 @@ func TestInitCommandDetachedCreatesDetachedProject(t *testing.T) {
 	restore := project.SetClock(projectClockForCLI("550e8400-e29b-41d4-a716-446655440000"))
 	t.Cleanup(restore)
 
-	result := executeCommand("init", "personal", "--detached")
+	result := executeCommand("init", "personal")
 	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 
 	projectPath := filepath.Join(cwd, ".mnemonic")
@@ -109,7 +104,7 @@ func TestInitCommandDetachedCreatesDetachedProject(t *testing.T) {
 	require.NoError(t, err)
 	parsedManifest, err := project.ParseMnemonicManifest(manifestData)
 	require.NoError(t, err)
-	require.Equal(t, project.ManifestKindDetached, parsedManifest.Kind)
+	require.Equal(t, project.ManifestType(""), parsedManifest.Type)
 
 	indexPath, err := index.Path(parsedManifest.ProjectID)
 	require.NoError(t, err)
@@ -147,7 +142,7 @@ func TestInitCommandRejectsDuplicateSlug(t *testing.T) {
 	require.Contains(t, result.Stderr, `project slug "backend" already exists`)
 }
 
-func TestInitCommandDetachedWithDescription(t *testing.T) {
+func TestInitCommandCentralWithDescription(t *testing.T) {
 	cwd := t.TempDir()
 	memoriesHome := t.TempDir()
 
@@ -166,7 +161,7 @@ func TestInitCommandDetachedWithDescription(t *testing.T) {
 	t.Cleanup(restore)
 
 	desc := "Backend architecture decisions, API contracts, and database schemas."
-	result := executeCommand("init", "backend", "--detached", "--description", desc)
+	result := executeCommand("init", "backend", "--description", desc)
 	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 
 	manifestPath := filepath.Join(memoriesHome, "backend", "mnemonic.toml")
@@ -175,35 +170,6 @@ func TestInitCommandDetachedWithDescription(t *testing.T) {
 	parsedManifest, err := project.ParseMnemonicManifest(manifestData)
 	require.NoError(t, err)
 	require.Equal(t, desc, parsedManifest.Description)
-}
-
-func TestInitCommandDetachedWithoutDescription(t *testing.T) {
-	cwd := t.TempDir()
-	memoriesHome := t.TempDir()
-
-	testutil.CleanEnvForTest(t)
-	t.Setenv("MNEMONIC_MEMORIES_HOME", memoriesHome)
-
-	originalWD, err := os.Getwd()
-	require.NoError(t, err)
-	err = os.Chdir(cwd)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = os.Chdir(originalWD)
-	})
-
-	restore := project.SetClock(projectClockForCLI("550e8400-e29b-41d4-a716-446655440000"))
-	t.Cleanup(restore)
-
-	result := executeCommand("init", "personal", "--detached")
-	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
-
-	manifestPath := filepath.Join(memoriesHome, "personal", "mnemonic.toml")
-	manifestData, err := os.ReadFile(manifestPath)
-	require.NoError(t, err)
-	parsedManifest, err := project.ParseMnemonicManifest(manifestData)
-	require.NoError(t, err)
-	require.Empty(t, parsedManifest.Description)
 }
 
 func projectClockForCLI(uuids ...string) project.Clock {
@@ -241,17 +207,16 @@ func listRegistryProjects(t *testing.T) []registryProjectRow {
 	require.NoError(t, err)
 	t.Cleanup(closeAppContainer)
 
-	rows, err := container.Services.Registry.Query(`SELECT project_id, slug FROM projects WHERE removed_at IS NULL ORDER BY slug`)
+	entries, _, err := registry.Scan(container.Paths.MemoriesHome)
 	require.NoError(t, err)
-	defer rows.Close()
 
 	var out []registryProjectRow
-	for rows.Next() {
-		var row registryProjectRow
-		require.NoError(t, rows.Scan(&row.projectID, &row.slug))
-		out = append(out, row)
+	for _, e := range entries {
+		out = append(out, registryProjectRow{
+			projectID: e.ProjectID,
+			slug:      e.Slug,
+		})
 	}
-	require.NoError(t, rows.Err())
 
 	return out
 }

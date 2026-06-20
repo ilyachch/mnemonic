@@ -4,13 +4,14 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/markdown"
 	"github.com/ilyachch/mnemonic/internal/paths"
-	"github.com/ilyachch/mnemonic/internal/registry"
+	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -118,6 +119,72 @@ func TestResolveReturnsNotFoundError(t *testing.T) {
 	assert.Equal(t, app.CodeNotFound, appErr.Code)
 }
 
+func TestNormalizeResolvedPath(t *testing.T) {
+	cases := map[string]string{
+		"folder/../note.md": "note.md",
+		filepath.ToSlash(filepath.Join("folder", "note.md")): filepath.ToSlash(filepath.Join("folder", "note.md")),
+		".":            ".",
+		"../note.md":   "../note.md",
+		"/tmp/note.md": "/tmp/note.md",
+	}
+
+	for input, want := range cases {
+		t.Run(input, func(t *testing.T) {
+			require.Equal(t, want, normalizeResolvedPath(input))
+		})
+	}
+}
+
+func TestMatchResolvedNotesFromIndexUsesNormalizedTitle(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	_, err = db.Exec(`CREATE TABLE notes (
+		note_id TEXT PRIMARY KEY,
+		slug TEXT NOT NULL,
+		rel_path TEXT NOT NULL,
+		title TEXT NOT NULL
+	)`)
+	require.NoError(t, err)
+
+	_, err = db.Exec(`INSERT INTO notes(note_id, slug, rel_path, title) VALUES (?, ?, ?, ?)`,
+		"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+		"custom-slug",
+		"folder/note.md",
+		"Normalized Title",
+	)
+	require.NoError(t, err)
+
+	matches, err := matchResolvedNotesFromIndex(db, "normalized-title")
+	require.NoError(t, err)
+	require.Len(t, matches, 1)
+	require.Equal(t, "folder/note.md", matches[0].Path)
+}
+
+func TestResolveReturnsReadErrorWhenIndexedFileMissing(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+	projectRoot := t.TempDir()
+
+	writeResolvedNote(t, projectRoot, "indexed.md", markdown.Note{
+		MnemonicNoteID: "66666666-6666-6666-6666-666666666666",
+		Title:          "Indexed Note",
+		Slug:           "indexed-note",
+		CreatedAt:      noteTime(),
+		UpdatedAt:      noteTime(),
+	})
+
+	require.NoError(t, os.Remove(filepath.Join(projectRoot, "indexed.md")))
+
+	_, _, err := readResolvedNote(projectRoot, resolvedNote{
+		selectorData: selectorData{
+			Path: "indexed.md",
+		},
+	})
+	require.Error(t, err)
+	require.True(t, strings.Contains(err.Error(), "read note"))
+}
+
 func TestResolveUsesProjectIndexWhenAvailable(t *testing.T) {
 	projectRoot := filepath.Join(testutil.CleanEnvForTest(t), "project")
 	require.NoError(t, os.MkdirAll(projectRoot, 0o755))
@@ -130,23 +197,8 @@ func TestResolveUsesProjectIndexWhenAvailable(t *testing.T) {
 		UpdatedAt:      noteTime(),
 	})
 
-	db, err := registry.OpenDB()
-	require.NoError(t, err)
-	defer func() { _ = db.Close() }()
-	require.NoError(t, registry.ApplySchema(db))
-	require.NoError(t, registry.RegisterProject(db, registry.RegisterProjectInput{
-		ProjectID: "550e8400-e29b-41d4-a716-446655440000",
-		Name:      "project",
-		Slug:      "project",
-		Kind:      registry.ProjectKindLocal,
-		CreatedAt: noteTime(),
-		UpdatedAt: noteTime(),
-		SeenAt:    noteTime(),
-		Location: registry.ProjectLocationInput{
-			MemoriesAbs: projectRoot,
-			SourceKind:  registry.ProjectSourceKindInit,
-		},
-	}))
+	// Set up file-based registry with a central project
+	setupMnemonicHomeWithProject(t, "project", "550e8400-e29b-41d4-a716-446655440000", projectRoot)
 
 	mnemonicPaths, err := paths.GetMnemonicPaths()
 	require.NoError(t, err)
@@ -203,23 +255,8 @@ func TestResolveFallsBackToDiskWhenIndexIsStale(t *testing.T) {
 		UpdatedAt:      noteTime(),
 	})
 
-	db, err := registry.OpenDB()
-	require.NoError(t, err)
-	defer func() { _ = db.Close() }()
-	require.NoError(t, registry.ApplySchema(db))
-	require.NoError(t, registry.RegisterProject(db, registry.RegisterProjectInput{
-		ProjectID: "550e8400-e29b-41d4-a716-446655440000",
-		Name:      "project",
-		Slug:      "project",
-		Kind:      registry.ProjectKindLocal,
-		CreatedAt: noteTime(),
-		UpdatedAt: noteTime(),
-		SeenAt:    noteTime(),
-		Location: registry.ProjectLocationInput{
-			MemoriesAbs: projectRoot,
-			SourceKind:  registry.ProjectSourceKindInit,
-		},
-	}))
+	// Set up file-based registry with a central project
+	setupMnemonicHomeWithProject(t, "project", "550e8400-e29b-41d4-a716-446655440000", projectRoot)
 
 	mnemonicPaths, err := paths.GetMnemonicPaths()
 	require.NoError(t, err)
@@ -255,6 +292,25 @@ func TestResolveFallsBackToDiskWhenIndexIsStale(t *testing.T) {
 	got, err := Resolve(projectRoot, "77777777-7777-7777-7777-777777777777")
 	require.NoError(t, err)
 	assert.Equal(t, "fresh.md", got.Path)
+}
+
+func setupMnemonicHomeWithProject(t *testing.T, slug, projectID, memoriesRoot string) {
+	t.Helper()
+	mnemonicPaths, err := paths.GetMnemonicPaths()
+	require.NoError(t, err)
+
+	projectDir := filepath.Join(mnemonicPaths.MemoriesHome, slug)
+	require.NoError(t, os.MkdirAll(projectDir, 0o755))
+
+	manifest := project.NewMnemonicManifest()
+	manifest.ProjectID = projectID
+	manifest.Name = slug
+	manifest.Slug = slug
+	manifest.MarkdownFormatVersion = 1
+	manifest.CreatedAt = noteTime()
+	manifest.UpdatedAt = noteTime()
+	manifest.Generator.App = "mnemonic"
+	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))
 }
 
 func writeResolvedNote(t *testing.T, root, relPath string, note markdown.Note) {

@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -56,20 +55,15 @@ func TestResolveImportPathReturnsNotFoundForMissingPath(t *testing.T) {
 	require.Contains(t, err.Error(), "not found")
 }
 
-func TestImportProjectRegistersRegularManifest(t *testing.T) {
+func TestImportProjectRegistersManifest(t *testing.T) {
 	testutil.CleanEnvForTest(t)
-
-	db, err := registry.OpenDB()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
-	require.NoError(t, registry.ApplySchema(db))
+	memoriesHome := t.TempDir()
 
 	root := t.TempDir()
 	manifest := NewMnemonicManifest()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
 	manifest.Name = "demo"
 	manifest.Slug = "demo"
-	manifest.Kind = ManifestKindRegular
 	manifest.MarkdownFormatVersion = 1
 	manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
 	manifest.UpdatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
@@ -77,32 +71,33 @@ func TestImportProjectRegistersRegularManifest(t *testing.T) {
 
 	require.NoError(t, WriteMnemonicManifest(filepath.Join(root, "mnemonic.toml"), manifest))
 
-	result, err := ImportProject(ImportInput{Path: root})
+	result, err := ImportProject(ImportInput{Path: root}, memoriesHome)
 	require.NoError(t, err)
 	require.Equal(t, root, result.Path)
 	require.Equal(t, 1, result.Imported)
-	require.Equal(t, 0, result.Indexed, "indexing requires app container; this is set by the CLI command, not by ImportProject itself")
 	require.Len(t, result.Candidates, 1)
 
-	var count int
-	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM projects WHERE removed_at IS NULL AND slug = ?`, "demo").Scan(&count))
-	require.Equal(t, 1, count)
+	// Verify pointer file was created
+	pointerPath := filepath.Join(memoriesHome, "demo.toml")
+	_, err = os.Stat(pointerPath)
+	require.NoError(t, err, "pointer file should exist")
+
+	data, err := os.ReadFile(pointerPath)
+	require.NoError(t, err)
+	pf, err := ParsePointerFile(data)
+	require.NoError(t, err)
+	require.Contains(t, pf.ManifestPath, "mnemonic.toml")
 }
 
-func TestImportProjectDryRunDoesNotWriteRegistry(t *testing.T) {
+func TestImportProjectDryRunDoesNotCreatePointer(t *testing.T) {
 	testutil.CleanEnvForTest(t)
-
-	db, err := registry.OpenDB()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
-	require.NoError(t, registry.ApplySchema(db))
+	memoriesHome := t.TempDir()
 
 	root := t.TempDir()
 	manifest := NewMnemonicManifest()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
 	manifest.Name = "demo"
 	manifest.Slug = "demo"
-	manifest.Kind = ManifestKindRegular
 	manifest.MarkdownFormatVersion = 1
 	manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
 	manifest.UpdatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
@@ -110,21 +105,47 @@ func TestImportProjectDryRunDoesNotWriteRegistry(t *testing.T) {
 
 	require.NoError(t, WriteMnemonicManifest(filepath.Join(root, "mnemonic.toml"), manifest))
 
-	result, err := ImportProject(ImportInput{Path: root, DryRun: true})
+	result, err := ImportProject(ImportInput{Path: root, DryRun: true}, memoriesHome)
 	require.NoError(t, err)
 	require.Equal(t, 1, result.Imported)
-	require.Equal(t, 0, result.Indexed)
 
-	var count int
-	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM projects WHERE removed_at IS NULL`).Scan(&count))
-	require.Equal(t, 0, count)
+	// Verify no pointer file was created
+	pointerPath := filepath.Join(memoriesHome, "demo.toml")
+	_, err = os.Stat(pointerPath)
+	require.True(t, os.IsNotExist(err), "pointer file should not exist on dry run")
 }
 
 func TestImportProjectReturnsNotFoundWithoutManifest(t *testing.T) {
 	testutil.CleanEnvForTest(t)
+	memoriesHome := t.TempDir()
 	root := t.TempDir()
 
-	_, err := ImportProject(ImportInput{Path: root})
+	_, err := ImportProject(ImportInput{Path: root}, memoriesHome)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "mnemonic.toml not found")
+}
+
+func TestImportProjectRejectsDuplicateSlug(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+	memoriesHome := t.TempDir()
+
+	root := t.TempDir()
+	manifest := NewMnemonicManifest()
+	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
+	manifest.Name = "demo"
+	manifest.Slug = "demo"
+	manifest.MarkdownFormatVersion = 1
+	manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
+	manifest.UpdatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
+	manifest.Generator.App = "mnemonic"
+
+	require.NoError(t, WriteMnemonicManifest(filepath.Join(root, "mnemonic.toml"), manifest))
+
+	_, err := ImportProject(ImportInput{Path: root}, memoriesHome)
+	require.NoError(t, err)
+
+	// Try importing the same project again
+	_, err = ImportProject(ImportInput{Path: root}, memoriesHome)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "already exists")
 }

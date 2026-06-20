@@ -1,16 +1,15 @@
 package cli
 
 import (
-	"database/sql"
 	"fmt"
 
 	"github.com/ilyachch/mnemonic/internal/index"
-	"github.com/ilyachch/mnemonic/internal/paths"
+	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/spf13/cobra"
 )
 
 var projectReindexCmd = &cobra.Command{
-	Use:               "reindex [NAME_OR_UUID]",
+	Use:               "reindex [SLUG]",
 	Short:             "Rebuild project indexes",
 	ValidArgsFunction: completeProjectNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -23,24 +22,22 @@ var projectReindexCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		db := container.Services.Registry
-		effectivePaths := container.Paths
 
 		switch {
 		case len(args) == 1:
-			result, err := reindexSingleProject(db, effectivePaths, args[0])
+			result, err := reindexSingleProject(container.Paths.MemoriesHome, args[0])
 			if err != nil {
 				return err
 			}
 			return PrintOutput(cmd.OutOrStdout(), fmt.Sprintf("%s reindexed\n", result.ProjectID), result)
 		case all:
-			result, err := reindexAllProjects(db, effectivePaths)
+			result, err := reindexAllProjects(container.Paths.MemoriesHome)
 			if err != nil {
 				return err
 			}
 			return PrintOutput(cmd.OutOrStdout(), fmt.Sprintf("%d projects reindexed\n", result.Indexed), result)
 		default:
-			result, err := reindexPendingProjects(db, effectivePaths)
+			result, err := reindexAllProjects(container.Paths.MemoriesHome)
 			if err != nil {
 				return err
 			}
@@ -69,151 +66,62 @@ type projectReindexSummary struct {
 	Projects []projectReindexProjectResult `json:"projects,omitempty"`
 }
 
-func reindexSingleProject(db *sql.DB, effectivePaths paths.EffectivePaths, selector string) (projectReindexProjectResult, error) {
-	record, err := queryProjectBySelector(selector)
+func reindexSingleProject(memoriesHome, selector string) (projectReindexProjectResult, error) {
+	entry, err := registry.Resolve(memoriesHome, selector)
 	if err != nil {
 		return projectReindexProjectResult{}, err
 	}
-	res, err := rebuildProject(record, effectivePaths)
-	if err != nil {
-		return projectReindexProjectResult{}, err
-	}
-	if err := updateIndexStatus(db, record.ProjectID, true, false); err != nil {
-		return projectReindexProjectResult{}, err
-	}
-	return res, nil
-}
 
-func reindexPendingProjects(db *sql.DB, effectivePaths paths.EffectivePaths) (projectReindexSummary, error) {
-	rows, err := db.Query(`SELECT p.project_id, p.name, p.slug, p.kind, l.memories_abs, l.source_kind, s.index_present, s.needs_reindex
-		FROM projects p
-		JOIN project_locations l ON l.project_id = p.project_id
-		JOIN project_status s ON s.project_id = p.project_id
-		WHERE p.removed_at IS NULL
-		ORDER BY p.slug`)
-	if err != nil {
-		return projectReindexSummary{}, err
+	if entry.MemoriesAbs == "" {
+		return projectReindexProjectResult{}, fmt.Errorf("no memories path for project %q", selector)
 	}
-	records, err := loadPendingReindexProjects(rows)
-	if err != nil {
-		return projectReindexSummary{}, err
-	}
-	var summary projectReindexSummary
-	for _, pending := range records {
-		if pending.indexPresent && !pending.needsReindex {
-			summary.Skipped++
-			continue
-		}
-		record := pending.projectLookupResult
-		res, err := rebuildProject(record, effectivePaths)
-		if err != nil {
-			summary.Projects = append(summary.Projects, projectReindexProjectResult{ProjectID: record.ProjectID, Slug: record.Slug, Status: "error", Error: err.Error()})
-			continue
-		}
-		summary.Indexed++
-		summary.Projects = append(summary.Projects, res)
-		if err := updateIndexStatus(db, record.ProjectID, true, false); err != nil {
-			return summary, err
-		}
-	}
-	return summary, nil
-}
 
-func reindexAllProjects(db *sql.DB, effectivePaths paths.EffectivePaths) (projectReindexSummary, error) {
-	rows, err := db.Query(`SELECT p.project_id, p.name, p.slug, p.kind, l.memories_abs, l.source_kind
-		FROM projects p
-		JOIN project_locations l ON l.project_id = p.project_id
-		WHERE p.removed_at IS NULL
-		ORDER BY p.slug`)
-	if err != nil {
-		return projectReindexSummary{}, err
-	}
-	records, err := loadProjectRows(rows)
-	if err != nil {
-		return projectReindexSummary{}, err
-	}
-	var summary projectReindexSummary
-	for _, record := range records {
-		res, err := rebuildProject(record, effectivePaths)
-		if err != nil {
-			summary.Projects = append(summary.Projects, projectReindexProjectResult{ProjectID: record.ProjectID, Slug: record.Slug, Status: "error", Error: err.Error()})
-			continue
-		}
-		summary.Indexed++
-		summary.Projects = append(summary.Projects, res)
-		if err := updateIndexStatus(db, record.ProjectID, true, false); err != nil {
-			return summary, err
-		}
-	}
-	return summary, nil
-}
-
-func rebuildProject(record projectLookupResult, effectivePaths paths.EffectivePaths) (projectReindexProjectResult, error) {
-	result, err := index.RebuildProjectIndex(record.ProjectID, record.Location.memoriesAbs)
+	result, err := index.RebuildProjectIndex(entry.ProjectID, entry.MemoriesAbs)
 	if err != nil {
 		return projectReindexProjectResult{}, err
 	}
+
 	return projectReindexProjectResult{
 		ProjectID:    result.ProjectID,
-		Slug:         record.Slug,
+		Slug:         entry.Slug,
 		NotesSeen:    result.NotesSeen,
 		NotesIndexed: result.NotesIndexed,
 		Status:       result.Status,
 	}, nil
 }
 
-func updateIndexStatus(db *sql.DB, projectID string, present bool, needsReindex bool) error {
-	_, err := db.Exec(`UPDATE project_status SET index_present = ?, needs_reindex = ?, last_seen_at = CURRENT_TIMESTAMP WHERE project_id = ?`,
-		boolToInt(present), boolToInt(needsReindex), projectID)
-	return err
-}
-
-func boolToInt(v bool) int {
-	if v {
-		return 1
+func reindexAllProjects(memoriesHome string) (projectReindexSummary, error) {
+	entries, _, err := registry.Scan(memoriesHome)
+	if err != nil {
+		return projectReindexSummary{}, err
 	}
-	return 0
-}
 
-type pendingReindexProject struct {
-	projectLookupResult
-	indexPresent bool
-	needsReindex bool
-}
-
-func loadPendingReindexProjects(rows *sql.Rows) ([]pendingReindexProject, error) {
-	defer rows.Close()
-
-	var records []pendingReindexProject
-	for rows.Next() {
-		var record pendingReindexProject
-		var indexPresent, needsReindex int
-		if err := rows.Scan(&record.ProjectID, &record.Name, &record.Slug, &record.Kind, &record.Location.memoriesAbs, &record.Location.sourceKind, &indexPresent, &needsReindex); err != nil {
-			return nil, err
+	var summary projectReindexSummary
+	for _, entry := range entries {
+		if entry.ProjectID == "" || entry.MemoriesAbs == "" {
+			summary.Skipped++
+			continue
 		}
-		record.indexPresent = indexPresent == 1
-		record.needsReindex = needsReindex == 1
-		records = append(records, record)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return records, nil
-}
 
-func loadProjectRows(rows *sql.Rows) ([]projectLookupResult, error) {
-	defer rows.Close()
-
-	var records []projectLookupResult
-	for rows.Next() {
-		var record projectLookupResult
-		if err := rows.Scan(&record.ProjectID, &record.Name, &record.Slug, &record.Kind, &record.Location.memoriesAbs, &record.Location.sourceKind); err != nil {
-			return nil, err
+		result, err := index.RebuildProjectIndex(entry.ProjectID, entry.MemoriesAbs)
+		if err != nil {
+			summary.Projects = append(summary.Projects, projectReindexProjectResult{
+				ProjectID: entry.ProjectID,
+				Slug:      entry.Slug,
+				Status:    "error",
+				Error:     err.Error(),
+			})
+			continue
 		}
-		records = append(records, record)
+
+		summary.Indexed++
+		summary.Projects = append(summary.Projects, projectReindexProjectResult{
+			ProjectID:    result.ProjectID,
+			Slug:         entry.Slug,
+			NotesSeen:    result.NotesSeen,
+			NotesIndexed: result.NotesIndexed,
+			Status:       result.Status,
+		})
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return records, nil
+	return summary, nil
 }

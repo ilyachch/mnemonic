@@ -9,8 +9,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/ilyachch/mnemonic/internal/testutil"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 )
 
 // ---------------------------------------------------------------------------
@@ -441,6 +443,7 @@ func TestEnsurePathInsideRoot_escapeViaInternal(t *testing.T) {
 
 // Test editNote with all three mode branches (append, replace, merge)
 func TestEditNote_appendBranch(t *testing.T) {
+	testutil.CleanEnvForTest(t)
 	root := t.TempDir()
 	// Create a note using createNote
 	out, err := createNote(root, CreateNoteInput{
@@ -459,6 +462,7 @@ func TestEditNote_appendBranch(t *testing.T) {
 }
 
 func TestEditNote_replaceBodyBranch(t *testing.T) {
+	testutil.CleanEnvForTest(t)
 	root := t.TempDir()
 	out, err := createNote(root, CreateNoteInput{
 		Title: "Edit Replace Test",
@@ -476,6 +480,7 @@ func TestEditNote_replaceBodyBranch(t *testing.T) {
 }
 
 func TestEditNote_mergeFrontmatterBranch(t *testing.T) {
+	testutil.CleanEnvForTest(t)
 	root := t.TempDir()
 	out, err := createNote(root, CreateNoteInput{
 		Title: "Edit Merge Test",
@@ -626,6 +631,7 @@ func TestCreateNotePath_cleanDot(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTools_RegisterAndCallThroughMCPSession(t *testing.T) {
+	testutil.CleanEnvForTest(t)
 	// Set up an in-memory MCP server with real mock deps
 	ctx := context.Background()
 	sdkServer := sdkmcp.NewServer(

@@ -1,101 +1,123 @@
 package project
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
 
-func TestResolveProjectReturnsNotSelectedWhenSelectorAndEnvEmpty(t *testing.T) {
-	db, err := registry.OpenDB()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
+func TestResolveProjectFileBased(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+	memoriesHome := t.TempDir()
+	t.Setenv("MNEMONIC_MEMORIES_HOME", memoriesHome)
 
-	_, err = ResolveProject(ResolveProjectInput{Registry: db})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "no project selected")
+	// Create a central project
+	slug := "demo"
+	projectDir := filepath.Join(memoriesHome, slug)
+	require.NoError(t, os.MkdirAll(projectDir, 0o755))
+
+	manifest := NewMnemonicManifest()
+	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
+	manifest.Name = slug
+	manifest.Slug = slug
+	manifest.MarkdownFormatVersion = 1
+	manifest.CreatedAt = NowUTC()
+	manifest.UpdatedAt = NowUTC()
+	manifest.Generator.App = "mnemonic"
+	require.NoError(t, WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))
+
+	projectID, err := ResolveProject(memoriesHome, slug)
+	require.NoError(t, err)
+	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", projectID)
 }
 
-func TestResolveProjectReturnsNotFoundForUnknownSelector(t *testing.T) {
-	db, err := registry.OpenDB()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
+func TestResolveProjectNotFound(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+	memoriesHome := t.TempDir()
 
-	_, err = ResolveProject(ResolveProjectInput{
-		Registry:        db,
-		ProjectSelector: "missing",
-	})
+	_, err := ResolveProject(memoriesHome, "missing")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), `project "missing" not found`)
 }
 
-func TestResolveProjectFromEnvOpensRegistry(t *testing.T) {
+func TestErrProjectNotFoundError(t *testing.T) {
+	require.Equal(t, `project "missing" not found`, ErrProjectNotFound{Selector: "missing"}.Error())
+}
+
+func TestResolveProjectCentralManifestFallback(t *testing.T) {
 	testutil.CleanEnvForTest(t)
 
-	now := time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
-	db, err := registry.OpenDB()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
+	memoriesHome := t.TempDir()
+	slug := "demo"
+	projectDir := filepath.Join(memoriesHome, slug)
+	require.NoError(t, os.MkdirAll(projectDir, 0o755))
 
-	require.NoError(t, registry.RegisterProject(db, registry.RegisterProjectInput{
-		ProjectID: "550e8400-e29b-41d4-a716-446655440000",
-		Name:      "demo",
-		Slug:      "demo",
-		Kind:      registry.ProjectKindLocal,
-		CreatedAt: now,
-		UpdatedAt: now,
-		SeenAt:    now,
-		Location: registry.ProjectLocationInput{
-			RepoRootAbs: t.TempDir(),
-			MemoriesAbs: t.TempDir(),
-			SourceKind:  registry.ProjectSourceKindInit,
-		},
-	}))
+	manifest := NewMnemonicManifest()
+	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
+	manifest.Name = slug
+	manifest.Slug = slug
+	manifest.MarkdownFormatVersion = 1
+	manifest.CreatedAt = NowUTC()
+	manifest.UpdatedAt = NowUTC()
+	require.NoError(t, WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))
 
-	resolved, err := ResolveProjectFromEnv("demo")
-	require.NoError(t, err)
-	require.Equal(t, "demo", resolved.Project.Slug)
-}
-
-func TestResolveProjectRejectsNilRegistry(t *testing.T) {
-	_, err := ResolveProject(ResolveProjectInput{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "registry database is required")
-}
-
-func TestResolveProjectPicksSelectorOverEnv(t *testing.T) {
-	db, err := registry.OpenDB()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
-
-	now := time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
-	for _, slug := range []string{"alpha", "beta"} {
-		memoriesHome := t.TempDir()
-		require.NoError(t, registry.RegisterProject(db, registry.RegisterProjectInput{
-			ProjectID: "550e8400-e29b-41d4-a716-4466554400" + slug[:1],
-			Name:      slug,
-			Slug:      slug,
-			Kind:      registry.ProjectKindRegular,
-			CreatedAt: now,
-			UpdatedAt: now,
-			SeenAt:    now,
-			Location: registry.ProjectLocationInput{
-				MemoriesAbs: memoriesHome,
-				ManifestAbs: filepath.Join(memoriesHome, "mnemonic.toml"),
-				SourceKind:  registry.ProjectSourceKindInit,
-			},
-		}))
-	}
-
-	resolved, err := ResolveProject(ResolveProjectInput{
-		Registry:         db,
-		ProjectSelector:  "beta",
-		EnvironmentValue: "alpha",
+	origManifestParser := registry.DefaultManifestParser
+	origPointerParser := registry.DefaultPointerParser
+	registry.DefaultManifestParser = nil
+	registry.DefaultPointerParser = nil
+	t.Cleanup(func() {
+		registry.DefaultManifestParser = origManifestParser
+		registry.DefaultPointerParser = origPointerParser
 	})
+
+	projectID, err := ResolveProject(memoriesHome, slug)
 	require.NoError(t, err)
-	require.Equal(t, "beta", resolved.Project.Slug)
+	require.Equal(t, manifest.ProjectID, projectID)
+}
+
+func TestResolveProjectLocalPointerFallback(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+
+	memoriesHome := t.TempDir()
+	workspaceRoot := t.TempDir()
+	slug := "personal"
+	manifestPath := filepath.Join(workspaceRoot, slug, "mnemonic.toml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(manifestPath), 0o755))
+
+	manifest := NewMnemonicManifest()
+	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440001"
+	manifest.Name = slug
+	manifest.Slug = slug
+	manifest.MarkdownFormatVersion = 1
+	manifest.CreatedAt = NowUTC()
+	manifest.UpdatedAt = NowUTC()
+	require.NoError(t, WriteMnemonicManifest(manifestPath, manifest))
+	require.NoError(t, WritePointerFile(filepath.Join(memoriesHome, slug+".toml"), &PointerFile{ManifestPath: manifestPath}))
+
+	origManifestParser := registry.DefaultManifestParser
+	origPointerParser := registry.DefaultPointerParser
+	registry.DefaultManifestParser = nil
+	registry.DefaultPointerParser = nil
+	t.Cleanup(func() {
+		registry.DefaultManifestParser = origManifestParser
+		registry.DefaultPointerParser = origPointerParser
+	})
+
+	projectID, err := ResolveProject(memoriesHome, slug)
+	require.NoError(t, err)
+	require.Equal(t, manifest.ProjectID, projectID)
+}
+
+func TestMemoriesHome(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+	tempDir := t.TempDir()
+	t.Setenv("MNEMONIC_MEMORIES_HOME", tempDir)
+
+	home, err := MemoriesHome()
+	require.NoError(t, err)
+	require.Equal(t, tempDir, home)
 }
