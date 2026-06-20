@@ -11,7 +11,6 @@ import (
 
 	"github.com/ilyachch/mnemonic/internal/notes"
 	"github.com/ilyachch/mnemonic/internal/project"
-	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 )
 
@@ -112,7 +111,7 @@ func writeLocalProjectFixture(t *testing.T, cwd, slug string) error {
 	manifest.ProjectID = projectID
 	manifest.Name = slug
 	manifest.Slug = slug
-	manifest.Kind = project.ManifestKindRegular
+	manifest.Type = project.ManifestTypeLocal
 	manifest.MarkdownFormatVersion = 1
 	manifest.CreatedAt = now
 	manifest.UpdatedAt = now
@@ -122,35 +121,24 @@ func writeLocalProjectFixture(t *testing.T, cwd, slug string) error {
 		return err
 	}
 
-	if err := upsertRegistryProject(t, registry.RegisterProjectInput{
-		ProjectID: projectID,
-		Name:      slug,
-		Slug:      slug,
-		Kind:      registry.ProjectKindLocal,
-		CreatedAt: now,
-		UpdatedAt: now,
-		SeenAt:    now,
-		Location: registry.ProjectLocationInput{
-			RepoRootAbs: cwd,
-			MemoriesAbs: memoriesDir,
-			ManifestAbs: filepath.Join(memoriesDir, "mnemonic.toml"),
-			SourceKind:  registry.ProjectSourceKindInit,
-		},
-	}); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func upsertRegistryProject(t *testing.T, input registry.RegisterProjectInput) error {
-	t.Helper()
-
-	container, err := mustAppContainer()
+	memHome, err := resolveMemoriesHome()
 	if err != nil {
 		return err
 	}
-	t.Cleanup(closeAppContainer)
 
-	return registry.RegisterProject(container.Services.Registry, input)
+	pointerPath := filepath.Join(memHome, slug+".toml")
+	if err := os.MkdirAll(filepath.Dir(pointerPath), 0o755); err != nil {
+		return err
+	}
+	return project.WritePointerFile(pointerPath, &project.PointerFile{
+		ManifestPath: filepath.Join(memoriesDir, "mnemonic.toml"),
+	})
+}
+
+func resolveMemoriesHome() (string, error) {
+	container, err := mustAppContainer()
+	if err != nil {
+		return "", err
+	}
+	return container.Paths.MemoriesHome, nil
 }

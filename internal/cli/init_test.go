@@ -8,6 +8,7 @@ import (
 
 	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/project"
+	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -75,7 +76,7 @@ func TestInitCommandLocalCreatesLocalProject(t *testing.T) {
 	require.NoError(t, err, "index file missing")
 }
 
-func TestInitCommandDetachedCreatesDetachedProject(t *testing.T) {
+func TestInitCommandCentralCreatesCentralProject(t *testing.T) {
 	cwd := t.TempDir()
 	memoriesHome := t.TempDir()
 
@@ -93,7 +94,7 @@ func TestInitCommandDetachedCreatesDetachedProject(t *testing.T) {
 	restore := project.SetClock(projectClockForCLI("550e8400-e29b-41d4-a716-446655440000"))
 	t.Cleanup(restore)
 
-	result := executeCommand("init", "personal", "--detached")
+	result := executeCommand("init", "personal")
 	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 
 	projectPath := filepath.Join(cwd, ".mnemonic")
@@ -109,7 +110,7 @@ func TestInitCommandDetachedCreatesDetachedProject(t *testing.T) {
 	require.NoError(t, err)
 	parsedManifest, err := project.ParseMnemonicManifest(manifestData)
 	require.NoError(t, err)
-	require.Equal(t, project.ManifestKindDetached, parsedManifest.Kind)
+	require.Equal(t, project.ManifestType(""), parsedManifest.Type)
 
 	indexPath, err := index.Path(parsedManifest.ProjectID)
 	require.NoError(t, err)
@@ -241,17 +242,16 @@ func listRegistryProjects(t *testing.T) []registryProjectRow {
 	require.NoError(t, err)
 	t.Cleanup(closeAppContainer)
 
-	rows, err := container.Services.Registry.Query(`SELECT project_id, slug FROM projects WHERE removed_at IS NULL ORDER BY slug`)
+	entries, _, err := registry.Scan(container.Paths.MemoriesHome)
 	require.NoError(t, err)
-	defer rows.Close()
 
 	var out []registryProjectRow
-	for rows.Next() {
-		var row registryProjectRow
-		require.NoError(t, rows.Scan(&row.projectID, &row.slug))
-		out = append(out, row)
+	for _, e := range entries {
+		out = append(out, registryProjectRow{
+			projectID: e.ProjectID,
+			slug:      e.Slug,
+		})
 	}
-	require.NoError(t, rows.Err())
 
 	return out
 }

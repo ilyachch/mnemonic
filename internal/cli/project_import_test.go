@@ -125,7 +125,6 @@ func seedImportProject(t *testing.T) (string, string) {
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
 	manifest.Name = "backend"
 	manifest.Slug = "backend"
-	manifest.Kind = project.ManifestKindRegular
 	manifest.MarkdownFormatVersion = 1
 	manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
 	manifest.UpdatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)

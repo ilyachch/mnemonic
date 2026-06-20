@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -159,19 +158,13 @@ func TestServerIndexDBReusesSingleConnection(t *testing.T) {
 	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
 	require.NoError(t, err)
 
-	db, err := openTestRegistry(t)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
-
-	resolvedProject, err := project.ResolveProject(project.ResolveProjectInput{
-		ProjectSelector: "personal",
-		Registry:        db,
-	})
-	require.NoError(t, err)
 	effectivePaths, err := paths.ResolveEffectivePaths(paths.EffectiveInput{})
 	require.NoError(t, err)
 
-	server := NewServer(toAppResolution(resolvedProject), effectivePaths)
+	entry, err := registry.Resolve(effectivePaths.MemoriesHome, "personal")
+	require.NoError(t, err)
+
+	server := NewServer(toAppResolution(entry), effectivePaths)
 	t.Cleanup(func() {
 		_ = server.closeIndexDB()
 	})
@@ -864,17 +857,26 @@ func connectToMCPServerWithEnv(t *testing.T, repoRoot, projectRoot string, env [
 
 	stderr := &captureWriter{}
 	client := mcp.NewClient(&mcp.Implementation{Name: "client", Version: "v0.0.1"}, nil)
-	db, err := openTestRegistry(t)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
 
-	resolvedProject, err := project.ResolveProject(project.ResolveProjectInput{
-		ProjectSelector: "personal",
-		Registry:        db,
-	})
-	require.NoError(t, err)
 	effectivePaths, err := paths.ResolveEffectivePaths(paths.EffectiveInput{})
 	require.NoError(t, err)
+
+	// Resolve project using file-based registry
+	entry, err := registry.Resolve(effectivePaths.MemoriesHome, "personal")
+	require.NoError(t, err)
+
+	appResolution := app.ProjectResolution{
+		RepoRootAbs: entry.RepoRootAbs,
+		MemoriesAbs: entry.MemoriesAbs,
+		ManifestAbs: entry.ManifestPath,
+		Project: app.ProjectRecord{
+			ID:           entry.ProjectID,
+			Name:         entry.Name,
+			Slug:         entry.Slug,
+			Kind:         entry.Type,
+			MemoriesPath: filepath.Base(entry.MemoriesAbs),
+		},
+	}
 
 	sdkServer := mcp.NewServer(
 		&mcp.Implementation{Name: "mnemonic", Version: buildinfo.Version()},
@@ -884,7 +886,7 @@ func connectToMCPServerWithEnv(t *testing.T, repoRoot, projectRoot string, env [
 			},
 		},
 	)
-	server := NewServer(toAppResolution(resolvedProject), effectivePaths)
+	server := NewServer(appResolution, effectivePaths)
 	tools.RegisterAll(sdkServer, server, "")
 
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
@@ -904,35 +906,25 @@ func connectToMCPServerWithEnv(t *testing.T, repoRoot, projectRoot string, env [
 	return clientSession, stderr
 }
 
-// toAppResolution adapts a project.ResolvedProject to the app.ProjectResolution
+// toAppResolution adapts a registry.Entry to the app.ProjectResolution
 // shape expected by NewServer.
-func toAppResolution(resolved project.ResolvedProject) app.ProjectResolution {
+func toAppResolution(entry registry.Entry) app.ProjectResolution {
 	return app.ProjectResolution{
-		MnemonicFilePath: resolved.MnemonicFilePath,
-		RepoRootAbs:      resolved.RepoRootAbs,
-		MemoriesAbs:      resolved.MemoriesAbs,
-		ManifestAbs:      resolved.ManifestAbs,
+		RepoRootAbs: entry.RepoRootAbs,
+		MemoriesAbs: entry.MemoriesAbs,
+		ManifestAbs: entry.ManifestPath,
 		Project: app.ProjectRecord{
-			ID:           resolved.Project.ID,
-			Name:         resolved.Project.Name,
-			Slug:         resolved.Project.Slug,
-			Kind:         string(resolved.Project.Kind),
-			MemoriesPath: memoriesPathFromResolution(resolved),
+			ID:           entry.ProjectID,
+			Name:         entry.Name,
+			Slug:         entry.Slug,
+			Kind:         entry.Type,
+			MemoriesPath: filepath.Base(entry.MemoriesAbs),
 		},
 	}
 }
 
-func memoriesPathFromResolution(resolved project.ResolvedProject) string {
-	if resolved.RepoRootAbs != "" && resolved.MemoriesAbs != "" {
-		rel, err := filepath.Rel(resolved.RepoRootAbs, resolved.MemoriesAbs)
-		if err == nil && rel != "" && rel != "." {
-			return filepath.ToSlash(rel)
-		}
-	}
-	if resolved.MemoriesAbs != "" {
-		return filepath.Base(resolved.MemoriesAbs)
-	}
-	return ""
+func memoriesPathFromEntry(entry registry.Entry) string {
+	return filepath.Base(entry.MemoriesAbs)
 }
 
 // Decode helpers
@@ -1132,38 +1124,25 @@ func seedMCPProject(t *testing.T, projectRoot string) {
 	memoriesDir := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
 	require.NoError(t, os.MkdirAll(memoriesDir, 0o755))
 
-	db, err := openTestRegistry(t)
+	// Write manifest
+	manifest := project.NewMnemonicManifest()
+	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
+	manifest.Name = "personal"
+	manifest.Slug = "personal"
+	manifest.Type = project.ManifestTypeLocal
+	manifest.MarkdownFormatVersion = 1
+	manifest.CreatedAt = now
+	manifest.UpdatedAt = now
+	manifest.Generator.App = "mnemonic"
+	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(memoriesDir, "mnemonic.toml"), manifest))
+
+	// Write pointer file in memories home
+	mnemonicPaths, err := paths.GetMnemonicPaths()
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
-
-	require.NoError(t, registry.RegisterProject(db, registry.RegisterProjectInput{
-		ProjectID: "550e8400-e29b-41d4-a716-446655440000",
-		Name:      "personal",
-		Slug:      "personal",
-		Kind:      registry.ProjectKindLocal,
-		CreatedAt: now,
-		UpdatedAt: now,
-		SeenAt:    now,
-		Location: registry.ProjectLocationInput{
-			RepoRootAbs: projectRoot,
-			MemoriesAbs: memoriesDir,
-			SourceKind:  registry.ProjectSourceKindInit,
-		},
+	require.NoError(t, os.MkdirAll(mnemonicPaths.MemoriesHome, 0o755))
+	require.NoError(t, project.WritePointerFile(filepath.Join(mnemonicPaths.MemoriesHome, "personal.toml"), &project.PointerFile{
+		ManifestPath: filepath.Join(memoriesDir, "mnemonic.toml"),
 	}))
-}
-
-func openTestRegistry(t *testing.T) (*sql.DB, error) {
-	t.Helper()
-
-	db, err := registry.OpenDB()
-	if err != nil {
-		return nil, err
-	}
-	if err := registry.ApplySchema(db); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-	return db, nil
 }
 
 // mcpTestBaseByName maps test names to their persistent base directory so the

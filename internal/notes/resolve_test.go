@@ -10,7 +10,7 @@ import (
 	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/markdown"
 	"github.com/ilyachch/mnemonic/internal/paths"
-	"github.com/ilyachch/mnemonic/internal/registry"
+	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -130,23 +130,8 @@ func TestResolveUsesProjectIndexWhenAvailable(t *testing.T) {
 		UpdatedAt:      noteTime(),
 	})
 
-	db, err := registry.OpenDB()
-	require.NoError(t, err)
-	defer func() { _ = db.Close() }()
-	require.NoError(t, registry.ApplySchema(db))
-	require.NoError(t, registry.RegisterProject(db, registry.RegisterProjectInput{
-		ProjectID: "550e8400-e29b-41d4-a716-446655440000",
-		Name:      "project",
-		Slug:      "project",
-		Kind:      registry.ProjectKindLocal,
-		CreatedAt: noteTime(),
-		UpdatedAt: noteTime(),
-		SeenAt:    noteTime(),
-		Location: registry.ProjectLocationInput{
-			MemoriesAbs: projectRoot,
-			SourceKind:  registry.ProjectSourceKindInit,
-		},
-	}))
+	// Set up file-based registry with a central project
+	setupMnemonicHomeWithProject(t, "project", "550e8400-e29b-41d4-a716-446655440000", projectRoot)
 
 	mnemonicPaths, err := paths.GetMnemonicPaths()
 	require.NoError(t, err)
@@ -203,23 +188,8 @@ func TestResolveFallsBackToDiskWhenIndexIsStale(t *testing.T) {
 		UpdatedAt:      noteTime(),
 	})
 
-	db, err := registry.OpenDB()
-	require.NoError(t, err)
-	defer func() { _ = db.Close() }()
-	require.NoError(t, registry.ApplySchema(db))
-	require.NoError(t, registry.RegisterProject(db, registry.RegisterProjectInput{
-		ProjectID: "550e8400-e29b-41d4-a716-446655440000",
-		Name:      "project",
-		Slug:      "project",
-		Kind:      registry.ProjectKindLocal,
-		CreatedAt: noteTime(),
-		UpdatedAt: noteTime(),
-		SeenAt:    noteTime(),
-		Location: registry.ProjectLocationInput{
-			MemoriesAbs: projectRoot,
-			SourceKind:  registry.ProjectSourceKindInit,
-		},
-	}))
+	// Set up file-based registry with a central project
+	setupMnemonicHomeWithProject(t, "project", "550e8400-e29b-41d4-a716-446655440000", projectRoot)
 
 	mnemonicPaths, err := paths.GetMnemonicPaths()
 	require.NoError(t, err)
@@ -255,6 +225,25 @@ func TestResolveFallsBackToDiskWhenIndexIsStale(t *testing.T) {
 	got, err := Resolve(projectRoot, "77777777-7777-7777-7777-777777777777")
 	require.NoError(t, err)
 	assert.Equal(t, "fresh.md", got.Path)
+}
+
+func setupMnemonicHomeWithProject(t *testing.T, slug, projectID, memoriesRoot string) {
+	t.Helper()
+	mnemonicPaths, err := paths.GetMnemonicPaths()
+	require.NoError(t, err)
+
+	projectDir := filepath.Join(mnemonicPaths.MemoriesHome, slug)
+	require.NoError(t, os.MkdirAll(projectDir, 0o755))
+
+	manifest := project.NewMnemonicManifest()
+	manifest.ProjectID = projectID
+	manifest.Name = slug
+	manifest.Slug = slug
+	manifest.MarkdownFormatVersion = 1
+	manifest.CreatedAt = noteTime()
+	manifest.UpdatedAt = noteTime()
+	manifest.Generator.App = "mnemonic"
+	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))
 }
 
 func writeResolvedNote(t *testing.T, root, relPath string, note markdown.Note) {
