@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -116,6 +117,72 @@ func TestResolveReturnsNotFoundError(t *testing.T) {
 	var appErr *app.AppError
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, app.CodeNotFound, appErr.Code)
+}
+
+func TestNormalizeResolvedPath(t *testing.T) {
+	cases := map[string]string{
+		"folder/../note.md": "note.md",
+		filepath.ToSlash(filepath.Join("folder", "note.md")): filepath.ToSlash(filepath.Join("folder", "note.md")),
+		".":            ".",
+		"../note.md":   "../note.md",
+		"/tmp/note.md": "/tmp/note.md",
+	}
+
+	for input, want := range cases {
+		t.Run(input, func(t *testing.T) {
+			require.Equal(t, want, normalizeResolvedPath(input))
+		})
+	}
+}
+
+func TestMatchResolvedNotesFromIndexUsesNormalizedTitle(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	_, err = db.Exec(`CREATE TABLE notes (
+		note_id TEXT PRIMARY KEY,
+		slug TEXT NOT NULL,
+		rel_path TEXT NOT NULL,
+		title TEXT NOT NULL
+	)`)
+	require.NoError(t, err)
+
+	_, err = db.Exec(`INSERT INTO notes(note_id, slug, rel_path, title) VALUES (?, ?, ?, ?)`,
+		"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+		"custom-slug",
+		"folder/note.md",
+		"Normalized Title",
+	)
+	require.NoError(t, err)
+
+	matches, err := matchResolvedNotesFromIndex(db, "normalized-title")
+	require.NoError(t, err)
+	require.Len(t, matches, 1)
+	require.Equal(t, "folder/note.md", matches[0].Path)
+}
+
+func TestResolveReturnsReadErrorWhenIndexedFileMissing(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+	projectRoot := t.TempDir()
+
+	writeResolvedNote(t, projectRoot, "indexed.md", markdown.Note{
+		MnemonicNoteID: "66666666-6666-6666-6666-666666666666",
+		Title:          "Indexed Note",
+		Slug:           "indexed-note",
+		CreatedAt:      noteTime(),
+		UpdatedAt:      noteTime(),
+	})
+
+	require.NoError(t, os.Remove(filepath.Join(projectRoot, "indexed.md")))
+
+	_, _, err := readResolvedNote(projectRoot, resolvedNote{
+		selectorData: selectorData{
+			Path: "indexed.md",
+		},
+	})
+	require.Error(t, err)
+	require.True(t, strings.Contains(err.Error(), "read note"))
 }
 
 func TestResolveUsesProjectIndexWhenAvailable(t *testing.T) {

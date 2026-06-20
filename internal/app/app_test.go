@@ -1,6 +1,8 @@
 package app
 
 import (
+	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -8,6 +10,11 @@ import (
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
+
+func TestIsNoProjectSelected(t *testing.T) {
+	require.False(t, IsNoProjectSelected(nil))
+	require.False(t, IsNoProjectSelected(errors.New("other")))
+}
 
 func TestNewBuildsConfigPathsRegistryAndServices(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
@@ -50,4 +57,55 @@ func TestMemoriesPathForEntryFallsBackToLeafName(t *testing.T) {
 	}
 
 	require.Equal(t, "personal", memoriesPathForEntry(entry))
+}
+
+func TestFileResolverResolve(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+
+	t.Run("missing selector", func(t *testing.T) {
+		resolver := &FileResolver{MemoriesHome: t.TempDir()}
+
+		resolution, err := resolver.Resolve(ProjectResolveInput{})
+		require.Error(t, err)
+		require.Empty(t, resolution)
+		require.True(t, IsNoProjectSelected(err))
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		resolver := &FileResolver{MemoriesHome: t.TempDir()}
+
+		_, err := resolver.Resolve(ProjectResolveInput{ProjectSelector: "missing"})
+		require.Error(t, err)
+		require.Equal(t, CodeNotFound, err.(*AppError).Code)
+		require.Contains(t, err.Error(), `project "missing" not found`)
+	})
+
+	t.Run("central project", func(t *testing.T) {
+		memoriesHome := t.TempDir()
+		slug := "demo"
+		projectDir := filepath.Join(memoriesHome, slug)
+		require.NoError(t, os.MkdirAll(projectDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(projectDir, "mnemonic.toml"), []byte("project_id = \"550e8400-e29b-41d4-a716-446655440000\"\nname = \"demo\"\nslug = \"demo\"\n"), 0o644))
+
+		origManifestParser := registry.DefaultManifestParser
+		origPointerParser := registry.DefaultPointerParser
+		registry.DefaultManifestParser = nil
+		registry.DefaultPointerParser = nil
+		t.Cleanup(func() {
+			registry.DefaultManifestParser = origManifestParser
+			registry.DefaultPointerParser = origPointerParser
+		})
+
+		resolver := &FileResolver{MemoriesHome: memoriesHome}
+		resolution, err := resolver.Resolve(ProjectResolveInput{ProjectSelector: slug})
+		require.NoError(t, err)
+		require.Equal(t, projectDir, resolution.RepoRootAbs)
+		require.Equal(t, filepath.Join(projectDir, "mnemonic.toml"), resolution.ManifestAbs)
+		require.Equal(t, slug, resolution.Project.Slug)
+		require.Equal(t, "demo", resolution.Project.MemoriesPath)
+	})
+}
+
+func TestWrapRegistryErrorNil(t *testing.T) {
+	require.NoError(t, wrapRegistryError(nil))
 }
