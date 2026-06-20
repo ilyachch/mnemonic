@@ -55,8 +55,10 @@ func wrapRegistryError(err error) error {
 }
 
 func memoriesPathForEntry(entry registry.Entry) string {
-	if entry.Type == "local" {
-		return filepath.Base(entry.MemoriesAbs)
+	if entry.RepoRootAbs != "" && entry.MemoriesAbs != "" {
+		if rel, err := filepath.Rel(entry.RepoRootAbs, entry.MemoriesAbs); err == nil && rel != "" && rel != "." {
+			return filepath.ToSlash(rel)
+		}
 	}
 	return filepath.Base(entry.MemoriesAbs)
 }

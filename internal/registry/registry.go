@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -72,6 +73,10 @@ func Scan(memoriesHome string) ([]Entry, []Issue, error) {
 			slug := name
 			manifestPath := filepath.Join(memoriesHome, slug, "mnemonic.toml")
 			memoriesAbs := filepath.Join(memoriesHome, slug)
+
+			if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
+				continue
+			}
 
 			if DefaultManifestParser == nil {
 				results = append(results, Entry{
@@ -219,9 +224,15 @@ type Issue struct {
 
 // Resolve finds a single project by slug in the memories home.
 func Resolve(memoriesHome, slug string) (Entry, error) {
-	entries, _, err := Scan(memoriesHome)
+	entries, issues, err := Scan(memoriesHome)
 	if err != nil {
 		return Entry{}, err
+	}
+
+	for _, issue := range issues {
+		if issue.Slug == slug && (issue.Corrupt || issue.Orphan) {
+			return Entry{}, errors.New(issue.Error)
+		}
 	}
 
 	for _, e := range entries {
@@ -241,7 +252,7 @@ func FindByMemoriesRoot(memoriesHome, absRoot string) (Entry, bool, error) {
 	}
 
 	for _, e := range entries {
-		if e.MemoriesAbs == absRoot {
+		if filepath.Clean(e.MemoriesAbs) == filepath.Clean(absRoot) {
 			return e, true, nil
 		}
 	}

@@ -20,7 +20,6 @@ func executeCommand(args ...string) cmdResult {
 	jsonFlag = false
 	projectFlag = ""
 	_ = initCmd.Flags().Set("local", "false")
-	_ = initCmd.Flags().Set("detached", "false")
 	_ = initCmd.Flags().Set("description", "")
 	_ = projectImportCmd.Flags().Set("dry-run", "false")
 	_ = notesCreateCmd.Flags().Set("title", "")

@@ -22,10 +22,6 @@ var initCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		detached, err := cmd.Flags().GetBool("detached")
-		if err != nil {
-			return err
-		}
 
 		if len(args) == 0 {
 			return app.NewCLIUsageError("init requires NAME", nil)
@@ -63,10 +59,6 @@ var initCmd = &cobra.Command{
 		description, err := cmd.Flags().GetString("description")
 		if err != nil {
 			return err
-		}
-
-		if local && detached {
-			return app.NewCLIUsageError("init flags --local and --detached are mutually exclusive", nil)
 		}
 
 		mode := project.InitModeCentral
@@ -120,7 +112,6 @@ var initCmd = &cobra.Command{
 
 func init() {
 	initCmd.Flags().Bool("local", false, "create a local project")
-	initCmd.Flags().Bool("detached", false, "create a detached central project")
 	initCmd.Flags().String("description", "", "optional description of this memory's knowledge scope")
 	RootCmd.AddCommand(initCmd)
 }
