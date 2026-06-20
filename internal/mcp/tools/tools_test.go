@@ -239,6 +239,53 @@ func TestRegisterAll_doesNotPanic(t *testing.T) {
 	})
 }
 
+func TestRegisterReadOnlyRegistersOnlyReadTools(t *testing.T) {
+	names := registeredToolNames(t, func(server *sdkmcp.Server) {
+		RegisterReadOnly(server, &mockDeps{}, "")
+	})
+
+	require.Equal(t, []string{"list_backlinks", "list_notes", "list_tags", "read_note", "search_notes"}, names)
+}
+
+func TestRegisterWriteRegistersOnlyWriteTools(t *testing.T) {
+	names := registeredToolNames(t, func(server *sdkmcp.Server) {
+		RegisterWrite(server, &mockDeps{}, "")
+	})
+
+	require.Equal(t, []string{"create_note", "delete_note", "edit_note"}, names)
+}
+
+func registeredToolNames(t *testing.T, register func(*sdkmcp.Server)) []string {
+	t.Helper()
+
+	sdkServer := sdkmcp.NewServer(
+		&sdkmcp.Implementation{Name: "test", Version: "0.0.0"},
+		&sdkmcp.ServerOptions{},
+	)
+	register(sdkServer)
+
+	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+	serverSession, err := sdkServer.Connect(context.Background(), serverTransport, nil)
+	require.NoError(t, err)
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "client", Version: "0.0.1"}, nil)
+	clientSession, err := client.Connect(context.Background(), clientTransport, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = clientSession.Close()
+		_ = serverSession.Close()
+	})
+
+	tools, err := clientSession.ListTools(context.Background(), nil)
+	require.NoError(t, err)
+
+	names := make([]string, 0, len(tools.Tools))
+	for _, tool := range tools.Tools {
+		names = append(names, tool.Name)
+	}
+	return names
+}
+
 // ---------------------------------------------------------------------------
 // createNote — existing path error
 // ---------------------------------------------------------------------------
