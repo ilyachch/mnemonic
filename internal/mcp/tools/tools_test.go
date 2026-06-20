@@ -235,8 +235,16 @@ func TestRegisterAll_doesNotPanic(t *testing.T) {
 	)
 	deps := &mockDeps{}
 	require.NotPanics(t, func() {
-		RegisterAll(sdkServer, deps, "")
+		RegisterAll(sdkServer, deps, "", false)
 	})
+}
+
+func TestRegisterAllReadOnlySkipsWriteTools(t *testing.T) {
+	names := registeredToolNames(t, func(server *sdkmcp.Server) {
+		RegisterAll(server, &mockDeps{}, "", true)
+	})
+
+	require.Equal(t, []string{"list_backlinks", "list_notes", "list_tags", "read_note", "search_notes"}, names)
 }
 
 func TestRegisterReadOnlyRegistersOnlyReadTools(t *testing.T) {
@@ -692,7 +700,7 @@ func TestTools_RegisterAndCallThroughMCPSession(t *testing.T) {
 		indexDB:      nil,
 	}
 
-	RegisterAll(sdkServer, deps, "")
+	RegisterAll(sdkServer, deps, "", false)
 
 	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "client", Version: "0.0.1"}, nil)
 	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()

@@ -148,12 +148,13 @@ func (m *ServerManager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := m.authorize(r.Context(), r, slug); err != nil {
+	level, err := m.authorize(r.Context(), r, slug)
+	if err != nil {
 		writeAuthError(w, err)
 		return
 	}
 
-	instance, err := m.instanceForSlug(slug)
+	instance, err := m.instanceForSlug(slug, level)
 	if err != nil {
 		writeHTTPError(w, err)
 		return
@@ -179,41 +180,48 @@ func (m *ServerManager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (m *ServerManager) authorize(ctx context.Context, r *http.Request, slug string) (*webauth.User, error) {
+func (m *ServerManager) authorize(ctx context.Context, r *http.Request, slug string) (string, error) {
 	token, ok := bearerToken(r.Header.Get("Authorization"))
 	if !ok {
-		return nil, newStatusError(http.StatusUnauthorized, "authorization bearer token is required", nil)
+		return "", newStatusError(http.StatusUnauthorized, "authorization bearer token is required", nil)
 	}
 
 	if m.superuserToken != "" && token == m.superuserToken {
-		return &webauth.User{Username: "superuser"}, nil
+		return "rw", nil
 	}
 
 	if m.authStore == nil {
-		return nil, app.NewInternalError("web auth store is not configured", nil)
+		return "", app.NewInternalError("web auth store is not configured", nil)
 	}
 
 	user, err := m.authStore.ValidateToken(ctx, token)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	perms, err := m.authStore.GetPermissions(ctx, user.UserID)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	for _, perm := range perms {
 		if perm.ProjectSelector == slug {
-			return user, nil
+			switch perm.AccessLevel {
+			case "ro", "rw":
+				return perm.AccessLevel, nil
+			default:
+				return "", newStatusError(http.StatusForbidden, fmt.Sprintf("invalid access level %q for %q", perm.AccessLevel, slug), nil)
+			}
 		}
 	}
 
-	return nil, newStatusError(http.StatusForbidden, "forbidden", nil)
+	return "", newStatusError(http.StatusForbidden, "forbidden", nil)
 }
 
-func (m *ServerManager) instanceForSlug(slug string) (*ProjectInstance, error) {
+func (m *ServerManager) instanceForSlug(slug, level string) (*ProjectInstance, error) {
+	cacheKey := slug + ":" + level
+
 	m.mu.RLock()
-	instance := m.instances[slug]
+	instance := m.instances[cacheKey]
 	m.mu.RUnlock()
 	if instance != nil {
 		return instance, nil
@@ -222,7 +230,7 @@ func (m *ServerManager) instanceForSlug(slug string) (*ProjectInstance, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if instance = m.instances[slug]; instance != nil {
+	if instance = m.instances[cacheKey]; instance != nil {
 		return instance, nil
 	}
 
@@ -230,15 +238,20 @@ func (m *ServerManager) instanceForSlug(slug string) (*ProjectInstance, error) {
 	if factory == nil {
 		factory = m.buildProjectInstance
 	}
-	instance, err := factory(slug)
+	instance, err := factory(cacheKey)
 	if err != nil {
 		return nil, err
 	}
-	m.instances[slug] = instance
+	m.instances[cacheKey] = instance
 	return instance, nil
 }
 
-func (m *ServerManager) buildProjectInstance(slug string) (*ProjectInstance, error) {
+func (m *ServerManager) buildProjectInstance(cacheKey string) (*ProjectInstance, error) {
+	parts := strings.SplitN(cacheKey, ":", 2)
+	if len(parts) != 2 {
+		return nil, app.NewCLIUsageError("invalid project cache key", nil)
+	}
+	slug, level := parts[0], parts[1]
 	meta, ok := m.projects[slug]
 	if !ok {
 		return nil, app.NewNotFoundError(fmt.Sprintf("project %q is not configured for web serving", slug), nil)
@@ -270,7 +283,7 @@ func (m *ServerManager) buildProjectInstance(slug string) (*ProjectInstance, err
 		return nil, fmt.Errorf("apply busy timeout: %w", err)
 	}
 
-	srv := mcp.NewServerWithIndexDB(meta.Resolution, paths.EffectivePaths{MemoriesHome: m.memoriesHome}, db)
+	srv := mcp.NewServerWithIndexDB(meta.Resolution, paths.EffectivePaths{MemoriesHome: m.memoriesHome}, db, level == "ro")
 	sdkServer := srv.BuildSDKServer()
 
 	return &ProjectInstance{

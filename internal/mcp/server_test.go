@@ -32,7 +32,7 @@ func TestCommandTransportInitializeAndListTools(t *testing.T) {
 	projectRoot := t.TempDir()
 	seedMCPProject(t, projectRoot)
 
-	session, stderr := connectToMCPServerWithEnv(t, repoRoot, projectRoot, writableMCPEnv(t))
+	session, stderr := connectToMCPServerWithEnv(t, repoRoot, projectRoot, writableMCPEnv(t), false)
 
 	tools, err := session.ListTools(context.Background(), nil)
 	require.NoError(t, err)
@@ -54,6 +54,35 @@ func TestCommandTransportInitializeAndListTools(t *testing.T) {
 	assertToolAnnotations(t, tools.Tools, "read_note", true, false)
 	assertToolAnnotations(t, tools.Tools, "search_notes", true, false)
 
+	if got := stderr.String(); got != "" {
+		t.Logf("stderr output: %s", got)
+	}
+}
+
+func TestCommandTransportReadOnlyListsReadOnlyTools(t *testing.T) {
+	repoRoot := repoRootForTest(t)
+	projectRoot := t.TempDir()
+	seedMCPProject(t, projectRoot)
+
+	session, stderr := connectToMCPServerWithEnv(t, repoRoot, projectRoot, writableMCPEnv(t), true)
+
+	tools, err := session.ListTools(context.Background(), nil)
+	require.NoError(t, err)
+	require.Len(t, tools.Tools, 5)
+	gotNames := make([]string, 0, len(tools.Tools))
+	for _, tool := range tools.Tools {
+		require.NotContains(t, tool.Name, " ")
+		require.NotNil(t, tool.Annotations)
+		gotNames = append(gotNames, tool.Name)
+	}
+	wantNames := []string{"list_backlinks", "list_notes", "list_tags", "read_note", "search_notes"}
+	require.True(t, slices.Equal(gotNames, wantNames))
+	assertToolAnnotations(t, tools.Tools, "list_backlinks", true, false)
+	assertToolAnnotations(t, tools.Tools, "list_notes", true, false)
+	assertToolAnnotations(t, tools.Tools, "list_tags", true, false)
+	assertToolAnnotations(t, tools.Tools, "read_note", true, false)
+	assertToolAnnotations(t, tools.Tools, "search_notes", true, false)
+
 	gotSnapshot, err := json.MarshalIndent(tools.Tools, "", "  ")
 	require.NoError(t, err)
 	wantSnapshot, err := os.ReadFile(filepath.Join(repoRoot, "testdata", "mcp", "read_only_tools.snapshot.json"))
@@ -69,7 +98,7 @@ func TestServerRunAcceptsTransport(t *testing.T) {
 	ctx := context.Background()
 
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	server := NewServer(app.ProjectResolution{}, paths.EffectivePaths{})
+	server := NewServer(app.ProjectResolution{}, paths.EffectivePaths{}, false)
 	done := make(chan error, 1)
 	go func() {
 		done <- server.Run(ctx, serverTransport)
@@ -161,7 +190,7 @@ func TestListTagsReturnsTagsAndRespectsLimit(t *testing.T) {
 	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
 	require.NoError(t, err)
 
-	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
+	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env, false)
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "list_tags",
@@ -194,7 +223,7 @@ func TestServerIndexDBReusesSingleConnection(t *testing.T) {
 	entry, err := registry.Resolve(effectivePaths.MemoriesHome, "personal")
 	require.NoError(t, err)
 
-	server := NewServer(toAppResolution(entry), effectivePaths)
+	server := NewServer(toAppResolution(entry), effectivePaths, false)
 	t.Cleanup(func() {
 		_ = server.closeIndexDB()
 	})
@@ -213,7 +242,7 @@ func TestGetIndexDB_reusesInjectedConnection(t *testing.T) {
 		_ = db.Close()
 	})
 
-	server := NewServerWithIndexDB(app.ProjectResolution{}, paths.EffectivePaths{}, db)
+	server := NewServerWithIndexDB(app.ProjectResolution{}, paths.EffectivePaths{}, db, false)
 
 	firstDB, err := server.GetIndexDB()
 	require.NoError(t, err)
@@ -231,7 +260,7 @@ func TestCloseIndexDB_keepsInjectedConnectionOpen(t *testing.T) {
 		_ = db.Close()
 	})
 
-	server := NewServerWithIndexDB(app.ProjectResolution{}, paths.EffectivePaths{}, db)
+	server := NewServerWithIndexDB(app.ProjectResolution{}, paths.EffectivePaths{}, db, false)
 
 	require.NoError(t, server.closeIndexDB())
 	require.NoError(t, db.Ping())
@@ -251,7 +280,7 @@ func TestListBacklinksReturnsLinksAndRespectsLimit(t *testing.T) {
 	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
 	require.NoError(t, err)
 
-	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
+	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env, false)
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "list_backlinks",
@@ -277,7 +306,7 @@ func TestListBacklinksReturnsToolErrorForMissingNote(t *testing.T) {
 	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
 	require.NoError(t, err)
 
-	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
+	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env, false)
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "list_backlinks",
@@ -294,7 +323,7 @@ func TestCreateNoteCreatesReadableNote(t *testing.T) {
 	projectRoot := t.TempDir()
 	seedMCPProject(t, projectRoot)
 
-	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
+	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env, false)
 
 	createResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "create_note",
@@ -340,7 +369,7 @@ func TestWriteToolsRefreshIndexForReadOnlyTools(t *testing.T) {
 	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
 	require.NoError(t, err)
 
-	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
+	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env, false)
 
 	beforeSearch, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "search_notes",
@@ -401,7 +430,7 @@ func TestEditNoteSupportsModes(t *testing.T) {
 	t.Run("append", func(t *testing.T) {
 		projectRoot := t.TempDir()
 		seedMCPProject(t, projectRoot)
-		session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
+		session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env, false)
 
 		created := decodeCreateNoteOutput(t, callCreateNote(t, session, "Append Target", "", nil, ""))
 		readOut := decodeReadNoteOutput(t, callReadNote(t, session, created.NoteID))
@@ -424,7 +453,7 @@ func TestEditNoteSupportsModes(t *testing.T) {
 	t.Run("replace_body", func(t *testing.T) {
 		projectRoot := t.TempDir()
 		seedMCPProject(t, projectRoot)
-		session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
+		session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env, false)
 
 		created := decodeCreateNoteOutput(t, callCreateNote(t, session, "Replace Target", "original body\n", nil, ""))
 		readOut := decodeReadNoteOutput(t, callReadNote(t, session, created.NoteID))
@@ -447,7 +476,7 @@ func TestEditNoteSupportsModes(t *testing.T) {
 	t.Run("merge_frontmatter", func(t *testing.T) {
 		projectRoot := t.TempDir()
 		seedMCPProject(t, projectRoot)
-		session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
+		session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env, false)
 
 		created := decodeCreateNoteOutput(t, callCreateNote(t, session, "FM Target", "", nil, "decision"))
 
@@ -474,7 +503,7 @@ func TestEditNoteRejectsStaleHashWithoutChangingFile(t *testing.T) {
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
 	seedMCPProject(t, projectRoot)
-	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
+	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env, false)
 
 	created := decodeCreateNoteOutput(t, callCreateNote(t, session, "Stale Hash Edit", "original\n", nil, ""))
 	readOut := decodeReadNoteOutput(t, callReadNote(t, session, created.NoteID))
@@ -500,7 +529,7 @@ func TestEditNoteReplaceBodyRequiresIfMatchHash(t *testing.T) {
 	repoRoot := repoRootForTest(t)
 	projectRoot := t.TempDir()
 	seedMCPProject(t, projectRoot)
-	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
+	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env, false)
 
 	_ = decodeCreateNoteOutput(t, callCreateNote(t, session, "Hashless Replace", "body\n", nil, ""))
 
@@ -527,7 +556,7 @@ func TestDeleteNoteDefaultsToTrash(t *testing.T) {
 	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
 	require.NoError(t, err)
 
-	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
+	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env, false)
 
 	created := decodeCreateNoteOutput(t, callCreateNote(t, session, "Trashable", "", nil, ""))
 
@@ -563,7 +592,7 @@ func TestDeleteNoteHardDeleteRemovesFile(t *testing.T) {
 	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
 	require.NoError(t, err)
 
-	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
+	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env, false)
 
 	created := decodeCreateNoteOutput(t, callCreateNote(t, session, "HardDeletable", "body\n", nil, ""))
 	readOut := decodeReadNoteOutput(t, callReadNote(t, session, created.NoteID))
@@ -591,7 +620,7 @@ func TestDeleteNoteHardDeleteRequiresIfMatchHash(t *testing.T) {
 	projectRoot := t.TempDir()
 	seedMCPProject(t, projectRoot)
 
-	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
+	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env, false)
 	_ = decodeCreateNoteOutput(t, callCreateNote(t, session, "Hashless Delete", "", nil, ""))
 
 	deleteResult, err := session.CallTool(context.Background(), &mcp.CallToolParams{
@@ -634,7 +663,7 @@ func TestDeleteNoteRejectsStaleHashWithoutDeletingFile(t *testing.T) {
 	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
 	require.NoError(t, err)
 
-	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
+	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env, false)
 
 	created := decodeCreateNoteOutput(t, callCreateNote(t, session, "Stale Delete", "original\n", nil, ""))
 	readOut := decodeReadNoteOutput(t, callReadNote(t, session, created.NoteID))
@@ -667,7 +696,7 @@ func TestReadNoteReturnsPayload(t *testing.T) {
 	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
 	require.NoError(t, err)
 
-	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
+	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env, false)
 
 	byID, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "read_note",
@@ -709,7 +738,7 @@ func TestReadNoteMissingReturnsToolError(t *testing.T) {
 	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
 	require.NoError(t, err)
 
-	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
+	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env, false)
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "read_note",
@@ -732,7 +761,7 @@ func TestSearchNotesReturnsHits(t *testing.T) {
 	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoryRoot)
 	require.NoError(t, err)
 
-	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env)
+	session, _ := connectToMCPServerWithEnv(t, repoRoot, projectRoot, env, false)
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "search_notes",
@@ -910,10 +939,10 @@ func TestCreateNote_rebuildIndexSucceeds(t *testing.T) {
 func connectToMCPServer(t *testing.T, repoRoot, projectRoot string) (*mcp.ClientSession, *captureWriter) {
 	t.Helper()
 
-	return connectToMCPServerWithEnv(t, repoRoot, projectRoot, writableMCPEnv(t))
+	return connectToMCPServerWithEnv(t, repoRoot, projectRoot, writableMCPEnv(t), false)
 }
 
-func connectToMCPServerWithEnv(t *testing.T, repoRoot, projectRoot string, env []string) (*mcp.ClientSession, *captureWriter) {
+func connectToMCPServerWithEnv(t *testing.T, repoRoot, projectRoot string, env []string, readOnly bool) (*mcp.ClientSession, *captureWriter) {
 	t.Helper()
 
 	stderr := &captureWriter{}
@@ -948,8 +977,8 @@ func connectToMCPServerWithEnv(t *testing.T, repoRoot, projectRoot string, env [
 			},
 		},
 	)
-	server := NewServer(appResolution, effectivePaths)
-	tools.RegisterAll(sdkServer, server, "")
+	server := NewServer(appResolution, effectivePaths, readOnly)
+	tools.RegisterAll(sdkServer, server, "", readOnly)
 
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	serverSession, err := sdkServer.Connect(context.Background(), serverTransport, nil)
