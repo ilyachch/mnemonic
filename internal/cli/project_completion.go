@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -34,7 +33,7 @@ func loadActiveProjectNames() ([]string, error) {
 		return nil, err
 	}
 
-	slugs, err := registry.Slugs(container.Paths.MemoriesHome)
+	slugs, err := container.Services.Catalog.Slugs()
 	if err != nil {
 		return nil, fmt.Errorf("list active project names: %w", err)
 	}

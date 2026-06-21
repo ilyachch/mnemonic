@@ -2,8 +2,8 @@ package cli
 
 import (
 	"fmt"
+
 	"github.com/spf13/cobra"
-	"os"
 )
 
 var projectRemoveCmd = &cobra.Command{
@@ -26,55 +26,25 @@ Index and lock files are always cleaned up.`,
 			return err
 		}
 
-		_, err = mustAppContainer()
+		container, err := mustAppContainer()
 		if err != nil {
 			return err
 		}
 
-		runtime, err := runtimeAppForSelector(cmd.Context(), args[0])
+		result, err := container.Services.Catalog.Remove(args[0], wipe)
 		if err != nil {
 			return err
-		}
-
-		// Remove registry entry.
-		registryRemoved := false
-		if runtime.KB.ManifestPath != "" {
-			if err := os.Remove(runtime.KB.ManifestPath); err != nil && !os.IsNotExist(err) {
-				return fmt.Errorf("remove registry entry %q: %w", runtime.KB.ManifestPath, err)
-			}
-			registryRemoved = true
-		}
-
-		// Remove index and lock artifacts.
-		indexDeleted := false
-		if runtime.KB.IndexPath != "" {
-			for _, p := range []string{runtime.KB.IndexPath, runtime.KB.IndexPath + "-wal", runtime.KB.IndexPath + "-shm"} {
-				if _, err := os.Stat(p); err == nil {
-					_ = os.Remove(p)
-					indexDeleted = true
-				}
-			}
-			_ = os.RemoveAll(runtime.KB.StateDir)
-		}
-
-		// Wipe markdown if requested.
-		markdownDeleted := false
-		if wipe && runtime.KB.RootDir != "" {
-			if err := os.RemoveAll(runtime.KB.RootDir); err != nil {
-				return fmt.Errorf("wipe markdown: %w", err)
-			}
-			markdownDeleted = true
 		}
 
 		output := projectRemoveOutput{
-			ProjectID:       runtime.KB.ID,
-			Slug:            runtime.KB.Slug,
-			RegistryRemoved: registryRemoved,
-			IndexDeleted:    indexDeleted,
-			MarkdownDeleted: markdownDeleted,
-			FullWipe:        wipe,
+			ProjectID:       result.ProjectID,
+			Slug:            result.Slug,
+			RegistryRemoved: result.RegistryRemoved,
+			IndexDeleted:    result.IndexDeleted,
+			MarkdownDeleted: result.MarkdownDeleted,
+			FullWipe:        result.FullWipe,
 		}
-		human := fmt.Sprintf("%s removed\n", runtime.KB.Slug)
+		human := fmt.Sprintf("%s removed\n", result.Slug)
 		return PrintOutput(cmd.OutOrStdout(), human, output)
 	},
 }

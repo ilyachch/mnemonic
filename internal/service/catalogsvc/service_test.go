@@ -307,8 +307,10 @@ func TestImportRemoveAndSlugs(t *testing.T) {
 	imported, err := svc.Import(ImportInput{Path: repoRoot})
 	require.NoError(t, err)
 	require.Equal(t, 1, imported.Imported)
+	require.Equal(t, 1, imported.Indexed)
 	require.Len(t, imported.Candidates, 1)
 	require.FileExists(t, filepath.Join(memoriesHome, manifest.Slug+".toml"))
+	require.FileExists(t, filepath.Join(stateHome, "mnemonic", "projects", manifest.ProjectID, "index.sqlite"))
 
 	slugged, err := svc.Slugs()
 	require.NoError(t, err)

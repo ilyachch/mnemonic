@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
-	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/project"
+	"github.com/ilyachch/mnemonic/internal/service/catalogsvc"
 	"github.com/spf13/cobra"
 )
 
@@ -29,17 +29,9 @@ var projectImportCmd = &cobra.Command{
 			return err
 		}
 
-		result, err := project.ImportProject(project.ImportInput{Path: pathArg, DryRun: dryRun}, container.Paths.MemoriesHome)
+		result, err := container.Services.Catalog.Import(catalogsvc.ImportInput{Path: pathArg, DryRun: dryRun})
 		if err != nil {
 			return wrapImportError(err)
-		}
-		if !dryRun && len(result.Candidates) > 0 {
-			for _, candidate := range result.Candidates {
-				if _, err := index.RebuildProjectIndex(candidate.ProjectID, candidate.MemoriesPath); err != nil {
-					return err
-				}
-				result.Indexed++
-			}
 		}
 
 		output := projectImportOutput{

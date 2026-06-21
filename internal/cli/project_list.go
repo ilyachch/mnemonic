@@ -2,12 +2,9 @@ package cli
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 	"text/tabwriter"
 
-	"github.com/ilyachch/mnemonic/internal/paths"
-	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -28,12 +25,24 @@ var projectListCmd = &cobra.Command{
 			return err
 		}
 
-		projects, err := loadProjectList(container.Paths)
+		result, err := container.Services.Catalog.List()
 		if err != nil {
 			return err
 		}
 
-		output := projectListOutput{Projects: projects}
+		output := projectListOutput{Projects: make([]projectListItem, 0, len(result.Projects))}
+		for _, project := range result.Projects {
+			output.Projects = append(output.Projects, projectListItem{
+				ProjectID:    project.ProjectID,
+				Name:         project.Name,
+				Slug:         project.Slug,
+				Type:         project.Type,
+				MemoriesPath: project.MemoriesPath,
+				StatePath:    project.StatePath,
+				Status:       project.Status,
+				Issue:        project.Issue,
+			})
+		}
 		if output.Projects == nil {
 			output.Projects = []projectListItem{}
 		}
@@ -61,45 +70,6 @@ type projectListItem struct {
 	StatePath    string `json:"state_path"`
 	Status       string `json:"status"`
 	Issue        string `json:"issue,omitempty"`
-}
-
-func loadProjectList(effectivePaths paths.EffectivePaths) ([]projectListItem, error) {
-	entries, issues, err := registry.Scan(effectivePaths.MemoriesHome)
-	if err != nil {
-		return nil, fmt.Errorf("scan registry: %w", err)
-	}
-
-	// Build a map for quick issue lookup by slug.
-	issueMap := make(map[string]registry.Issue, len(issues))
-	for _, issue := range issues {
-		issueMap[issue.Slug] = issue
-	}
-
-	projects := make([]projectListItem, 0, len(entries))
-	for _, e := range entries {
-		item := projectListItem{
-			ProjectID:    e.ProjectID,
-			Name:         e.Name,
-			Slug:         e.Slug,
-			Type:         e.Type,
-			MemoriesPath: e.MemoriesAbs,
-			StatePath:    filepath.Join(effectivePaths.StateHome, "mnemonic", "projects", e.ProjectID),
-			Status:       "ok",
-		}
-
-		if issue, found := issueMap[e.Slug]; found {
-			if issue.Corrupt {
-				item.Status = "[CORRUPTED]"
-			} else if issue.Orphan {
-				item.Status = "[ORPHANED/MISSING]"
-			}
-			item.Issue = issue.Error
-		}
-
-		projects = append(projects, item)
-	}
-
-	return projects, nil
 }
 
 func formatProjectListHuman(projects []projectListItem) string {

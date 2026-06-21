@@ -183,7 +183,26 @@ func (s Service) Show(selector string) (ShowResult, error) {
 
 // Import imports a project into the registry.
 func (s Service) Import(input ImportInput) (ImportResult, error) {
-	return project.ImportProject(input, s.MemoriesHome)
+	result, err := project.ImportProject(input, s.MemoriesHome)
+	if err != nil {
+		return ImportResult{}, err
+	}
+	if result.DryRun {
+		return result, nil
+	}
+
+	for _, candidate := range result.Candidates {
+		resolved, err := s.Resolve(candidate.Slug)
+		if err != nil {
+			return ImportResult{}, err
+		}
+		if _, err := indexsvc.New(resolved).Rebuild(context.Background()); err != nil {
+			return ImportResult{}, err
+		}
+		result.Indexed++
+	}
+
+	return result, nil
 }
 
 // Init creates a project, resolves it, and builds the initial index.

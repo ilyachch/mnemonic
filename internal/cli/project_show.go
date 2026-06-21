@@ -12,21 +12,25 @@ var projectShowCmd = &cobra.Command{
 	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: completeProjectNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		runtime, err := runtimeAppForSelector(cmd.Context(), args[0])
+		container, err := mustAppContainer()
+		if err != nil {
+			return err
+		}
+		result, err := container.Services.Catalog.Show(args[0])
 		if err != nil {
 			return err
 		}
 
 		project := projectShowOutput{
-			ProjectID: runtime.KB.ID,
-			Name:      runtime.KB.Name,
-			Slug:      runtime.KB.Slug,
-			Type:      runtime.KB.Kind,
-			StateHome: runtime.KB.StateDir,
+			ProjectID: result.ProjectID,
+			Name:      result.Name,
+			Slug:      result.Slug,
+			Type:      result.Type,
+			StateHome: result.StateHome,
 			Location: projectLocationOutput{
-				MemoriesAbs: runtime.KB.RootDir,
-				ManifestAbs: runtime.KB.ManifestPath,
-				RepoRootAbs: runtime.KB.RepoRootDir,
+				MemoriesAbs: result.Location.MemoriesAbs,
+				ManifestAbs: result.Location.ManifestAbs,
+				RepoRootAbs: result.Location.RepoRootAbs,
 			},
 		}
 		human := fmt.Sprintf("%s %s\n", project.ProjectID, project.Name)
