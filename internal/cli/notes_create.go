@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/notes"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/spf13/cobra"
@@ -32,10 +33,10 @@ var notesCreateCmd = &cobra.Command{
 			return err
 		}
 		if title == "" {
-			return app.NewCLIUsageError("note title is required", nil)
+			return apperr.CLIUsage("note title is required", nil)
 		}
 		if useStdin && bodyFile != "" {
-			return app.NewCLIUsageError("--stdin and --body-file cannot be combined", nil)
+			return apperr.CLIUsage("--stdin and --body-file cannot be combined", nil)
 		}
 
 		root, err := resolveNotesProjectRoot()

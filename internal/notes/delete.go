@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	mnemonicfs "github.com/ilyachch/mnemonic/internal/fs"
 )
 
@@ -34,7 +34,7 @@ func Delete(input DeleteInput) (DeleteResult, error) {
 		return DeleteResult{}, fmt.Errorf("root directory is required")
 	}
 	if input.Selector == "" {
-		return DeleteResult{}, app.NewNotFoundError("note selector is required", nil)
+		return DeleteResult{}, apperr.NotFound("note selector is required", nil)
 	}
 
 	guard, err := acquireWriteLock(input.RootDir)
@@ -51,7 +51,7 @@ func Delete(input DeleteInput) (DeleteResult, error) {
 	absPath := filepath.Join(input.RootDir, filepath.FromSlash(resolved.Path))
 	if input.Hard {
 		if !input.Yes {
-			return DeleteResult{}, app.NewUnsafeError("hard delete requires --yes", nil)
+			return DeleteResult{}, apperr.Unsafe("hard delete requires --yes", nil)
 		}
 		if input.DryRun {
 			return DeleteResult{Mode: "hard", Path: resolved.Path}, nil

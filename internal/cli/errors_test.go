@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -26,27 +26,27 @@ func TestExitCodeForError(t *testing.T) {
 		},
 		{
 			name: "CLI usage error",
-			err:  app.NewCLIUsageError("invalid usage", nil),
+			err:  apperr.CLIUsage("invalid usage", nil),
 			want: 2,
 		},
 		{
 			name: "Not found error",
-			err:  app.NewNotFoundError("resource not found", nil),
+			err:  apperr.NotFound("resource not found", nil),
 			want: 3,
 		},
 		{
 			name: "Ambiguous error",
-			err:  app.NewAmbiguousError("ambiguous input", nil),
+			err:  apperr.Ambiguous("ambiguous input", nil),
 			want: 4,
 		},
 		{
 			name: "Unsafe error",
-			err:  app.NewUnsafeError("precondition failed", nil),
+			err:  apperr.Unsafe("precondition failed", nil),
 			want: 5,
 		},
 		{
 			name: "Corrupted error",
-			err:  app.NewCorruptedError("corrupted index", nil),
+			err:  apperr.Corrupted("corrupted index", nil),
 			want: 6,
 		},
 	}

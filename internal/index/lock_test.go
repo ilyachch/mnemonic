@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/lock"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
@@ -28,9 +28,9 @@ func TestRebuildProjectIndexReturnsBusyErrorWhenLockHeld(t *testing.T) {
 	_, err = RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoriesRoot)
 	require.Error(t, err)
 
-	var appErr *app.AppError
+	var appErr *apperr.Error
 	require.True(t, errors.As(err, &appErr))
-	require.Equal(t, app.CodeUnsafe, appErr.Code)
+	require.Equal(t, apperr.CodeUnsafe, appErr.Code)
 }
 
 func createIndexTestNote(root string, relPath string, content string) error {

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	mnemonicfs "github.com/ilyachch/mnemonic/internal/fs"
 	"github.com/ilyachch/mnemonic/internal/markdown"
 	"github.com/ilyachch/mnemonic/internal/project"
@@ -36,7 +36,7 @@ func Create(input CreateInput) (CreateResult, error) {
 		return CreateResult{}, fmt.Errorf("root directory is required")
 	}
 	if input.Title == "" {
-		return CreateResult{}, app.NewCLIUsageError("note title is required", nil)
+		return CreateResult{}, apperr.CLIUsage("note title is required", nil)
 	}
 
 	guard, err := acquireWriteLock(input.RootDir)
@@ -78,7 +78,7 @@ func Create(input CreateInput) (CreateResult, error) {
 	relPath := slug + ".md"
 	absPath := filepath.Join(input.RootDir, relPath)
 	if _, err := os.Stat(absPath); err == nil {
-		return CreateResult{}, app.NewAmbiguousError(fmt.Sprintf("note slug %q already exists", slug), nil)
+		return CreateResult{}, apperr.Ambiguous(fmt.Sprintf("note slug %q already exists", slug), nil)
 	} else if !os.IsNotExist(err) {
 		return CreateResult{}, fmt.Errorf("check note path %q: %w", absPath, err)
 	}

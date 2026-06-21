@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/markdown"
 	"github.com/ilyachch/mnemonic/internal/paths"
 	"github.com/ilyachch/mnemonic/internal/project"
@@ -26,7 +26,7 @@ func Resolve(root string, selector string) (ResolvedNote, error) {
 		return ResolvedNote{}, fmt.Errorf("root directory is required")
 	}
 	if selector == "" {
-		return ResolvedNote{}, app.NewNotFoundError("note selector is required", nil)
+		return ResolvedNote{}, apperr.NotFound("note selector is required", nil)
 	}
 
 	resolved, usedIndex, err := resolveFromIndex(root, selector)
@@ -58,11 +58,11 @@ func Resolve(root string, selector string) (ResolvedNote, error) {
 		case 1:
 			return matches[0], nil
 		default:
-			return ResolvedNote{}, app.NewAmbiguousError(fmt.Sprintf("note selector %q matches multiple notes", selector), nil)
+			return ResolvedNote{}, apperr.Ambiguous(fmt.Sprintf("note selector %q matches multiple notes", selector), nil)
 		}
 	}
 
-	return ResolvedNote{}, app.NewNotFoundError(fmt.Sprintf("note %q not found", selector), nil)
+	return ResolvedNote{}, apperr.NotFound(fmt.Sprintf("note %q not found", selector), nil)
 }
 
 func resolveFromIndex(root string, selector string) (ResolvedNote, bool, error) {
@@ -115,7 +115,7 @@ func resolveFromIndex(root string, selector string) (ResolvedNote, bool, error) 
 	case 1:
 		return readResolvedNote(root, matches[0])
 	default:
-		return ResolvedNote{}, true, app.NewAmbiguousError(fmt.Sprintf("note selector %q matches multiple notes", selector), nil)
+		return ResolvedNote{}, true, apperr.Ambiguous(fmt.Sprintf("note selector %q matches multiple notes", selector), nil)
 	}
 }
 

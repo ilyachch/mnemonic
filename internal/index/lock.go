@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/lock"
 )
 
@@ -21,7 +21,7 @@ func acquireReindexLock(projectID string) (*lock.Guard, error) {
 		return guard, nil
 	}
 	if errors.Is(err, lock.ErrBusy) {
-		return nil, app.NewUnsafeError("project reindex lock is busy", err)
+		return nil, apperr.Unsafe("project reindex lock is busy", err)
 	}
 	return nil, err
 }

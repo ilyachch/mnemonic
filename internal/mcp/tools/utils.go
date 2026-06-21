@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 )
 
 // indexedNote represents a minimal note record from the index database.
@@ -26,7 +26,7 @@ func QueryIndexedNoteByIdentifier(db *sql.DB, identifier string) (IndexedNote, e
 	var note IndexedNote
 	if err := row.Scan(&note.NoteID); err != nil {
 		if err == sql.ErrNoRows {
-			return IndexedNote{}, app.NewNotFoundError(fmt.Sprintf("note %q not found", identifier), nil)
+			return IndexedNote{}, apperr.NotFound(fmt.Sprintf("note %q not found", identifier), nil)
 		}
 		return IndexedNote{}, fmt.Errorf("query note %q: %w", identifier, err)
 	}
@@ -50,7 +50,7 @@ func EnsurePathInsideRoot(root, target string) error {
 	}
 
 	if absTarget != absRoot && !strings.HasPrefix(absTarget, absRoot+string(os.PathSeparator)) {
-		return app.NewCLIUsageError("path must stay inside the root directory", nil)
+		return apperr.CLIUsage("path must stay inside the root directory", nil)
 	}
 
 	return nil

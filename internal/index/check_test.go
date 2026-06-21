@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -31,7 +31,7 @@ func TestQuickCheckCorruptedFile(t *testing.T) {
 
 	err := QuickCheck(path)
 	require.Error(t, err)
-	var appErr *app.AppError
+	var appErr *apperr.Error
 	require.True(t, errors.As(err, &appErr))
-	require.Equal(t, app.CodeCorrupted, appErr.Code)
+	require.Equal(t, apperr.CodeCorrupted, appErr.Code)
 }

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/assert"
@@ -162,7 +162,7 @@ func TestDeleteReturnsBusyErrorWhenWriteLockHeld(t *testing.T) {
 	})
 	require.Error(t, err)
 
-	var appErr *app.AppError
+	var appErr *apperr.Error
 	require.ErrorAs(t, err, &appErr)
-	assert.Equal(t, app.CodeUnsafe, appErr.Code)
+	assert.Equal(t, apperr.CodeUnsafe, appErr.Code)
 }

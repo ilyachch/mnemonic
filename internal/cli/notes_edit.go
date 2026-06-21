@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/notes"
 	"github.com/spf13/cobra"
 )
@@ -39,10 +39,10 @@ var notesEditCmd = &cobra.Command{
 			}
 		}
 		if appendText == "" && bodyFile == "" && len(setFields) == 0 {
-			return app.NewCLIUsageError("edit requires --append, --body-file, or --set", nil)
+			return apperr.CLIUsage("edit requires --append, --body-file, or --set", nil)
 		}
 		if appendText != "" && bodyFile != "" {
-			return app.NewCLIUsageError("--append and --body-file cannot be combined", nil)
+			return apperr.CLIUsage("--append and --body-file cannot be combined", nil)
 		}
 
 		root, err := resolveNotesProjectRoot()
@@ -113,7 +113,7 @@ func parseEditSetValues(values []string) (map[string]string, error) {
 		}
 		key, value, ok := strings.Cut(raw, "=")
 		if !ok || key == "" {
-			return nil, app.NewCLIUsageError("--set values must use key=value", nil)
+			return nil, apperr.CLIUsage("--set values must use key=value", nil)
 		}
 		out[key] = value
 	}

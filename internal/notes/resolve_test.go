@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/markdown"
 	"github.com/ilyachch/mnemonic/internal/paths"
 	"github.com/ilyachch/mnemonic/internal/project"
@@ -97,9 +97,9 @@ func TestResolveReturnsAmbiguousError(t *testing.T) {
 
 	_, err := Resolve(root, "Duplicate Title")
 	require.Error(t, err)
-	var appErr *app.AppError
+	var appErr *apperr.Error
 	require.ErrorAs(t, err, &appErr)
-	assert.Equal(t, app.CodeAmbiguous, appErr.Code)
+	assert.Equal(t, apperr.CodeAmbiguous, appErr.Code)
 }
 
 func TestResolveReturnsNotFoundError(t *testing.T) {
@@ -114,9 +114,9 @@ func TestResolveReturnsNotFoundError(t *testing.T) {
 
 	_, err := Resolve(root, "missing")
 	require.Error(t, err)
-	var appErr *app.AppError
+	var appErr *apperr.Error
 	require.ErrorAs(t, err, &appErr)
-	assert.Equal(t, app.CodeNotFound, appErr.Code)
+	assert.Equal(t, apperr.CodeNotFound, appErr.Code)
 }
 
 func TestNormalizeResolvedPath(t *testing.T) {

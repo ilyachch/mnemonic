@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	mnemonicfs "github.com/ilyachch/mnemonic/internal/fs"
 	"github.com/ilyachch/mnemonic/internal/markdown"
 	"github.com/ilyachch/mnemonic/internal/project"
@@ -40,7 +40,7 @@ func Edit(input EditInput) (EditResult, error) {
 		return EditResult{}, fmt.Errorf("root directory is required")
 	}
 	if input.Selector == "" {
-		return EditResult{}, app.NewNotFoundError("note selector is required", nil)
+		return EditResult{}, apperr.NotFound("note selector is required", nil)
 	}
 
 	guard, err := acquireWriteLock(input.RootDir)
@@ -61,7 +61,7 @@ func Edit(input EditInput) (EditResult, error) {
 			return EditResult{}, fmt.Errorf("read note: %w", err)
 		}
 		if HashBytes(current) != input.IfMatch {
-			return EditResult{}, app.NewUnsafeError("content hash mismatch", nil)
+			return EditResult{}, apperr.Unsafe("content hash mismatch", nil)
 		}
 	}
 
@@ -112,7 +112,7 @@ func applyEditSet(note *markdown.Note, set map[string]string) error {
 	for key, value := range set {
 		switch key {
 		case "mnemonic_note_id", "created_at":
-			return app.NewUnsafeError(fmt.Sprintf("frontmatter %q is protected", key), nil)
+			return apperr.Unsafe(fmt.Sprintf("frontmatter %q is protected", key), nil)
 		case "title":
 			note.Title = value
 			note.Frontmatter[key] = value

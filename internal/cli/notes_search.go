@@ -6,7 +6,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/ilyachch/mnemonic/internal/search"
@@ -35,7 +35,7 @@ var notesSearchCmd = &cobra.Command{
 		entry, err := registry.Resolve(container.Paths.MemoriesHome, projectSelectorValue())
 		if err != nil {
 			if _, ok := err.(registry.ErrNotFound); ok {
-				return app.NewNotFoundError(err.Error(), nil)
+				return apperr.NotFound(err.Error(), nil)
 			}
 			return err
 		}
@@ -46,7 +46,7 @@ var notesSearchCmd = &cobra.Command{
 		}
 		if _, err := os.Stat(indexPath); err != nil {
 			if os.IsNotExist(err) {
-				return app.NewNotFoundError("index missing; run `mnemonic project reindex`", nil)
+				return apperr.NotFound("index missing; run `mnemonic project reindex`", nil)
 			}
 			return fmt.Errorf("stat index %q: %w", indexPath, err)
 		}

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/config"
 	"github.com/ilyachch/mnemonic/internal/paths"
 	"github.com/spf13/cobra"
@@ -31,7 +31,7 @@ var configShowCmd = &cobra.Command{
 		if discoveredConfigPath != "" {
 			cfg, err = config.LoadConfig(discoveredConfigPath)
 			if err != nil {
-				return app.NewCLIUsageError("invalid config file", err)
+				return apperr.CLIUsage("invalid config file", err)
 			}
 		}
 

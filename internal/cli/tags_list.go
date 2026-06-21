@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/spf13/cobra"
@@ -43,7 +44,7 @@ var tagsListCmd = &cobra.Command{
 		}
 		if _, err := os.Stat(indexPath); err != nil {
 			if os.IsNotExist(err) {
-				return app.NewNotFoundError("index missing; run `mnemonic project reindex`", nil)
+				return apperr.NotFound("index missing; run `mnemonic project reindex`", nil)
 			}
 			return fmt.Errorf("stat index %q: %w", indexPath, err)
 		}

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
@@ -76,7 +77,7 @@ func TestFileResolverResolve(t *testing.T) {
 
 		_, err := resolver.Resolve(ProjectResolveInput{ProjectSelector: "missing"})
 		require.Error(t, err)
-		require.Equal(t, CodeNotFound, err.(*AppError).Code)
+		require.Equal(t, apperr.CodeNotFound, err.(*apperr.Error).Code)
 		require.Contains(t, err.Error(), `project "missing" not found`)
 	})
 

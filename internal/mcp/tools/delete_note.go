@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/notes"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -57,10 +57,10 @@ func RegisterDeleteNote(s *sdkmcp.Server, deps Dependencies) {
 
 func deleteNote(root string, input DeleteNoteInput) (DeleteNoteOutput, error) {
 	if input.Identifier == "" {
-		return DeleteNoteOutput{}, app.NewCLIUsageError("note identifier is required", nil)
+		return DeleteNoteOutput{}, apperr.CLIUsage("note identifier is required", nil)
 	}
 	if input.HardDelete && input.IfMatchHash == "" {
-		return DeleteNoteOutput{}, app.NewUnsafeError("hard delete requires if_match_hash from read_note", nil)
+		return DeleteNoteOutput{}, apperr.Unsafe("hard delete requires if_match_hash from read_note", nil)
 	}
 
 	if input.IfMatchHash != "" {
@@ -74,7 +74,7 @@ func deleteNote(root string, input DeleteNoteInput) (DeleteNoteOutput, error) {
 			return DeleteNoteOutput{}, fmt.Errorf("read note: %w", err)
 		}
 		if notes.HashBytes(current) != input.IfMatchHash {
-			return DeleteNoteOutput{}, app.NewUnsafeError("content hash mismatch", nil)
+			return DeleteNoteOutput{}, apperr.Unsafe("content hash mismatch", nil)
 		}
 	}
 

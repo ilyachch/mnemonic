@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	mnemonicfs "github.com/ilyachch/mnemonic/internal/fs"
 	"github.com/ilyachch/mnemonic/internal/markdown"
 	"github.com/ilyachch/mnemonic/internal/notes"
@@ -63,7 +63,7 @@ func RegisterCreateNote(s *sdkmcp.Server, deps Dependencies, description string)
 
 func createNote(root string, input CreateNoteInput) (CreateNoteOutput, error) {
 	if input.Title == "" {
-		return CreateNoteOutput{}, app.NewCLIUsageError("note title is required", nil)
+		return CreateNoteOutput{}, apperr.CLIUsage("note title is required", nil)
 	}
 
 	slug, err := project.Slugify(input.Title)
@@ -81,7 +81,7 @@ func createNote(root string, input CreateNoteInput) (CreateNoteOutput, error) {
 		return CreateNoteOutput{}, err
 	}
 	if _, err := os.Stat(absPath); err == nil {
-		return CreateNoteOutput{}, app.NewAmbiguousError(fmt.Sprintf("note path %q already exists", relPath), nil)
+		return CreateNoteOutput{}, apperr.Ambiguous(fmt.Sprintf("note path %q already exists", relPath), nil)
 	} else if !os.IsNotExist(err) {
 		return CreateNoteOutput{}, fmt.Errorf("check note path %q: %w", absPath, err)
 	}
@@ -122,9 +122,9 @@ func createNotePath(slug, requestedPath string) (string, error) {
 	cleaned := filepath.ToSlash(filepath.Clean(requestedPath))
 	switch {
 	case cleaned == ".", cleaned == "":
-		return "", app.NewCLIUsageError("note path is required", nil)
+		return "", apperr.CLIUsage("note path is required", nil)
 	case filepath.IsAbs(requestedPath), strings.HasPrefix(cleaned, "../"), cleaned == "..":
-		return "", app.NewCLIUsageError("note path must be relative to the project memories root", nil)
+		return "", apperr.CLIUsage("note path must be relative to the project memories root", nil)
 	}
 	if filepath.Ext(cleaned) == "" {
 		cleaned += ".md"
@@ -144,7 +144,7 @@ func ensurePathInsideRoot(root, target string) error {
 	}
 
 	if absTarget != absRoot && !strings.HasPrefix(absTarget, absRoot+string(os.PathSeparator)) {
-		return app.NewCLIUsageError("note path must stay inside the project memories root", nil)
+		return apperr.CLIUsage("note path must stay inside the project memories root", nil)
 	}
 
 	return nil

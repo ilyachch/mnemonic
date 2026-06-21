@@ -6,9 +6,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	_ "modernc.org/sqlite"
-
-	"github.com/ilyachch/mnemonic/internal/app"
 )
 
 // QuickCheck runs SQLite integrity checks for an index database file.
@@ -19,7 +18,7 @@ func QuickCheck(path string) error {
 
 	db, err := sql.Open(sqliteDriverName, path)
 	if err != nil {
-		return app.NewCorruptedError("index database is corrupted", err)
+		return apperr.Corrupted("index database is corrupted", err)
 	}
 	defer func() {
 		_ = db.Close()
@@ -34,7 +33,7 @@ func QuickCheck(path string) error {
 		return classifyCorruption(err)
 	}
 	if result != "ok" {
-		return app.NewCorruptedError("index database is corrupted", fmt.Errorf("quick_check = %s", result))
+		return apperr.Corrupted("index database is corrupted", fmt.Errorf("quick_check = %s", result))
 	}
 	return nil
 }
@@ -44,7 +43,7 @@ func classifyCorruption(err error) error {
 		return nil
 	}
 	if os.IsNotExist(err) {
-		return app.NewNotFoundError("index database not found", err)
+		return apperr.NotFound("index database not found", err)
 	}
-	return app.NewCorruptedError("index database is corrupted", err)
+	return apperr.Corrupted("index database is corrupted", err)
 }

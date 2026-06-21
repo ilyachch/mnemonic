@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/markdown"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
@@ -107,9 +107,9 @@ func TestEditRejectsProtectedFrontmatterField(t *testing.T) {
 		},
 	})
 	require.Error(t, err)
-	var appErr *app.AppError
+	var appErr *apperr.Error
 	require.ErrorAs(t, err, &appErr)
-	assert.Equal(t, app.CodeUnsafe, appErr.Code)
+	assert.Equal(t, apperr.CodeUnsafe, appErr.Code)
 }
 
 func TestEditRejectsContentHashMismatch(t *testing.T) {
@@ -133,9 +133,9 @@ func TestEditRejectsContentHashMismatch(t *testing.T) {
 		Append:   []byte("Next step"),
 	})
 	require.Error(t, err)
-	var appErr *app.AppError
+	var appErr *apperr.Error
 	require.ErrorAs(t, err, &appErr)
-	assert.Equal(t, app.CodeUnsafe, appErr.Code)
+	assert.Equal(t, apperr.CodeUnsafe, appErr.Code)
 
 	data, err := os.ReadFile(filepath.Join(root, "auth-migration.md"))
 	require.NoError(t, err)
@@ -171,9 +171,9 @@ func TestEditReturnsBusyErrorWhenWriteLockHeld(t *testing.T) {
 	})
 	require.Error(t, err)
 
-	var appErr *app.AppError
+	var appErr *apperr.Error
 	require.ErrorAs(t, err, &appErr)
-	assert.Equal(t, app.CodeUnsafe, appErr.Code)
+	assert.Equal(t, apperr.CodeUnsafe, appErr.Code)
 }
 
 func TestConcurrentEditWithSameHashAllowsOnlyOneSuccess(t *testing.T) {
@@ -228,9 +228,9 @@ func TestConcurrentEditWithSameHashAllowsOnlyOneSuccess(t *testing.T) {
 			successes++
 			continue
 		}
-		var appErr *app.AppError
+		var appErr *apperr.Error
 		require.ErrorAs(t, result.err, &appErr)
-		assert.Equal(t, app.CodeUnsafe, appErr.Code)
+		assert.Equal(t, apperr.CodeUnsafe, appErr.Code)
 		require.Contains(t, result.err.Error(), "content hash mismatch")
 		preconditionFailures++
 	}

@@ -3,7 +3,7 @@ package tools
 import (
 	"context"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/notes"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -58,7 +58,7 @@ func RegisterEditNote(s *sdkmcp.Server, deps Dependencies) {
 
 func editNote(root string, input EditNoteInput) (EditNoteOutput, error) {
 	if input.Identifier == "" {
-		return EditNoteOutput{}, app.NewCLIUsageError("note identifier is required", nil)
+		return EditNoteOutput{}, apperr.CLIUsage("note identifier is required", nil)
 	}
 
 	modeCount := 0
@@ -72,13 +72,13 @@ func editNote(root string, input EditNoteInput) (EditNoteOutput, error) {
 		modeCount++
 	}
 	if modeCount == 0 {
-		return EditNoteOutput{}, app.NewCLIUsageError("edit requires append, replace_body, or merge_frontmatter", nil)
+		return EditNoteOutput{}, apperr.CLIUsage("edit requires append, replace_body, or merge_frontmatter", nil)
 	}
 	if modeCount > 1 {
-		return EditNoteOutput{}, app.NewCLIUsageError("edit modes append, replace_body, and merge_frontmatter are mutually exclusive", nil)
+		return EditNoteOutput{}, apperr.CLIUsage("edit modes append, replace_body, and merge_frontmatter are mutually exclusive", nil)
 	}
 	if input.ReplaceBody != "" && input.IfMatchHash == "" {
-		return EditNoteOutput{}, app.NewUnsafeError("replace_body requires if_match_hash from read_note", nil)
+		return EditNoteOutput{}, apperr.Unsafe("replace_body requires if_match_hash from read_note", nil)
 	}
 
 	editInput := notes.EditInput{

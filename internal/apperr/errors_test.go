@@ -1,4 +1,4 @@
-package app
+package apperr
 
 import (
 	"errors"
@@ -9,22 +9,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAppError_Error(t *testing.T) {
+func TestError_Error(t *testing.T) {
 	tests := []struct {
 		name     string
-		err      *AppError
+		err      *Error
 		want     string
-		wantCode ErrCode
+		wantCode Code
 	}{
 		{
 			name:     "message only",
-			err:      &AppError{Code: CodeNotFound, Message: "not found"},
+			err:      &Error{Code: CodeNotFound, Message: "not found"},
 			want:     "not found",
 			wantCode: CodeNotFound,
 		},
 		{
 			name:     "message with inner error",
-			err:      &AppError{Code: CodeInternal, Message: "something broke", Err: errors.New("boom")},
+			err:      &Error{Code: CodeInternal, Message: "something broke", Err: errors.New("boom")},
 			want:     "something broke: boom",
 			wantCode: CodeInternal,
 		},
@@ -38,20 +38,20 @@ func TestAppError_Error(t *testing.T) {
 	}
 }
 
-func TestAppError_Unwrap(t *testing.T) {
+func TestError_Unwrap(t *testing.T) {
 	inner := errors.New("inner error")
-	err := &AppError{Code: CodeInternal, Message: "msg", Err: inner}
+	err := &Error{Code: CodeInternal, Message: "msg", Err: inner}
 	unwrapped := errors.Unwrap(err)
 	assert.Equal(t, inner, unwrapped)
 
-	errNoInner := &AppError{Code: CodeSuccess, Message: "ok"}
+	errNoInner := &Error{Code: CodeSuccess, Message: "ok"}
 	assert.Nil(t, errors.Unwrap(errNoInner))
 }
 
 func TestErrors_As(t *testing.T) {
-	appErr := &AppError{Code: CodeUnsafe, Message: "precondition failed"}
+	appErr := &Error{Code: CodeUnsafe, Message: "precondition failed"}
 
-	var target *AppError
+	var target *Error
 	require.True(t, errors.As(appErr, &target))
 	assert.Equal(t, CodeUnsafe, target.Code)
 	assert.Equal(t, "precondition failed", target.Message)
@@ -59,67 +59,55 @@ func TestErrors_As(t *testing.T) {
 
 func TestErrors_Is(t *testing.T) {
 	inner := errors.New("inner")
-	appErr := &AppError{Code: CodeInternal, Message: "wrapped", Err: inner}
+	appErr := &Error{Code: CodeInternal, Message: "wrapped", Err: inner}
 
 	require.True(t, errors.Is(appErr, inner))
 	require.False(t, errors.Is(appErr, errors.New("other")))
 }
 
-func TestNewAppError(t *testing.T) {
+func TestNew(t *testing.T) {
 	inner := fmt.Errorf("disk full")
-	err := NewAppError(CodeInternal, "write failed", inner)
+	err := New(CodeInternal, "write failed", inner)
 
-	var appErr *AppError
+	var appErr *Error
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, CodeInternal, appErr.Code)
 	assert.Equal(t, "write failed", appErr.Message)
 	assert.Equal(t, inner, appErr.Err)
 }
 
-func TestNewInternalError(t *testing.T) {
-	err := NewInternalError("boom", nil)
+func TestInternal(t *testing.T) {
+	err := Internal("boom", nil)
 	assert.Equal(t, CodeInternal, err.Code)
 	assert.Equal(t, "boom", err.Message)
 
-	errWithCause := NewInternalError("boom", errors.New("cause"))
+	errWithCause := Internal("boom", errors.New("cause"))
 	assert.Equal(t, CodeInternal, errWithCause.Code)
 	assert.Equal(t, "boom", errWithCause.Message)
 	assert.NotNil(t, errWithCause.Err)
 }
 
-func TestNewCLIUsageError(t *testing.T) {
-	err := NewCLIUsageError("invalid flag", nil)
+func TestCLIUsage(t *testing.T) {
+	err := CLIUsage("invalid flag", nil)
 	assert.Equal(t, CodeCLIUsage, err.Code)
 }
 
-func TestNewNotFoundError(t *testing.T) {
-	err := NewNotFoundError("missing", nil)
+func TestNotFound(t *testing.T) {
+	err := NotFound("missing", nil)
 	assert.Equal(t, CodeNotFound, err.Code)
 }
 
-func TestNewAmbiguousError(t *testing.T) {
-	err := NewAmbiguousError("duplicate", nil)
+func TestAmbiguous(t *testing.T) {
+	err := Ambiguous("duplicate", nil)
 	assert.Equal(t, CodeAmbiguous, err.Code)
 }
 
-func TestNewUnsafeError(t *testing.T) {
-	err := NewUnsafeError("precondition", nil)
+func TestUnsafe(t *testing.T) {
+	err := Unsafe("precondition", nil)
 	assert.Equal(t, CodeUnsafe, err.Code)
 }
 
-func TestNewCorruptedError(t *testing.T) {
-	err := NewCorruptedError("corrupt", nil)
+func TestCorrupted(t *testing.T) {
+	err := Corrupted("corrupt", nil)
 	assert.Equal(t, CodeCorrupted, err.Code)
-}
-
-func TestApp_Close(t *testing.T) {
-	t.Run("nil receiver", func(t *testing.T) {
-		var a *App
-		assert.NoError(t, a.Close())
-	})
-
-	t.Run("nil registry", func(t *testing.T) {
-		a := &App{Services: Services{}}
-		assert.NoError(t, a.Close())
-	})
 }

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/spf13/cobra"
@@ -69,11 +69,11 @@ func wrapImportError(err error) error {
 	msg := err.Error()
 	switch {
 	case strings.HasPrefix(msg, "import path") && strings.Contains(msg, "not found"):
-		return app.NewNotFoundError(msg, nil)
+		return apperr.NotFound(msg, nil)
 	case strings.HasPrefix(msg, "mnemonic.toml not found at"):
-		return app.NewNotFoundError(msg, nil)
+		return apperr.NotFound(msg, nil)
 	case strings.HasPrefix(msg, "project slug") && strings.Contains(msg, "already exists"):
-		return app.NewAmbiguousError(msg, nil)
+		return apperr.Ambiguous(msg, nil)
 	}
 	return err
 }

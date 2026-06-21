@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/mcp"
 	"github.com/ilyachch/mnemonic/internal/paths"
 	"github.com/ilyachch/mnemonic/internal/project"
@@ -34,13 +35,13 @@ type Server struct {
 // NewServer prepares an eager MCP HTTP server for a single resolved project.
 func NewServer(resolution app.ProjectResolution, effectivePaths paths.EffectivePaths, indexDB *sql.DB, projectToken string, readOnly bool) (*Server, error) {
 	if strings.TrimSpace(resolution.Project.Slug) == "" {
-		return nil, app.NewCLIUsageError("project resolution is required", nil)
+		return nil, apperr.CLIUsage("project resolution is required", nil)
 	}
 	if strings.TrimSpace(resolution.Project.ID) == "" {
-		return nil, app.NewCLIUsageError("project id is required", nil)
+		return nil, apperr.CLIUsage("project id is required", nil)
 	}
 	if indexDB == nil {
-		return nil, app.NewInternalError("index database is required", nil)
+		return nil, apperr.Internal("index database is required", nil)
 	}
 
 	mcpServer := mcp.NewServerWithIndexDB(resolution, effectivePaths, indexDB, readOnly)

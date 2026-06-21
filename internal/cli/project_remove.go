@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/spf13/cobra"
@@ -39,7 +39,7 @@ Index and lock files are always cleaned up.`,
 		entry, err := registry.Resolve(container.Paths.MemoriesHome, args[0])
 		if err != nil {
 			if _, ok := err.(registry.ErrNotFound); ok {
-				return app.NewNotFoundError(err.Error(), nil)
+				return apperr.NotFound(err.Error(), nil)
 			}
 			return err
 		}

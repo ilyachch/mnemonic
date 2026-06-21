@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/web"
@@ -38,7 +39,7 @@ var webServeCmd = &cobra.Command{
 		})
 		if err != nil {
 			if app.IsNoProjectSelected(err) {
-				return app.NewNotFoundError(err.Error(), nil)
+				return apperr.NotFound(err.Error(), nil)
 			}
 			return err
 		}
@@ -101,7 +102,7 @@ func openWebIndexDBReal(resolution app.ProjectResolution) (*sql.DB, error) {
 	}
 	if _, err := os.Stat(indexPath); err != nil {
 		if os.IsNotExist(err) {
-			return nil, app.NewNotFoundError(fmt.Sprintf("index for %q is missing; run `mnemonic project reindex`", resolution.Project.Slug), nil)
+			return nil, apperr.NotFound(fmt.Sprintf("index for %q is missing; run `mnemonic project reindex`", resolution.Project.Slug), nil)
 		}
 		return nil, fmt.Errorf("stat index %q: %w", indexPath, err)
 	}

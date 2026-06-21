@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/registry"
 )
 
@@ -49,7 +50,7 @@ func wrapRegistryError(err error) error {
 	}
 	var notFoundErr registry.ErrNotFound
 	if errors.As(err, &notFoundErr) {
-		return NewNotFoundError(notFoundErr.Error(), nil)
+		return apperr.NotFound(notFoundErr.Error(), nil)
 	}
 	return err
 }
@@ -65,7 +66,7 @@ func memoriesPathForEntry(entry registry.Entry) string {
 
 // NewNoProjectSelectedError returns a CLI usage error when no project is selected.
 func NewNoProjectSelectedError() error {
-	return NewCLIUsageError("no project selected; specify --project or set MNEMONIC_PROJECT", nil)
+	return apperr.CLIUsage("no project selected; specify --project or set MNEMONIC_PROJECT", nil)
 }
 
 // IsNoProjectSelected checks whether this error indicates no project was selected.
@@ -73,9 +74,9 @@ func IsNoProjectSelected(err error) bool {
 	if err == nil {
 		return false
 	}
-	var appErr *AppError
+	var appErr *apperr.Error
 	if errors.As(err, &appErr) {
-		return appErr.Code == CodeCLIUsage && strings.Contains(appErr.Message, "no project selected")
+		return appErr.Code == apperr.CodeCLIUsage && strings.Contains(appErr.Message, "no project selected")
 	}
 	return false
 }

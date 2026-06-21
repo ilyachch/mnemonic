@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/graph"
 	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/project"
@@ -47,7 +48,7 @@ var notesBacklinksCmd = &cobra.Command{
 		}
 		if _, err := os.Stat(indexPath); err != nil {
 			if os.IsNotExist(err) {
-				return app.NewNotFoundError("index missing; run `mnemonic project reindex`", nil)
+				return apperr.NotFound("index missing; run `mnemonic project reindex`", nil)
 			}
 			return fmt.Errorf("stat index %q: %w", indexPath, err)
 		}
@@ -102,7 +103,7 @@ func queryIndexedNoteBySelector(db *sql.DB, selector string) (indexedNote, error
 	var note indexedNote
 	if err := row.Scan(&note.NoteID, &note.Slug, &note.Title, &note.Path); err != nil {
 		if err == sql.ErrNoRows {
-			return indexedNote{}, app.NewNotFoundError(fmt.Sprintf("note %q not found", selector), nil)
+			return indexedNote{}, apperr.NotFound(fmt.Sprintf("note %q not found", selector), nil)
 		}
 		return indexedNote{}, fmt.Errorf("query note %q: %w", selector, err)
 	}

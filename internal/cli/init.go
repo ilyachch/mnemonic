@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/config"
 	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/paths"
@@ -24,10 +24,10 @@ var initCmd = &cobra.Command{
 		}
 
 		if len(args) == 0 {
-			return app.NewCLIUsageError("init requires NAME", nil)
+			return apperr.CLIUsage("init requires NAME", nil)
 		}
 		if len(args) > 1 {
-			return app.NewCLIUsageError("init accepts exactly one NAME", nil)
+			return apperr.CLIUsage("init accepts exactly one NAME", nil)
 		}
 
 		discoveredConfigPath, err := config.DiscoverConfigFile("")
@@ -76,7 +76,7 @@ var initCmd = &cobra.Command{
 
 		if err := project.InitProject(input); err != nil {
 			if strings.Contains(err.Error(), "project slug") && strings.Contains(err.Error(), "already exists") {
-				return app.NewAmbiguousError(err.Error(), nil)
+				return apperr.Ambiguous(err.Error(), nil)
 			}
 			return err
 		}

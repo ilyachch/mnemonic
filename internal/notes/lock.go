@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/lock"
 )
 
@@ -30,7 +30,7 @@ func acquireWriteLock(root string) (*lock.Guard, error) {
 		return guard, nil
 	}
 	if errors.Is(err, lock.ErrBusy) {
-		return nil, app.NewUnsafeError("project write lock is busy", err)
+		return nil, apperr.Unsafe("project write lock is busy", err)
 	}
 	return nil, err
 }
@@ -38,7 +38,7 @@ func acquireWriteLock(root string) (*lock.Guard, error) {
 func projectLockKey(root string) (string, error) {
 	cleaned := strings.TrimSpace(root)
 	if cleaned == "" {
-		return "", app.NewCLIUsageError("root directory is required", nil)
+		return "", apperr.CLIUsage("root directory is required", nil)
 	}
 	absRoot, err := filepath.Abs(cleaned)
 	if err != nil {

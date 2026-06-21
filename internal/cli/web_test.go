@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
@@ -79,7 +80,7 @@ func TestWebServeRejectsMissingProjectSelection(t *testing.T) {
 
 	result := executeCommand("web", "serve")
 	require.Error(t, result.Err)
-	require.Equal(t, int(app.CodeNotFound), ExitCodeForError(result.Err))
+	require.Equal(t, int(apperr.CodeNotFound), ExitCodeForError(result.Err))
 	require.Contains(t, result.Err.Error(), "no project selected")
 }
 
@@ -90,6 +91,6 @@ func TestWebServeRejectsInvalidProjectSelection(t *testing.T) {
 
 	result := executeCommand("web", "serve")
 	require.Error(t, result.Err)
-	require.Equal(t, int(app.CodeNotFound), ExitCodeForError(result.Err))
+	require.Equal(t, int(apperr.CodeNotFound), ExitCodeForError(result.Err))
 	require.Contains(t, result.Err.Error(), `project "missing" not found`)
 }
