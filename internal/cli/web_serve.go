@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"database/sql"
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/web"
 	"github.com/spf13/cobra"
@@ -15,6 +18,7 @@ import (
 var (
 	webServePortFlag string
 	webServeAddrFlag string
+	openWebIndexDB   = openWebIndexDBReal
 )
 
 var webServeCmd = &cobra.Command{
@@ -35,8 +39,14 @@ var webServeCmd = &cobra.Command{
 			return err
 		}
 
-		manager, err := web.NewServerManager(resolvedProject, container.Paths.MemoriesHome)
+		indexDB, err := openWebIndexDB(resolvedProject)
 		if err != nil {
+			return err
+		}
+
+		manager, err := web.NewServer(resolvedProject, container.Paths, indexDB, os.Getenv("MNEMONIC_WEB_TOKEN"), mcpReadOnlyEnabled())
+		if err != nil {
+			_ = indexDB.Close()
 			return err
 		}
 		defer func() {
@@ -74,4 +84,33 @@ func normalizeWebListenAddr(portFlag string) string {
 		return ""
 	}
 	return fmt.Sprintf(":%s", port)
+}
+
+func openWebIndexDBReal(resolution app.ProjectResolution) (*sql.DB, error) {
+	indexPath, err := index.Path(resolution.Project.ID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(indexPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil, app.NewNotFoundError(fmt.Sprintf("index for %q is missing; run `mnemonic project reindex`", resolution.Project.Slug), nil)
+		}
+		return nil, fmt.Errorf("stat index %q: %w", indexPath, err)
+	}
+
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(indexPath)+"?mode=ro")
+	if err != nil {
+		return nil, fmt.Errorf("open index database: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("ping index database: %w", err)
+	}
+	if _, err := db.Exec(`PRAGMA busy_timeout = 5000`); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("apply busy timeout: %w", err)
+	}
+	return db, nil
 }

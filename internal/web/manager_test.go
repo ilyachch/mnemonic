@@ -1,29 +1,34 @@
 package web
 
 import (
-	"fmt"
+	"bytes"
+	"context"
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/index"
+	"github.com/ilyachch/mnemonic/internal/paths"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 )
 
 type webFixture struct {
-	manager *ServerManager
-	count   *atomic.Int32
+	server *Server
+	db     *sql.DB
 }
 
-func newWebFixture(t *testing.T) *webFixture {
+func newWebFixture(t *testing.T, readOnly bool) *webFixture {
 	t.Helper()
 
 	root := testutil.CleanEnvForTest(t)
@@ -48,7 +53,17 @@ func newWebFixture(t *testing.T) *webFixture {
 	_, err := index.RebuildProjectIndex(projectID, projectRoot)
 	require.NoError(t, err)
 
-	manager, err := NewServerManager(app.ProjectResolution{
+	indexPath, err := index.Path(projectID)
+	require.NoError(t, err)
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(indexPath)+"?mode=ro")
+	require.NoError(t, err)
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	require.NoError(t, db.Ping())
+	_, err = db.Exec(`PRAGMA busy_timeout = 5000`)
+	require.NoError(t, err)
+
+	server, err := NewServer(app.ProjectResolution{
 		MnemonicFilePath: filepath.Join(projectRoot, "mnemonic.toml"),
 		RepoRootAbs:      memoriesHome,
 		MemoriesAbs:      projectRoot,
@@ -60,80 +75,172 @@ func newWebFixture(t *testing.T) *webFixture {
 			Kind:         "central",
 			MemoriesPath: filepath.Base(projectRoot),
 		},
-	}, memoriesHome)
+	}, paths.EffectivePaths{
+		MemoriesHome: memoriesHome,
+	}, db, "", readOnly)
 	require.NoError(t, err)
 
-	count := &atomic.Int32{}
-	baseFactory := manager.instanceFactory
-	manager.instanceFactory = func() (*ProjectInstance, error) {
-		count.Add(1)
-		return baseFactory()
-	}
-
-	t.Cleanup(func() {
-		_ = manager.Close()
-	})
-
-	return &webFixture{
-		manager: manager,
-		count:   count,
-	}
+	return &webFixture{server: server, db: db}
 }
 
-func (f *webFixture) request(method, path string) (*http.Response, error) {
-	req, err := http.NewRequest(method, "http://example.test"+path, nil)
+func (f *webFixture) request(method, path string, body []byte) (*http.Response, error) {
+	req, err := http.NewRequest(method, "http://example.test"+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
-
 	recorder := httptest.NewRecorder()
-	f.manager.ServeHTTP(recorder, req)
+	f.server.ServeHTTP(recorder, req)
 	return recorder.Result(), nil
 }
 
-func TestServerManagerRoutesConfiguredSlugWithoutAuth(t *testing.T) {
-	f := newWebFixture(t)
+func TestServerServesSSEAndMessages(t *testing.T) {
+	f := newWebFixture(t, false)
+	defer func() { _ = f.server.Close() }()
 
-	resp, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	recorder := newStreamingRecorder()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://example.test/sse", nil)
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		f.server.ServeHTTP(recorder, req)
+		close(done)
+	}()
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(recorder.String(), "event: endpoint") && strings.Contains(recorder.String(), "/messages?sessionid=")
+	}, 5*time.Second, 10*time.Millisecond)
+
+	body := recorder.String()
+	start := strings.Index(body, "sessionid=")
+	require.NotEqual(t, -1, start)
+	sessionID := body[start+len("sessionid="):]
+	if end := strings.IndexAny(sessionID, "\r\n \t"); end >= 0 {
+		sessionID = sessionID[:end]
+	}
+	require.NotEmpty(t, sessionID)
+
+	resp, err := f.request(http.MethodPost, "/messages?sessionid="+sessionID, []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
-	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	require.Equal(t, http.StatusAccepted, resp.StatusCode)
 
-	resp, err = f.request(http.MethodPost, "/mcp/other/messages?sessionid=missing")
-	require.NoError(t, err)
-	defer resp.Body.Close()
-	require.Equal(t, http.StatusNotFound, resp.StatusCode)
-	require.EqualValues(t, 1, f.count.Load())
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(250 * time.Millisecond):
+	}
+	require.Equal(t, http.StatusOK, recorder.StatusCode())
+	require.Contains(t, recorder.String(), "event: endpoint")
 }
 
-func TestServerManagerCachesSingleInstance(t *testing.T) {
-	f := newWebFixture(t)
+func TestServerRejectsBadBearerToken(t *testing.T) {
+	f := newWebFixture(t, false)
+	defer func() { _ = f.server.Close() }()
+	f.server.projectToken = "secret"
 
-	const concurrency = 8
-	var wg sync.WaitGroup
-	errCh := make(chan error, concurrency)
+	req, err := http.NewRequest(http.MethodGet, "http://example.test/sse", nil)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer wrong")
 
-	for i := 0; i < concurrency; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			resp, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing")
-			if err != nil {
-				errCh <- err
-				return
-			}
-			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusNotFound {
-				errCh <- fmt.Errorf("unexpected status: %d", resp.StatusCode)
-				return
-			}
-		}()
+	recorder := httptest.NewRecorder()
+	f.server.ServeHTTP(recorder, req)
+	resp := recorder.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestServerReadOnlyOmitsWriteTools(t *testing.T) {
+	f := newWebFixture(t, true)
+	defer func() { _ = f.server.Close() }()
+
+	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+	serverSession, err := f.server.sdkServer.Connect(context.Background(), serverTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = serverSession.Close() }()
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "client", Version: "0.0.1"}, nil)
+	clientSession, err := client.Connect(context.Background(), clientTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = clientSession.Close() }()
+
+	tools, err := clientSession.ListTools(context.Background(), nil)
+	require.NoError(t, err)
+
+	names := make([]string, 0, len(tools.Tools))
+	for _, tool := range tools.Tools {
+		names = append(names, tool.Name)
 	}
+	require.Equal(t, []string{"list_backlinks", "list_notes", "list_tags", "read_note", "search_notes"}, names)
+}
 
-	wg.Wait()
-	close(errCh)
-	for err := range errCh {
-		require.NoError(t, err)
+func TestServerRejectsLegacySlugRoutes(t *testing.T) {
+	f := newWebFixture(t, false)
+	defer func() { _ = f.server.Close() }()
+
+	resp, err := f.request(http.MethodGet, "/mcp/demo/sse", nil)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+
+	resp, err = f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing", []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+type streamingRecorder struct {
+	header http.Header
+	mu     sync.Mutex
+	buf    bytes.Buffer
+	code   int
+	once   sync.Once
+	wrote  chan struct{}
+}
+
+func newStreamingRecorder() *streamingRecorder {
+	return &streamingRecorder{
+		header: make(http.Header),
+		wrote:  make(chan struct{}),
 	}
-	require.EqualValues(t, 1, f.count.Load())
+}
+
+func (r *streamingRecorder) Header() http.Header { return r.header }
+
+func (r *streamingRecorder) WriteHeader(statusCode int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.code = statusCode
+}
+
+func (r *streamingRecorder) Write(p []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.code == 0 {
+		r.code = http.StatusOK
+	}
+	n, err := r.buf.Write(p)
+	r.once.Do(func() { close(r.wrote) })
+	return n, err
+}
+
+func (r *streamingRecorder) Flush() {}
+
+func (r *streamingRecorder) String() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.buf.String()
+}
+
+func (r *streamingRecorder) StatusCode() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.code == 0 {
+		return http.StatusOK
+	}
+	return r.code
 }

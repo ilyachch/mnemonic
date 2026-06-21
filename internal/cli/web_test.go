@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"database/sql"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 )
 
 func TestWebHelpShowsOnlyServe(t *testing.T) {
@@ -23,7 +26,7 @@ func TestWebHelpShowsOnlyServe(t *testing.T) {
 	require.NotContains(t, result.Stdout, "perms")
 }
 
-func TestWebServeUsesProjectSelectorAndNoAuthDB(t *testing.T) {
+func TestWebServeOpensIndexOnceBeforeListen(t *testing.T) {
 	root := testutil.CleanEnvForTest(t)
 	memoriesHome := filepath.Join(root, ".mnemonic")
 	require.NoError(t, os.MkdirAll(filepath.Join(memoriesHome, "demo"), 0o755))
@@ -45,10 +48,21 @@ func TestWebServeUsesProjectSelectorAndNoAuthDB(t *testing.T) {
 	t.Setenv("MNEMONIC_PROJECT", "demo")
 	t.Setenv("MNEMONIC_WEB_ADDR", ":9090")
 
+	var calls atomic.Int32
+	origOpen := openWebIndexDB
+	openWebIndexDB = func(resolution app.ProjectResolution) (*sql.DB, error) {
+		calls.Add(1)
+		return sql.Open("sqlite", ":memory:")
+	}
+	t.Cleanup(func() {
+		openWebIndexDB = origOpen
+	})
+
 	result := executeCommand("web", "serve", "--port", "not-a-port")
 	require.Error(t, result.Err)
 	require.Equal(t, int(app.CodeInternal), ExitCodeForError(result.Err))
 	require.Contains(t, result.Err.Error(), "serve web MCP")
+	require.EqualValues(t, 1, calls.Load())
 }
 
 func TestWebServeRejectsMissingProjectSelection(t *testing.T) {

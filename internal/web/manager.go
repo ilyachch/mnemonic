@@ -2,202 +2,108 @@ package web
 
 import (
 	"database/sql"
-	"errors"
-	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 
 	"github.com/ilyachch/mnemonic/internal/app"
-	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/mcp"
 	"github.com/ilyachch/mnemonic/internal/paths"
 	"github.com/ilyachch/mnemonic/internal/project"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// ProjectInstance owns the cached MCP server state for the served project.
-type ProjectInstance struct {
-	MCPServer *sdkmcp.Server
-	IndexDB   *sql.DB
+const (
+	sseEndpoint      = "/sse"
+	messagesEndpoint = "/messages"
+)
 
-	handler *projectSessionHandler
-}
-
-// Close releases project resources.
-func (p *ProjectInstance) Close() error {
-	if p == nil || p.IndexDB == nil {
-		return nil
-	}
-	return p.IndexDB.Close()
-}
-
-// ServerManager serves one resolved project over HTTP/SSE.
-type ServerManager struct {
+// Server serves one resolved project over HTTP/SSE.
+type Server struct {
 	projectResolution app.ProjectResolution
-	memoriesHome      string
-	projectSlug       string
+	effectivePaths    paths.EffectivePaths
+	indexDB           *sql.DB
+	sdkServer         *sdkmcp.Server
+	projectToken      string
+	readOnly          bool
 
-	instanceFactory func() (*ProjectInstance, error)
-	instance        *ProjectInstance
-	mu              sync.Mutex
+	sessions *projectSessionHandler
 }
 
-// NewServerManager prepares a manager for a single resolved project.
-func NewServerManager(resolution app.ProjectResolution, memoriesHome string) (*ServerManager, error) {
-	if strings.TrimSpace(memoriesHome) == "" {
-		return nil, app.NewCLIUsageError("memories home is required", nil)
-	}
+// NewServer prepares an eager MCP HTTP server for a single resolved project.
+func NewServer(resolution app.ProjectResolution, effectivePaths paths.EffectivePaths, indexDB *sql.DB, projectToken string, readOnly bool) (*Server, error) {
 	if strings.TrimSpace(resolution.Project.Slug) == "" {
 		return nil, app.NewCLIUsageError("project resolution is required", nil)
 	}
+	if strings.TrimSpace(resolution.Project.ID) == "" {
+		return nil, app.NewCLIUsageError("project id is required", nil)
+	}
+	if indexDB == nil {
+		return nil, app.NewInternalError("index database is required", nil)
+	}
 
-	manager := &ServerManager{
+	mcpServer := mcp.NewServerWithIndexDB(resolution, effectivePaths, indexDB, readOnly)
+	sdkServer := mcpServer.BuildSDKServer()
+
+	return &Server{
 		projectResolution: resolution,
-		memoriesHome:      memoriesHome,
-		projectSlug:       resolution.Project.Slug,
-	}
-	manager.instanceFactory = manager.buildProjectInstance
-	return manager, nil
+		effectivePaths:    effectivePaths,
+		indexDB:           indexDB,
+		sdkServer:         sdkServer,
+		projectToken:      strings.TrimSpace(projectToken),
+		readOnly:          readOnly,
+		sessions:          newProjectSessionHandler(sdkServer),
+	}, nil
 }
 
-// Close releases the cached project instance.
-func (m *ServerManager) Close() error {
-	if m == nil {
+// Close releases the open index DB.
+func (s *Server) Close() error {
+	if s == nil || s.indexDB == nil {
 		return nil
 	}
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.instance == nil {
-		return nil
-	}
-
-	err := m.instance.Close()
-	m.instance = nil
-	return err
+	return s.indexDB.Close()
 }
 
-// ServeHTTP routes MCP traffic for the configured project.
-func (m *ServerManager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	slug, endpoint, ok := parseProjectEndpoint(r.URL.Path)
-	if !ok || slug != m.projectSlug {
-		http.NotFound(w, r)
+// ServeHTTP routes only /sse and /messages for the configured project.
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !s.authorize(r) {
+		w.Header().Set("WWW-Authenticate", `Bearer`)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	instance, err := m.instanceForSlug(slug)
-	if err != nil {
-		writeHTTPError(w, err)
-		return
-	}
-
-	switch endpoint {
-	case "sse":
+	switch {
+	case r.URL.Path == sseEndpoint:
 		if r.Method != http.MethodGet {
 			w.Header().Set("Allow", http.MethodGet)
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		instance.handler.ServeGET(w, r)
-	case "messages":
+		s.sessions.ServeGET(w, r)
+	case r.URL.Path == messagesEndpoint:
 		if r.Method != http.MethodPost {
 			w.Header().Set("Allow", http.MethodPost)
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		instance.handler.ServePOST(w, r)
+		s.sessions.ServePOST(w, r)
 	default:
 		http.NotFound(w, r)
 	}
 }
 
-func (m *ServerManager) instanceForSlug(slug string) (*ProjectInstance, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.instance != nil {
-		return m.instance, nil
+func (s *Server) authorize(r *http.Request) bool {
+	if s == nil || s.projectToken == "" {
+		return true
 	}
 
-	factory := m.instanceFactory
-	if factory == nil {
-		factory = m.buildProjectInstance
+	auth := strings.TrimSpace(r.Header.Get("Authorization"))
+	scheme, token, ok := strings.Cut(auth, " ")
+	if !ok || !strings.EqualFold(strings.TrimSpace(scheme), "Bearer") {
+		return false
 	}
-	instance, err := factory()
-	if err != nil {
-		return nil, err
-	}
-	m.instance = instance
-	return instance, nil
-}
-
-func (m *ServerManager) buildProjectInstance() (*ProjectInstance, error) {
-	indexPath, err := index.Path(m.projectResolution.Project.ID)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := os.Stat(indexPath); err != nil {
-		if os.IsNotExist(err) {
-			return nil, app.NewNotFoundError(fmt.Sprintf("index for %q is missing; run `mnemonic project reindex`", m.projectSlug), nil)
-		}
-		return nil, fmt.Errorf("stat index %q: %w", indexPath, err)
-	}
-
-	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(indexPath)+"?mode=ro")
-	if err != nil {
-		return nil, fmt.Errorf("open index database: %w", err)
-	}
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
-	if err := db.Ping(); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("ping index database: %w", err)
-	}
-	if _, err := db.Exec(`PRAGMA busy_timeout = 5000`); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("apply busy timeout: %w", err)
-	}
-
-	srv := mcp.NewServerWithIndexDB(m.projectResolution, paths.EffectivePaths{MemoriesHome: m.memoriesHome}, db, false)
-	sdkServer := srv.BuildSDKServer()
-
-	return &ProjectInstance{
-		MCPServer: sdkServer,
-		IndexDB:   db,
-		handler:   newProjectSessionHandler(sdkServer),
-	}, nil
-}
-
-func parseProjectEndpoint(path string) (slug, endpoint string, ok bool) {
-	trimmed := strings.Trim(path, "/")
-	parts := strings.Split(trimmed, "/")
-	if len(parts) != 3 || parts[0] != "mcp" {
-		return "", "", false
-	}
-	return parts[1], parts[2], true
-}
-
-func writeHTTPError(w http.ResponseWriter, err error) {
-	switch appErrorCode(err) {
-	case app.CodeNotFound:
-		http.Error(w, err.Error(), http.StatusNotFound)
-	case app.CodeCLIUsage:
-		http.Error(w, err.Error(), http.StatusBadRequest)
-	default:
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-func appErrorCode(err error) app.ErrCode {
-	var appErr *app.AppError
-	if errors.As(err, &appErr) {
-		return appErr.Code
-	}
-	return app.CodeInternal
+	return strings.TrimSpace(token) == s.projectToken
 }
 
 type projectSessionHandler struct {
@@ -221,12 +127,7 @@ func (h *projectSessionHandler) ServeGET(w http.ResponseWriter, r *http.Request)
 
 	sessionID := project.NewUUID()
 	messagesURL := *r.URL
-	messagesURL.Path = strings.TrimRight(messagesURL.Path, "/")
-	if messagesURL.Path == "" {
-		messagesURL.Path = "/messages"
-	} else {
-		messagesURL.Path = strings.TrimSuffix(messagesURL.Path, "/sse") + "/messages"
-	}
+	messagesURL.Path = messagesEndpoint
 	q := messagesURL.Query()
 	q.Set("sessionid", sessionID)
 	messagesURL.RawQuery = q.Encode()
