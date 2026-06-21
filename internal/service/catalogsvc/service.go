@@ -1,6 +1,7 @@
 package catalogsvc
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/registry"
+	"github.com/ilyachch/mnemonic/internal/service/indexsvc"
 )
 
 // Service owns catalog-level project operations.
@@ -71,6 +73,21 @@ type ImportResult = project.ImportResult
 
 // ImportCandidate mirrors the project import candidate.
 type ImportCandidate = project.ImportCandidate
+
+// InitInput mirrors the project init input.
+type InitInput struct {
+	WorkingDir  string
+	Name        string
+	Description string
+	Mode        project.InitMode
+}
+
+// InitResult mirrors the project init payload.
+type InitResult struct {
+	kb.KnowledgeBase
+	IndexStatus string `json:"index_status"`
+	IndexError  string `json:"index_error,omitempty"`
+}
 
 // Resolve returns the selected knowledge base for a project selector.
 func (s Service) Resolve(selector string) (kb.KnowledgeBase, error) {
@@ -167,6 +184,41 @@ func (s Service) Show(selector string) (ShowResult, error) {
 // Import imports a project into the registry.
 func (s Service) Import(input ImportInput) (ImportResult, error) {
 	return project.ImportProject(input, s.MemoriesHome)
+}
+
+// Init creates a project, resolves it, and builds the initial index.
+func (s Service) Init(ctx context.Context, input InitInput) (InitResult, error) {
+	slug, err := project.Slugify(input.Name)
+	if err != nil {
+		return InitResult{}, err
+	}
+
+	if err := project.InitProject(project.InitInput{
+		CWD:          input.WorkingDir,
+		MemoriesHome: s.MemoriesHome,
+		Name:         input.Name,
+		Description:  input.Description,
+		Mode:         input.Mode,
+	}); err != nil {
+		return InitResult{}, wrapInitError(err)
+	}
+
+	resolved, err := s.Resolve(slug)
+	if err != nil {
+		return InitResult{}, err
+	}
+
+	result := InitResult{
+		KnowledgeBase: resolved,
+		IndexStatus:   "stale",
+	}
+	rebuild, err := indexsvc.New(resolved).Rebuild(ctx)
+	if err != nil {
+		result.IndexError = err.Error()
+		return result, err
+	}
+	result.IndexStatus = rebuild.Status
+	return result, nil
 }
 
 // Remove removes a project from the registry and state directories.
@@ -335,6 +387,18 @@ func wrapRegistryError(err error) error {
 	var notFoundErr registry.ErrNotFound
 	if errors.As(err, &notFoundErr) {
 		return apperr.NotFound(notFoundErr.Error(), nil)
+	}
+
+	return err
+}
+
+func wrapInitError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	if strings.Contains(err.Error(), "project slug") && strings.Contains(err.Error(), "already exists") {
+		return apperr.Ambiguous(err.Error(), nil)
 	}
 
 	return err

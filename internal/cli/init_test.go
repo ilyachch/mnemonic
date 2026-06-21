@@ -13,19 +13,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestInitCommandRequiresName(t *testing.T) {
-	result := executeCommand("init")
+func TestProjectInitCommandRequiresName(t *testing.T) {
+	result := executeCommand("project", "init")
 	require.Error(t, result.Err, "expected init without NAME to fail")
 	require.Equal(t, 2, ExitCodeForError(result.Err))
 }
 
-func TestInitCommandRejectsMultipleNames(t *testing.T) {
-	result := executeCommand("init", "one", "two")
+func TestProjectInitCommandRejectsMultipleNames(t *testing.T) {
+	result := executeCommand("project", "init", "one", "two")
 	require.Error(t, result.Err, "expected init with multiple NAME args to fail")
 	require.Equal(t, 2, ExitCodeForError(result.Err))
 }
 
-func TestInitCommandLocalCreatesLocalProject(t *testing.T) {
+func TestProjectInitCommandLocalCreatesLocalProject(t *testing.T) {
 	cwd := t.TempDir()
 	memoriesHome := t.TempDir()
 
@@ -43,7 +43,7 @@ func TestInitCommandLocalCreatesLocalProject(t *testing.T) {
 	restore := project.SetClock(projectClockForCLI("550e8400-e29b-41d4-a716-446655440000"))
 	t.Cleanup(restore)
 
-	result := executeCommand("init", "backend", "--local")
+	result := executeCommand("project", "init", "backend", "--local")
 	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 
 	projectPath := filepath.Join(cwd, ".mnemonic")
@@ -70,7 +70,7 @@ func TestInitCommandLocalCreatesLocalProject(t *testing.T) {
 	require.NoError(t, err, "index file missing")
 }
 
-func TestInitCommandCentralCreatesCentralProject(t *testing.T) {
+func TestProjectInitCommandCentralCreatesCentralProject(t *testing.T) {
 	cwd := t.TempDir()
 	memoriesHome := t.TempDir()
 
@@ -88,7 +88,7 @@ func TestInitCommandCentralCreatesCentralProject(t *testing.T) {
 	restore := project.SetClock(projectClockForCLI("550e8400-e29b-41d4-a716-446655440000"))
 	t.Cleanup(restore)
 
-	result := executeCommand("init", "personal")
+	result := executeCommand("project", "init", "personal")
 	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 
 	projectPath := filepath.Join(cwd, ".mnemonic")
@@ -112,7 +112,7 @@ func TestInitCommandCentralCreatesCentralProject(t *testing.T) {
 	require.NoError(t, err, "index file missing")
 }
 
-func TestInitCommandRejectsDuplicateSlug(t *testing.T) {
+func TestProjectInitCommandRejectsDuplicateSlug(t *testing.T) {
 	testutil.CleanEnvForTest(t)
 	cwd := t.TempDir()
 	memoriesHome := t.TempDir()
@@ -129,20 +129,20 @@ func TestInitCommandRejectsDuplicateSlug(t *testing.T) {
 	restore := project.SetClock(projectClockForCLI("550e8400-e29b-41d4-a716-446655440000"))
 	t.Cleanup(restore)
 
-	first := executeCommand("init", "backend", "--local")
+	first := executeCommand("project", "init", "backend", "--local")
 	require.NoError(t, first.Err, "stderr: %s", first.Stderr)
 
 	restore()
 	restore = project.SetClock(projectClockForCLI("7f0a6d73-c3ba-4f0e-85b8-27bccf4370f1"))
 	t.Cleanup(restore)
 
-	result := executeCommand("init", "Backend", "--local")
+	result := executeCommand("project", "init", "Backend", "--local")
 	require.Error(t, result.Err, "second init error = nil, want duplicate slug rejection")
 	require.Equal(t, 4, ExitCodeForError(result.Err))
 	require.Contains(t, result.Stderr, `project slug "backend" already exists`)
 }
 
-func TestInitCommandCentralWithDescription(t *testing.T) {
+func TestProjectInitCommandCentralWithDescription(t *testing.T) {
 	cwd := t.TempDir()
 	memoriesHome := t.TempDir()
 
@@ -161,7 +161,7 @@ func TestInitCommandCentralWithDescription(t *testing.T) {
 	t.Cleanup(restore)
 
 	desc := "Backend architecture decisions, API contracts, and database schemas."
-	result := executeCommand("init", "backend", "--description", desc)
+	result := executeCommand("project", "init", "backend", "--description", desc)
 	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 
 	manifestPath := filepath.Join(memoriesHome, "backend", "mnemonic.toml")

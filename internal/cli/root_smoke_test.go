@@ -20,7 +20,6 @@ func TestRootCmdWiringSmoke(t *testing.T) {
 	for _, path := range [][]string{
 		{"config", "show"},
 		{"hello"},
-		{"init"},
 		{"mcp"},
 		{"notes"},
 		{"notes", "backlinks"},
@@ -31,6 +30,7 @@ func TestRootCmdWiringSmoke(t *testing.T) {
 		{"notes", "search"},
 		{"notes", "show"},
 		{"project"},
+		{"project", "init"},
 		{"project", "doctor"},
 		{"project", "import"},
 		{"project", "list"},
@@ -48,10 +48,15 @@ func TestRootCmdWiringSmoke(t *testing.T) {
 		require.Equal(t, path[len(path)-1], cmd.Name())
 	}
 
+	_, _, err := RootCmd.Find([]string{"init"})
+	require.Error(t, err)
+
 	require.Equal(t, "", notesCreateCmd.Flags().Lookup("title").DefValue)
 	require.Equal(t, "false", notesCreateCmd.Flags().Lookup("stdin").DefValue)
 	require.Equal(t, "", notesCreateCmd.Flags().Lookup("body-file").DefValue)
 	require.Equal(t, "20", notesSearchCmd.Flags().Lookup("limit").DefValue)
+	require.Equal(t, "false", projectInitCmd.Flags().Lookup("local").DefValue)
+	require.Equal(t, "", projectInitCmd.Flags().Lookup("description").DefValue)
 	require.Equal(t, "false", projectImportCmd.Flags().Lookup("dry-run").DefValue)
 	require.Equal(t, "false", projectRemoveCmd.Flags().Lookup("wipe").DefValue)
 	require.Equal(t, "false", projectReindexCmd.Flags().Lookup("all").DefValue)
