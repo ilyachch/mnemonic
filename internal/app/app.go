@@ -13,15 +13,18 @@ type Input struct {
 	CLI paths.CLIOverrides
 }
 
-// App is the application container that wires config, paths, and services.
-type App struct {
+// Bootstrap is the application container that wires config, paths, and services.
+type Bootstrap struct {
 	Config   *config.Config
 	Paths    paths.EffectivePaths
 	Services Services
 }
 
+// App is a compatibility alias for Bootstrap.
+type App = Bootstrap
+
 // New builds the application container from environment and config discovery.
-func New(input Input) (*App, error) {
+func New(input Input) (*Bootstrap, error) {
 	discoveredConfigPath, err := config.DiscoverConfigFile(input.CLI.ConfigFile)
 	if err != nil {
 		return nil, err
@@ -47,7 +50,7 @@ func New(input Input) (*App, error) {
 	// Wire the registry parsers using the project package.
 	wireRegistryParsers()
 
-	return &App{
+	return &Bootstrap{
 		Config: cfg,
 		Paths:  effective,
 		Services: Services{
@@ -63,7 +66,7 @@ func New(input Input) (*App, error) {
 }
 
 // Close shuts down app-owned resources.
-func (a *App) Close() error {
+func (b *Bootstrap) Close() error {
 	return nil
 }
 
