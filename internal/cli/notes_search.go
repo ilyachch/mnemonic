@@ -3,7 +3,6 @@ package cli
 import (
 	"strconv"
 
-	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/search"
 	"github.com/ilyachch/mnemonic/internal/service/searchsvc"
 	"github.com/spf13/cobra"
@@ -28,12 +27,8 @@ var notesSearchCmd = &cobra.Command{
 			return err
 		}
 
-		exists, err := runtime.Services.Search.Index.Exists()
-		if err != nil {
+		if err := requireRuntimeSearchIndex(runtime); err != nil {
 			return err
-		}
-		if !exists {
-			return apperr.NotFound("index missing; run `mnemonic project reindex`", nil)
 		}
 
 		hits, err := runtime.Services.Search.Search(cmd.Context(), searchsvc.SearchInput{

@@ -8,7 +8,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 )
@@ -37,8 +36,8 @@ func TestTagsListCommandReturnsCountsAndSorts(t *testing.T) {
 	writeTaggedNote(t, filepath.Join(memoriesRoot, "note-one.md"), "550e8400-e29b-41d4-a716-446655440001", "Note One", "note-one", []string{"django"}, "tagged twice #django\n")
 	writeTaggedNote(t, filepath.Join(memoriesRoot, "note-two.md"), "550e8400-e29b-41d4-a716-446655440002", "Note Two", "note-two", []string{"auth"}, "auth only\n")
 	writeTaggedNote(t, filepath.Join(memoriesRoot, "note-three.md"), "550e8400-e29b-41d4-a716-446655440003", "Note Three", "note-three", []string{"auth"}, "mixed tags #django\n")
-	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoriesRoot)
-	require.NoError(t, err)
+	reindexResult := executeCommand("project", "reindex", "personal", "--json")
+	require.NoError(t, reindexResult.Err, "stderr: %s", reindexResult.Stderr)
 
 	result := executeCommand("tags", "list", "--project", "personal", "--json")
 	require.NoError(t, result.Err, "stderr: %s", result.Stderr)

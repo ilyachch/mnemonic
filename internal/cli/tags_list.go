@@ -1,15 +1,9 @@
 package cli
 
 import (
-	"database/sql"
 	"fmt"
-	"os"
 	"strings"
 
-	"github.com/ilyachch/mnemonic/internal/app"
-	"github.com/ilyachch/mnemonic/internal/apperr"
-	"github.com/ilyachch/mnemonic/internal/index"
-	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/spf13/cobra"
 )
 
@@ -25,42 +19,24 @@ var tagsListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List tags",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		container, err := mustAppContainer()
+		runtime, err := runtimeAppForSelectedProject(cmd.Context())
 		if err != nil {
 			return err
 		}
 
-		resolvedProject, err := container.Services.ProjectResolver.Resolve(app.ProjectResolveInput{
-			ProjectSelector:  projectSelectorValue(),
-			EnvironmentValue: os.Getenv(project.EnvironmentProjectSelector),
-		})
+		if err := requireRuntimeSearchIndex(runtime); err != nil {
+			return err
+		}
+
+		tags, err := runtime.Services.Search.ListTags(cmd.Context())
 		if err != nil {
 			return err
 		}
 
-		indexPath, err := index.Path(resolvedProject.Project.ID)
-		if err != nil {
-			return err
+		output := tagsListOutput{Tags: make([]tagsListItem, 0, len(tags.Tags))}
+		for _, tag := range tags.Tags {
+			output.Tags = append(output.Tags, tagsListItem{Tag: tag.Tag, Count: tag.Count})
 		}
-		if _, err := os.Stat(indexPath); err != nil {
-			if os.IsNotExist(err) {
-				return apperr.NotFound("index missing; run `mnemonic project reindex`", nil)
-			}
-			return fmt.Errorf("stat index %q: %w", indexPath, err)
-		}
-
-		db, err := sql.Open("sqlite", indexPath)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = db.Close() }()
-
-		tags, err := listTags(db)
-		if err != nil {
-			return err
-		}
-
-		output := tagsListOutput{Tags: tags}
 		if output.Tags == nil {
 			output.Tags = []tagsListItem{}
 		}
@@ -82,38 +58,6 @@ type tagsListOutput struct {
 type tagsListItem struct {
 	Tag   string `json:"tag"`
 	Count int    `json:"count"`
-}
-
-func listTags(db *sql.DB) ([]tagsListItem, error) {
-	rows, err := db.Query(
-		`SELECT
-			CASE
-				WHEN instr(tag, ':') > 0 THEN substr(tag, instr(tag, ':') + 1)
-				ELSE tag
-			END AS tag_name,
-			COUNT(DISTINCT note_id) AS count
-		 FROM note_tags
-		 GROUP BY tag_name
-		 ORDER BY count DESC, tag_name ASC`,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("query tag list: %w", err)
-	}
-	defer rows.Close()
-
-	tags := make([]tagsListItem, 0)
-	for rows.Next() {
-		var item tagsListItem
-		if err := rows.Scan(&item.Tag, &item.Count); err != nil {
-			return nil, fmt.Errorf("scan tag row: %w", err)
-		}
-		tags = append(tags, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate tag rows: %w", err)
-	}
-
-	return tags, nil
 }
 
 func formatTagsListHuman(tags []tagsListItem) string {

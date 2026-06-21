@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 
-	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/graph"
 	"github.com/ilyachch/mnemonic/internal/service/searchsvc"
 	"github.com/spf13/cobra"
@@ -19,12 +18,8 @@ var notesBacklinksCmd = &cobra.Command{
 			return err
 		}
 
-		exists, err := runtime.Services.Search.Index.Exists()
-		if err != nil {
+		if err := requireRuntimeSearchIndex(runtime); err != nil {
 			return err
-		}
-		if !exists {
-			return apperr.NotFound("index missing; run `mnemonic project reindex`", nil)
 		}
 
 		links, err := runtime.Services.Search.Backlinks(cmd.Context(), searchsvc.BacklinksInput{
