@@ -1,12 +1,14 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
+	"github.com/ilyachch/mnemonic/internal/domain/kb"
 	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
@@ -39,7 +41,15 @@ func TestNewBuildsConfigPathsRegistryAndServices(t *testing.T) {
 	require.Equal(t, filepath.Clean(cacheHome), container.Paths.CacheHome)
 	require.Equal(t, filepath.Clean(memoriesHome), container.Paths.MemoriesHome)
 	require.NotNil(t, container.Services.Catalog)
+	require.NotNil(t, container.Services.Maint)
+	require.NotNil(t, container.Services.Maint.Catalog)
+	require.NotNil(t, container.Services.Maint.RuntimeFactory)
 	require.NotNil(t, container.Services.ProjectResolver)
+
+	runtime, err := container.Services.Maint.RuntimeFactory(context.Background(), kb.KnowledgeBase{ID: "550e8400-e29b-41d4-a716-446655440999"})
+	require.NoError(t, err)
+	require.NotNil(t, runtime)
+	require.NotNil(t, runtime.IndexService())
 }
 
 func TestMemoriesPathForEntryUsesRepoRelativePathForLocalProjects(t *testing.T) {

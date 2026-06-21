@@ -22,14 +22,34 @@ var projectDoctorCmd = &cobra.Command{
 	Args:              cobra.MaximumNArgs(1),
 	ValidArgsFunction: completeProjectNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		all, err := cmd.Flags().GetBool("all")
+		if err != nil {
+			return err
+		}
+
 		projectSelector := projectSelectorValue()
 		if len(args) == 1 {
 			projectSelector = args[0]
+		}
+		if all && len(args) > 0 {
+			return fmt.Errorf("--all cannot be combined with a project selector")
 		}
 
 		container, err := mustAppContainer()
 		if err != nil {
 			return err
+		}
+
+		if all {
+			if container.Services.Maint == nil {
+				return fmt.Errorf("maintenance service is not configured")
+			}
+			result, err := container.Services.Maint.DoctorAll(cmd.Context())
+			if err != nil {
+				return err
+			}
+			human := fmt.Sprintf("%d projects checked\n", len(result.Projects))
+			return PrintOutput(cmd.OutOrStdout(), human, result)
 		}
 
 		resolved, err := container.Services.ProjectResolver.Resolve(app.ProjectResolveInput{
@@ -65,6 +85,7 @@ var projectDoctorCmd = &cobra.Command{
 }
 
 func init() {
+	projectDoctorCmd.Flags().Bool("all", false, "run doctor across all active projects")
 	projectCmd.AddCommand(projectDoctorCmd)
 }
 

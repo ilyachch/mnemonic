@@ -24,6 +24,8 @@ var projectReindexCmd = &cobra.Command{
 		}
 
 		switch {
+		case all && len(args) > 0:
+			return fmt.Errorf("--all cannot be combined with a project selector")
 		case len(args) == 1:
 			result, err := reindexSingleProject(container.Paths.MemoriesHome, args[0])
 			if err != nil {
@@ -31,13 +33,19 @@ var projectReindexCmd = &cobra.Command{
 			}
 			return PrintOutput(cmd.OutOrStdout(), fmt.Sprintf("%s reindexed\n", result.ProjectID), result)
 		case all:
-			result, err := reindexAllProjects(container.Paths.MemoriesHome)
+			if container.Services.Maint == nil {
+				return fmt.Errorf("maintenance service is not configured")
+			}
+			result, err := container.Services.Maint.ReindexAll(cmd.Context())
 			if err != nil {
 				return err
 			}
 			return PrintOutput(cmd.OutOrStdout(), fmt.Sprintf("%d projects reindexed\n", result.Indexed), result)
 		default:
-			result, err := reindexAllProjects(container.Paths.MemoriesHome)
+			if container.Services.Maint == nil {
+				return fmt.Errorf("maintenance service is not configured")
+			}
+			result, err := container.Services.Maint.ReindexAll(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -58,12 +66,6 @@ type projectReindexProjectResult struct {
 	NotesIndexed int    `json:"notes_indexed"`
 	Status       string `json:"status"`
 	Error        string `json:"error,omitempty"`
-}
-
-type projectReindexSummary struct {
-	Indexed  int                           `json:"indexed"`
-	Skipped  int                           `json:"skipped,omitempty"`
-	Projects []projectReindexProjectResult `json:"projects,omitempty"`
 }
 
 func reindexSingleProject(memoriesHome, selector string) (projectReindexProjectResult, error) {
@@ -88,40 +90,4 @@ func reindexSingleProject(memoriesHome, selector string) (projectReindexProjectR
 		NotesIndexed: result.NotesIndexed,
 		Status:       result.Status,
 	}, nil
-}
-
-func reindexAllProjects(memoriesHome string) (projectReindexSummary, error) {
-	entries, _, err := registry.Scan(memoriesHome)
-	if err != nil {
-		return projectReindexSummary{}, err
-	}
-
-	var summary projectReindexSummary
-	for _, entry := range entries {
-		if entry.ProjectID == "" || entry.MemoriesAbs == "" {
-			summary.Skipped++
-			continue
-		}
-
-		result, err := index.RebuildProjectIndex(entry.ProjectID, entry.MemoriesAbs)
-		if err != nil {
-			summary.Projects = append(summary.Projects, projectReindexProjectResult{
-				ProjectID: entry.ProjectID,
-				Slug:      entry.Slug,
-				Status:    "error",
-				Error:     err.Error(),
-			})
-			continue
-		}
-
-		summary.Indexed++
-		summary.Projects = append(summary.Projects, projectReindexProjectResult{
-			ProjectID:    result.ProjectID,
-			Slug:         entry.Slug,
-			NotesSeen:    result.NotesSeen,
-			NotesIndexed: result.NotesIndexed,
-			Status:       result.Status,
-		})
-	}
-	return summary, nil
 }

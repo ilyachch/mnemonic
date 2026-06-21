@@ -39,6 +39,14 @@ func executeCommand(args ...string) cmdResult {
 	_ = notesDeleteCmd.Flags().Set("hard", "false")
 	_ = notesDeleteCmd.Flags().Set("yes", "false")
 	_ = projectRemoveCmd.Flags().Set("wipe", "false")
+	_ = projectReindexCmd.Flags().Set("all", "false")
+	if flag := projectReindexCmd.Flags().Lookup("all"); flag != nil {
+		flag.Changed = false
+	}
+	_ = projectDoctorCmd.Flags().Set("all", "false")
+	if flag := projectDoctorCmd.Flags().Lookup("all"); flag != nil {
+		flag.Changed = false
+	}
 	_ = mcpCmd.Flags().Set("help", "false")
 	_ = mcpCmd.Flags().Set("read-only", "false")
 	if flag := mcpCmd.Flags().Lookup("read-only"); flag != nil {

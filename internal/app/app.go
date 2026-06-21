@@ -1,11 +1,15 @@
 package app
 
 import (
+	"context"
+
 	"github.com/ilyachch/mnemonic/internal/config"
+	"github.com/ilyachch/mnemonic/internal/domain/kb"
 	"github.com/ilyachch/mnemonic/internal/paths"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/ilyachch/mnemonic/internal/service/catalogsvc"
+	"github.com/ilyachch/mnemonic/internal/service/maintsvc"
 )
 
 // Input configures app container creation.
@@ -50,13 +54,22 @@ func New(input Input) (*Bootstrap, error) {
 	// Wire the registry parsers using the project package.
 	wireRegistryParsers()
 
+	catalog := &catalogsvc.Service{
+		MemoriesHome: effective.MemoriesHome,
+		StateHome:    effective.StateHome,
+	}
+
 	return &Bootstrap{
 		Config: cfg,
 		Paths:  effective,
 		Services: Services{
-			Catalog: &catalogsvc.Service{
-				MemoriesHome: effective.MemoriesHome,
-				StateHome:    effective.StateHome,
+			Catalog: catalog,
+			Maint: &maintsvc.Service{
+				Catalog: catalog,
+				RuntimeFactory: func(ctx context.Context, k kb.KnowledgeBase) (maintsvc.Runtime, error) {
+					_ = ctx
+					return NewRuntimeApp(RuntimeInput{Config: cfg, KB: k})
+				},
 			},
 			ProjectResolver: &FileResolver{
 				MemoriesHome: effective.MemoriesHome,

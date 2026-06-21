@@ -8,6 +8,7 @@ import (
 	"github.com/ilyachch/mnemonic/internal/config"
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
 	"github.com/ilyachch/mnemonic/internal/service/indexsvc"
+	"github.com/ilyachch/mnemonic/internal/service/maintsvc"
 	"github.com/ilyachch/mnemonic/internal/service/notesvc"
 	"github.com/ilyachch/mnemonic/internal/service/searchsvc"
 )
@@ -45,6 +46,14 @@ func NewRuntimeApp(input RuntimeInput) (*RuntimeApp, error) {
 			Index:  indexsvc.New(input.KB),
 		},
 	}, nil
+}
+
+// IndexService returns the runtime index service.
+func (r *RuntimeApp) IndexService() maintsvc.IndexService {
+	if r == nil {
+		return nil
+	}
+	return r.Services.Index
 }
 
 // Runtime resolves a selector into a runtime app.
