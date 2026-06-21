@@ -1,33 +1,34 @@
 package web
 
 import (
+	"bytes"
 	"context"
-	"fmt"
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/index"
+	"github.com/ilyachch/mnemonic/internal/paths"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
-	"github.com/ilyachch/mnemonic/internal/webauth"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 )
 
 type webFixture struct {
-	manager *ServerManager
-	store   *webauth.Store
-	token   string
-	userID  string
-	count   *atomic.Int32
+	server *Server
+	db     *sql.DB
 }
 
-func newWebFixture(t *testing.T, superuserToken string) *webFixture {
+func newWebFixture(t *testing.T, readOnly bool) *webFixture {
 	t.Helper()
 
 	root := testutil.CleanEnvForTest(t)
@@ -52,159 +53,205 @@ func newWebFixture(t *testing.T, superuserToken string) *webFixture {
 	_, err := index.RebuildProjectIndex(projectID, projectRoot)
 	require.NoError(t, err)
 
-	authPath, err := webauth.ResolveDBPath("")
+	indexPath, err := index.Path(projectID)
 	require.NoError(t, err)
-	store, err := webauth.NewStore(authPath)
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(indexPath)+"?mode=ro")
 	require.NoError(t, err)
-
-	token := "user-token-123"
-	user, err := store.CreateUser(context.Background(), "alice", token)
-	require.NoError(t, err)
-
-	manager, err := NewServerManager(store, superuserToken, memoriesHome, []string{slug})
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	require.NoError(t, db.Ping())
+	_, err = db.Exec(`PRAGMA busy_timeout = 5000`)
 	require.NoError(t, err)
 
-	count := &atomic.Int32{}
-	baseFactory := manager.instanceFactory
-	manager.instanceFactory = func(requested string) (*ProjectInstance, error) {
-		count.Add(1)
-		return baseFactory(requested)
-	}
+	server, err := NewServer(app.ProjectResolution{
+		MnemonicFilePath: filepath.Join(projectRoot, "mnemonic.toml"),
+		RepoRootAbs:      memoriesHome,
+		MemoriesAbs:      projectRoot,
+		ManifestAbs:      filepath.Join(projectRoot, "mnemonic.toml"),
+		Project: app.ProjectRecord{
+			ID:           projectID,
+			Name:         "Demo",
+			Slug:         slug,
+			Kind:         "central",
+			MemoriesPath: filepath.Base(projectRoot),
+		},
+	}, paths.EffectivePaths{
+		MemoriesHome: memoriesHome,
+	}, db, "", readOnly)
+	require.NoError(t, err)
 
-	t.Cleanup(func() {
-		_ = manager.Close()
-	})
-
-	return &webFixture{
-		manager: manager,
-		store:   store,
-		token:   token,
-		userID:  user.UserID,
-		count:   count,
-	}
+	return &webFixture{server: server, db: db}
 }
 
-func (f *webFixture) request(method, path, token string) (*http.Response, error) {
-	req, err := http.NewRequest(method, "http://example.test"+path, nil)
+func (f *webFixture) request(method, path string, body []byte) (*http.Response, error) {
+	return f.requestWithHeaders(method, path, body, nil)
+}
+
+func (f *webFixture) requestWithHeaders(method, path string, body []byte, headers map[string]string) (*http.Response, error) {
+	req, err := http.NewRequest(method, "http://example.test"+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	for key, value := range headers {
+		req.Header.Set(key, value)
 	}
-
 	recorder := httptest.NewRecorder()
-	f.manager.ServeHTTP(recorder, req)
+	f.server.ServeHTTP(recorder, req)
 	return recorder.Result(), nil
 }
 
-func TestServerManagerAuth(t *testing.T) {
-	t.Run("missing token", func(t *testing.T) {
-		f := newWebFixture(t, "")
-		resp, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing", "")
-		require.NoError(t, err)
-		defer resp.Body.Close()
-		require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
-	})
+func TestServerServesSSEAndMessages(t *testing.T) {
+	f := newWebFixture(t, false)
+	defer func() { _ = f.server.Close() }()
+	f.server.projectToken = "secret"
 
-	t.Run("invalid token", func(t *testing.T) {
-		f := newWebFixture(t, "")
-		resp, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing", "does-not-exist")
-		require.NoError(t, err)
-		defer resp.Body.Close()
-		require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
-	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	t.Run("missing permission", func(t *testing.T) {
-		f := newWebFixture(t, "")
-		resp, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing", f.token)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-		require.Equal(t, http.StatusForbidden, resp.StatusCode)
-	})
-
-	t.Run("superuser bypass", func(t *testing.T) {
-		f := newWebFixture(t, "super-token")
-		resp, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing", "super-token")
-		require.NoError(t, err)
-		defer resp.Body.Close()
-		require.Equal(t, http.StatusNotFound, resp.StatusCode)
-		require.EqualValues(t, 1, f.count.Load())
-	})
-}
-
-func TestServerManagerLazyInitAndCache(t *testing.T) {
-	f := newWebFixture(t, "")
-	require.NoError(t, f.store.GrantPermission(context.Background(), f.userID, "demo", "ro"))
-
-	resp1, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing", f.token)
+	recorder := newStreamingRecorder()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://example.test/sse", nil)
 	require.NoError(t, err)
-	require.Equal(t, http.StatusNotFound, resp1.StatusCode)
-	_ = resp1.Body.Close()
+	req.Header.Set("Authorization", "Bearer secret")
 
-	resp2, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing", f.token)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusNotFound, resp2.StatusCode)
-	_ = resp2.Body.Close()
+	done := make(chan struct{})
+	go func() {
+		f.server.ServeHTTP(recorder, req)
+		close(done)
+	}()
 
-	require.EqualValues(t, 1, f.count.Load())
-}
+	require.Eventually(t, func() bool {
+		return strings.Contains(recorder.String(), "event: endpoint") && strings.Contains(recorder.String(), "/messages?sessionid=")
+	}, 5*time.Second, 10*time.Millisecond)
 
-func TestServerManagerCachesInstancesByAccessLevel(t *testing.T) {
-	f := newWebFixture(t, "")
-
-	rwUser, err := f.store.CreateUser(context.Background(), "bob", "user-token-456")
-	require.NoError(t, err)
-	require.NoError(t, f.store.GrantPermission(context.Background(), f.userID, "demo", "ro"))
-	require.NoError(t, f.store.GrantPermission(context.Background(), rwUser.UserID, "demo", "rw"))
-
-	resp1, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing", f.token)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusNotFound, resp1.StatusCode)
-	_ = resp1.Body.Close()
-
-	resp2, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing", "user-token-456")
-	require.NoError(t, err)
-	require.Equal(t, http.StatusNotFound, resp2.StatusCode)
-	_ = resp2.Body.Close()
-
-	resp3, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing", f.token)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusNotFound, resp3.StatusCode)
-	_ = resp3.Body.Close()
-
-	require.EqualValues(t, 2, f.count.Load())
-}
-
-func TestServerManagerConcurrentRequestsShareOneInstance(t *testing.T) {
-	f := newWebFixture(t, "")
-	require.NoError(t, f.store.GrantPermission(context.Background(), f.userID, "demo", "ro"))
-
-	const concurrency = 8
-	var wg sync.WaitGroup
-	errCh := make(chan error, concurrency)
-
-	for i := 0; i < concurrency; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			resp, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing", f.token)
-			if err != nil {
-				errCh <- err
-				return
-			}
-			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusNotFound {
-				errCh <- fmt.Errorf("unexpected status: %d", resp.StatusCode)
-				return
-			}
-		}()
+	body := recorder.String()
+	start := strings.Index(body, "sessionid=")
+	require.NotEqual(t, -1, start)
+	sessionID := body[start+len("sessionid="):]
+	if end := strings.IndexAny(sessionID, "\r\n \t"); end >= 0 {
+		sessionID = sessionID[:end]
 	}
+	require.NotEmpty(t, sessionID)
 
-	wg.Wait()
-	close(errCh)
-	for err := range errCh {
-		require.NoError(t, err)
+	resp, err := f.requestWithHeaders(http.MethodPost, "/messages?sessionid="+sessionID, []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`), map[string]string{
+		"Authorization": "Bearer secret",
+	})
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusAccepted, resp.StatusCode)
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(250 * time.Millisecond):
 	}
-	require.EqualValues(t, 1, f.count.Load())
+	require.Equal(t, http.StatusOK, recorder.StatusCode())
+	require.Contains(t, recorder.String(), "event: endpoint")
+}
+
+func TestServerRejectsBadBearerToken(t *testing.T) {
+	f := newWebFixture(t, false)
+	defer func() { _ = f.server.Close() }()
+	f.server.projectToken = "secret"
+
+	req, err := http.NewRequest(http.MethodGet, "http://example.test/sse", nil)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer wrong")
+
+	recorder := httptest.NewRecorder()
+	f.server.ServeHTTP(recorder, req)
+	resp := recorder.Result()
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestServerReadOnlyOmitsWriteTools(t *testing.T) {
+	f := newWebFixture(t, true)
+	defer func() { _ = f.server.Close() }()
+
+	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+	serverSession, err := f.server.sdkServer.Connect(context.Background(), serverTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = serverSession.Close() }()
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "client", Version: "0.0.1"}, nil)
+	clientSession, err := client.Connect(context.Background(), clientTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = clientSession.Close() }()
+
+	tools, err := clientSession.ListTools(context.Background(), nil)
+	require.NoError(t, err)
+
+	names := make([]string, 0, len(tools.Tools))
+	for _, tool := range tools.Tools {
+		names = append(names, tool.Name)
+	}
+	require.Equal(t, []string{"list_backlinks", "list_notes", "list_tags", "read_note", "search_notes"}, names)
+}
+
+func TestServerRejectsLegacySlugRoutes(t *testing.T) {
+	f := newWebFixture(t, false)
+	defer func() { _ = f.server.Close() }()
+
+	resp, err := f.request(http.MethodGet, "/mcp/demo/sse", nil)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+
+	resp, err = f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing", []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+type streamingRecorder struct {
+	header http.Header
+	mu     sync.Mutex
+	buf    bytes.Buffer
+	code   int
+	once   sync.Once
+	wrote  chan struct{}
+}
+
+func newStreamingRecorder() *streamingRecorder {
+	return &streamingRecorder{
+		header: make(http.Header),
+		wrote:  make(chan struct{}),
+	}
+}
+
+func (r *streamingRecorder) Header() http.Header { return r.header }
+
+func (r *streamingRecorder) WriteHeader(statusCode int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.code = statusCode
+}
+
+func (r *streamingRecorder) Write(p []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.code == 0 {
+		r.code = http.StatusOK
+	}
+	n, err := r.buf.Write(p)
+	r.once.Do(func() { close(r.wrote) })
+	return n, err
+}
+
+func (r *streamingRecorder) Flush() {}
+
+func (r *streamingRecorder) String() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.buf.String()
+}
+
+func (r *streamingRecorder) StatusCode() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.code == 0 {
+		return http.StatusOK
+	}
+	return r.code
 }

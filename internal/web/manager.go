@@ -1,475 +1,109 @@
 package web
 
 import (
-	"context"
 	"database/sql"
-	"errors"
-	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 
 	"github.com/ilyachch/mnemonic/internal/app"
-	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/mcp"
 	"github.com/ilyachch/mnemonic/internal/paths"
 	"github.com/ilyachch/mnemonic/internal/project"
-	"github.com/ilyachch/mnemonic/internal/webauth"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// ProjectInstance owns the cached MCP server state for a single project.
-type ProjectInstance struct {
-	MCPServer *sdkmcp.Server
-	IndexDB   *sql.DB
+const (
+	sseEndpoint      = "/sse"
+	messagesEndpoint = "/messages"
+)
 
-	handler *projectSessionHandler
+// Server serves one resolved project over HTTP/SSE.
+type Server struct {
+	projectResolution app.ProjectResolution
+	effectivePaths    paths.EffectivePaths
+	indexDB           *sql.DB
+	sdkServer         *sdkmcp.Server
+	projectToken      string
+	readOnly          bool
+
+	sessions *projectSessionHandler
 }
 
-// Close releases project resources.
-func (p *ProjectInstance) Close() error {
-	if p == nil || p.IndexDB == nil {
+// NewServer prepares an eager MCP HTTP server for a single resolved project.
+func NewServer(resolution app.ProjectResolution, effectivePaths paths.EffectivePaths, indexDB *sql.DB, projectToken string, readOnly bool) (*Server, error) {
+	if strings.TrimSpace(resolution.Project.Slug) == "" {
+		return nil, app.NewCLIUsageError("project resolution is required", nil)
+	}
+	if strings.TrimSpace(resolution.Project.ID) == "" {
+		return nil, app.NewCLIUsageError("project id is required", nil)
+	}
+	if indexDB == nil {
+		return nil, app.NewInternalError("index database is required", nil)
+	}
+
+	mcpServer := mcp.NewServerWithIndexDB(resolution, effectivePaths, indexDB, readOnly)
+	sdkServer := mcpServer.BuildSDKServer()
+
+	return &Server{
+		projectResolution: resolution,
+		effectivePaths:    effectivePaths,
+		indexDB:           indexDB,
+		sdkServer:         sdkServer,
+		projectToken:      strings.TrimSpace(projectToken),
+		readOnly:          readOnly,
+		sessions:          newProjectSessionHandler(sdkServer),
+	}, nil
+}
+
+// Close releases the open index DB.
+func (s *Server) Close() error {
+	if s == nil || s.indexDB == nil {
 		return nil
 	}
-	return p.IndexDB.Close()
+	return s.indexDB.Close()
 }
 
-type projectMetadata struct {
-	Resolution app.ProjectResolution
-}
-
-type statusError struct {
-	status int
-	msg    string
-	err    error
-}
-
-func (e *statusError) Error() string {
-	if e == nil {
-		return ""
-	}
-	return e.msg
-}
-
-func (e *statusError) Unwrap() error {
-	if e == nil {
-		return nil
-	}
-	return e.err
-}
-
-func (e *statusError) StatusCode() int {
-	if e == nil {
-		return http.StatusInternalServerError
-	}
-	return e.status
-}
-
-func newStatusError(status int, msg string, err error) error {
-	return &statusError{status: status, msg: msg, err: err}
-}
-
-// ServerManager validates access and lazily caches per-project MCP instances.
-type ServerManager struct {
-	authStore      *webauth.Store
-	superuserToken string
-	serveSlugs     map[string]struct{}
-	projects       map[string]projectMetadata
-	instances      map[string]*ProjectInstance
-	memoriesHome   string
-
-	instanceFactory func(slug string) (*ProjectInstance, error)
-	mu              sync.RWMutex
-}
-
-// NewServerManager validates the requested slugs and prepares a manager.
-func NewServerManager(authStore *webauth.Store, superuserToken, memoriesHome string, slugs []string) (*ServerManager, error) {
-	projects, err := loadServeProjects(memoriesHome, slugs)
-	if err != nil {
-		return nil, err
-	}
-
-	manager := &ServerManager{
-		authStore:      authStore,
-		superuserToken: strings.TrimSpace(superuserToken),
-		serveSlugs:     make(map[string]struct{}, len(projects)),
-		projects:       projects,
-		instances:      make(map[string]*ProjectInstance),
-		memoriesHome:   memoriesHome,
-	}
-	for slug := range projects {
-		manager.serveSlugs[slug] = struct{}{}
-	}
-	manager.instanceFactory = manager.buildProjectInstance
-	return manager, nil
-}
-
-// Close releases all cached project instances and the auth store.
-func (m *ServerManager) Close() error {
-	if m == nil {
-		return nil
-	}
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	var errs []string
-	for slug, instance := range m.instances {
-		if instance == nil {
-			continue
-		}
-		if err := instance.Close(); err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", slug, err))
-		}
-	}
-	m.instances = make(map[string]*ProjectInstance)
-	if m.authStore != nil {
-		if err := m.authStore.Close(); err != nil {
-			errs = append(errs, err.Error())
-		}
-	}
-	if len(errs) > 0 {
-		return fmt.Errorf("close web manager: %s", strings.Join(errs, "; "))
-	}
-	return nil
-}
-
-// ServeHTTP routes authenticated MCP traffic for the configured projects.
-func (m *ServerManager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	slug, endpoint, ok := parseProjectEndpoint(r.URL.Path)
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	if _, allowed := m.serveSlugs[slug]; !allowed {
-		http.NotFound(w, r)
+// ServeHTTP routes only /sse and /messages for the configured project.
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !s.authorize(r) {
+		w.Header().Set("WWW-Authenticate", `Bearer`)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	level, err := m.authorize(r.Context(), r, slug)
-	if err != nil {
-		writeAuthError(w, err)
-		return
-	}
-
-	instance, err := m.instanceForSlug(slug, level)
-	if err != nil {
-		writeHTTPError(w, err)
-		return
-	}
-
-	switch endpoint {
-	case "sse":
+	switch {
+	case r.URL.Path == sseEndpoint:
 		if r.Method != http.MethodGet {
 			w.Header().Set("Allow", http.MethodGet)
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		instance.handler.ServeGET(w, r)
-	case "messages":
+		s.sessions.ServeGET(w, r)
+	case r.URL.Path == messagesEndpoint:
 		if r.Method != http.MethodPost {
 			w.Header().Set("Allow", http.MethodPost)
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		instance.handler.ServePOST(w, r)
+		s.sessions.ServePOST(w, r)
 	default:
 		http.NotFound(w, r)
 	}
 }
 
-func (m *ServerManager) authorize(ctx context.Context, r *http.Request, slug string) (string, error) {
-	token, ok := bearerToken(r.Header.Get("Authorization"))
-	if !ok {
-		return "", newStatusError(http.StatusUnauthorized, "authorization bearer token is required", nil)
+func (s *Server) authorize(r *http.Request) bool {
+	if s == nil || s.projectToken == "" {
+		return true
 	}
 
-	if m.superuserToken != "" && token == m.superuserToken {
-		return "rw", nil
+	auth := strings.TrimSpace(r.Header.Get("Authorization"))
+	scheme, token, ok := strings.Cut(auth, " ")
+	if !ok || !strings.EqualFold(strings.TrimSpace(scheme), "Bearer") {
+		return false
 	}
-
-	if m.authStore == nil {
-		return "", app.NewInternalError("web auth store is not configured", nil)
-	}
-
-	user, err := m.authStore.ValidateToken(ctx, token)
-	if err != nil {
-		return "", err
-	}
-
-	perms, err := m.authStore.GetPermissions(ctx, user.UserID)
-	if err != nil {
-		return "", err
-	}
-	for _, perm := range perms {
-		if perm.ProjectSelector == slug {
-			switch perm.AccessLevel {
-			case "ro", "rw":
-				return perm.AccessLevel, nil
-			default:
-				return "", newStatusError(http.StatusForbidden, fmt.Sprintf("invalid access level %q for %q", perm.AccessLevel, slug), nil)
-			}
-		}
-	}
-
-	return "", newStatusError(http.StatusForbidden, "forbidden", nil)
-}
-
-func (m *ServerManager) instanceForSlug(slug, level string) (*ProjectInstance, error) {
-	cacheKey := slug + ":" + level
-
-	m.mu.RLock()
-	instance := m.instances[cacheKey]
-	m.mu.RUnlock()
-	if instance != nil {
-		return instance, nil
-	}
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if instance = m.instances[cacheKey]; instance != nil {
-		return instance, nil
-	}
-
-	factory := m.instanceFactory
-	if factory == nil {
-		factory = m.buildProjectInstance
-	}
-	instance, err := factory(cacheKey)
-	if err != nil {
-		return nil, err
-	}
-	m.instances[cacheKey] = instance
-	return instance, nil
-}
-
-func (m *ServerManager) buildProjectInstance(cacheKey string) (*ProjectInstance, error) {
-	parts := strings.SplitN(cacheKey, ":", 2)
-	if len(parts) != 2 {
-		return nil, app.NewCLIUsageError("invalid project cache key", nil)
-	}
-	slug, level := parts[0], parts[1]
-	meta, ok := m.projects[slug]
-	if !ok {
-		return nil, app.NewNotFoundError(fmt.Sprintf("project %q is not configured for web serving", slug), nil)
-	}
-
-	indexPath, err := index.Path(meta.Resolution.Project.ID)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := os.Stat(indexPath); err != nil {
-		if os.IsNotExist(err) {
-			return nil, app.NewNotFoundError(fmt.Sprintf("index for %q is missing; run `mnemonic project reindex`", slug), nil)
-		}
-		return nil, fmt.Errorf("stat index %q: %w", indexPath, err)
-	}
-
-	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(indexPath)+"?mode=ro")
-	if err != nil {
-		return nil, fmt.Errorf("open index database: %w", err)
-	}
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
-	if err := db.Ping(); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("ping index database: %w", err)
-	}
-	if _, err := db.Exec(`PRAGMA busy_timeout = 5000`); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("apply busy timeout: %w", err)
-	}
-
-	srv := mcp.NewServerWithIndexDB(meta.Resolution, paths.EffectivePaths{MemoriesHome: m.memoriesHome}, db, level == "ro")
-	sdkServer := srv.BuildSDKServer()
-
-	return &ProjectInstance{
-		MCPServer: sdkServer,
-		IndexDB:   db,
-		handler:   newProjectSessionHandler(sdkServer),
-	}, nil
-}
-
-func loadServeProjects(memoriesHome string, slugs []string) (map[string]projectMetadata, error) {
-	if strings.TrimSpace(memoriesHome) == "" {
-		return nil, app.NewCLIUsageError("memories home is required", nil)
-	}
-
-	projects := make(map[string]projectMetadata, len(slugs))
-	for _, rawSlug := range slugs {
-		slug := strings.TrimSpace(rawSlug)
-		if slug == "" {
-			continue
-		}
-		if _, exists := projects[slug]; exists {
-			continue
-		}
-
-		meta, err := loadProjectMetadata(memoriesHome, slug)
-		if err != nil {
-			return nil, err
-		}
-		projects[slug] = meta
-	}
-	if len(projects) == 0 {
-		return nil, app.NewCLIUsageError("MNEMONIC_SERVE_PROJECTS did not contain any project slugs", nil)
-	}
-	return projects, nil
-}
-
-func loadProjectMetadata(memoriesHome, slug string) (projectMetadata, error) {
-	centralManifest := filepath.Join(memoriesHome, slug, "mnemonic.toml")
-	centralExists := false
-	if info, err := os.Stat(centralManifest); err == nil && !info.IsDir() {
-		centralExists = true
-	} else if err != nil && !os.IsNotExist(err) {
-		return projectMetadata{}, fmt.Errorf("stat manifest %q: %w", centralManifest, err)
-	}
-
-	pointerPath := filepath.Join(memoriesHome, slug+".toml")
-	pointerExists := false
-	if info, err := os.Stat(pointerPath); err == nil && !info.IsDir() {
-		pointerExists = true
-	} else if err != nil && !os.IsNotExist(err) {
-		return projectMetadata{}, fmt.Errorf("stat pointer %q: %w", pointerPath, err)
-	}
-
-	switch {
-	case centralExists && pointerExists:
-		return projectMetadata{}, app.NewAmbiguousError(fmt.Sprintf("project %q exists as both a central directory and a pointer file", slug), nil)
-	case centralExists:
-		return loadCentralProjectMetadata(slug, centralManifest)
-	case pointerExists:
-		return loadLocalProjectMetadata(slug, pointerPath)
-	default:
-		return projectMetadata{}, app.NewNotFoundError(fmt.Sprintf("project %q not found under %s", slug, memoriesHome), nil)
-	}
-}
-
-func loadCentralProjectMetadata(slug, manifestPath string) (projectMetadata, error) {
-	manifest, err := project.ParseMnemonicManifestFromFile(manifestPath)
-	if err != nil {
-		return projectMetadata{}, err
-	}
-	if manifest.Slug != slug {
-		return projectMetadata{}, app.NewNotFoundError(fmt.Sprintf("project %q manifest slug mismatch: %q", slug, manifest.Slug), nil)
-	}
-
-	memoriesAbs := filepath.Dir(manifestPath)
-	return projectMetadata{
-		Resolution: app.ProjectResolution{
-			MnemonicFilePath: manifestPath,
-			RepoRootAbs:      memoriesAbs,
-			MemoriesAbs:      memoriesAbs,
-			ManifestAbs:      manifestPath,
-			Project: app.ProjectRecord{
-				ID:           manifest.ProjectID,
-				Name:         manifest.Name,
-				Slug:         manifest.Slug,
-				Kind:         "central",
-				MemoriesPath: filepath.Base(memoriesAbs),
-			},
-		},
-	}, nil
-}
-
-func loadLocalProjectMetadata(slug, pointerPath string) (projectMetadata, error) {
-	data, err := os.ReadFile(pointerPath)
-	if err != nil {
-		return projectMetadata{}, fmt.Errorf("read pointer %q: %w", pointerPath, err)
-	}
-	pointer, err := project.ParsePointerFile(data)
-	if err != nil {
-		return projectMetadata{}, err
-	}
-
-	manifestPath := pointer.ManifestPath
-	manifest, err := project.ParseMnemonicManifestFromFile(manifestPath)
-	if err != nil {
-		return projectMetadata{}, err
-	}
-	if manifest.Slug != slug {
-		return projectMetadata{}, app.NewNotFoundError(fmt.Sprintf("project %q manifest slug mismatch: %q", slug, manifest.Slug), nil)
-	}
-
-	memoriesAbs := filepath.Dir(manifestPath)
-	repoRootAbs := filepath.Dir(filepath.Dir(manifestPath))
-	return projectMetadata{
-		Resolution: app.ProjectResolution{
-			MnemonicFilePath: manifestPath,
-			RepoRootAbs:      repoRootAbs,
-			MemoriesAbs:      memoriesAbs,
-			ManifestAbs:      manifestPath,
-			Project: app.ProjectRecord{
-				ID:           manifest.ProjectID,
-				Name:         manifest.Name,
-				Slug:         manifest.Slug,
-				Kind:         "local",
-				MemoriesPath: filepath.Base(memoriesAbs),
-			},
-		},
-	}, nil
-}
-
-func parseProjectEndpoint(path string) (slug, endpoint string, ok bool) {
-	trimmed := strings.Trim(path, "/")
-	parts := strings.Split(trimmed, "/")
-	if len(parts) != 3 || parts[0] != "mcp" {
-		return "", "", false
-	}
-	return parts[1], parts[2], true
-}
-
-func bearerToken(header string) (string, bool) {
-	header = strings.TrimSpace(header)
-	if header == "" {
-		return "", false
-	}
-	const prefix = "Bearer "
-	if !strings.HasPrefix(header, prefix) {
-		return "", false
-	}
-	token := strings.TrimSpace(strings.TrimPrefix(header, prefix))
-	if token == "" {
-		return "", false
-	}
-	return token, true
-}
-
-func writeAuthError(w http.ResponseWriter, err error) {
-	status := http.StatusForbidden
-	var statusErr *statusError
-	switch {
-	case errors.As(err, &statusErr):
-		status = statusErr.StatusCode()
-	case appErrorCode(err) == app.CodeNotFound:
-		status = http.StatusUnauthorized
-	case appErrorCode(err) == app.CodeCLIUsage:
-		status = http.StatusUnauthorized
-	}
-	http.Error(w, err.Error(), status)
-}
-
-func writeHTTPError(w http.ResponseWriter, err error) {
-	switch appErrorCode(err) {
-	case app.CodeNotFound:
-		http.Error(w, err.Error(), http.StatusNotFound)
-	case app.CodeCLIUsage:
-		http.Error(w, err.Error(), http.StatusBadRequest)
-	default:
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-func appErrorCode(err error) app.ErrCode {
-	var appErr *app.AppError
-	if errors.As(err, &appErr) {
-		return appErr.Code
-	}
-	return app.CodeInternal
+	return strings.TrimSpace(token) == s.projectToken
 }
 
 type projectSessionHandler struct {
@@ -493,12 +127,7 @@ func (h *projectSessionHandler) ServeGET(w http.ResponseWriter, r *http.Request)
 
 	sessionID := project.NewUUID()
 	messagesURL := *r.URL
-	messagesURL.Path = strings.TrimRight(messagesURL.Path, "/")
-	if messagesURL.Path == "" {
-		messagesURL.Path = "/messages"
-	} else {
-		messagesURL.Path = strings.TrimSuffix(messagesURL.Path, "/sse") + "/messages"
-	}
+	messagesURL.Path = messagesEndpoint
 	q := messagesURL.Query()
 	q.Set("sessionid", sessionID)
 	messagesURL.RawQuery = q.Encode()
@@ -546,22 +175,6 @@ func (h *projectSessionHandler) ServePOST(w http.ResponseWriter, r *http.Request
 	}
 
 	transport.ServeHTTP(w, r)
-}
-
-// ParseServeProjects returns the comma-separated project slugs in the provided value.
-func ParseServeProjects(raw string) []string {
-	if strings.TrimSpace(raw) == "" {
-		return nil
-	}
-	parts := strings.Split(raw, ",")
-	slugs := make([]string, 0, len(parts))
-	for _, part := range parts {
-		slug := strings.TrimSpace(part)
-		if slug != "" {
-			slugs = append(slugs, slug)
-		}
-	}
-	return slugs
 }
 
 // ServeAddr resolves the listener address from flag/env/default precedence.
