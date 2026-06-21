@@ -1,15 +1,11 @@
 package cli
 
 import (
-	"database/sql"
-	"fmt"
-	"os"
 	"strconv"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
-	"github.com/ilyachch/mnemonic/internal/index"
-	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/ilyachch/mnemonic/internal/search"
+	"github.com/ilyachch/mnemonic/internal/service/searchsvc"
 	"github.com/spf13/cobra"
 )
 
@@ -27,37 +23,24 @@ var notesSearchCmd = &cobra.Command{
 			return err
 		}
 
-		container, err := mustAppContainer()
+		runtime, err := runtimeAppForSelectedProject(cmd.Context())
 		if err != nil {
 			return err
 		}
 
-		entry, err := registry.Resolve(container.Paths.MemoriesHome, projectSelectorValue())
-		if err != nil {
-			if _, ok := err.(registry.ErrNotFound); ok {
-				return apperr.NotFound(err.Error(), nil)
-			}
-			return err
-		}
-
-		indexPath, err := index.Path(entry.ProjectID)
+		exists, err := runtime.Services.Search.Index.Exists()
 		if err != nil {
 			return err
 		}
-		if _, err := os.Stat(indexPath); err != nil {
-			if os.IsNotExist(err) {
-				return apperr.NotFound("index missing; run `mnemonic project reindex`", nil)
-			}
-			return fmt.Errorf("stat index %q: %w", indexPath, err)
+		if !exists {
+			return apperr.NotFound("index missing; run `mnemonic project reindex`", nil)
 		}
 
-		searchDB, err := sql.Open("sqlite", indexPath)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = searchDB.Close() }()
-
-		hits, err := search.Search(searchDB, args[0], limit, tagFilter)
+		hits, err := runtime.Services.Search.Search(cmd.Context(), searchsvc.SearchInput{
+			Query: args[0],
+			Limit: limit,
+			Tag:   tagFilter,
+		})
 		if err != nil {
 			return err
 		}

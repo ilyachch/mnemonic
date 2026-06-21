@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/domain/kb"
 	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/markdown"
 	"github.com/ilyachch/mnemonic/internal/notes"
@@ -52,30 +52,17 @@ var projectDoctorCmd = &cobra.Command{
 			return PrintOutput(cmd.OutOrStdout(), human, result)
 		}
 
-		resolved, err := container.Services.ProjectResolver.Resolve(app.ProjectResolveInput{
-			ProjectSelector:  projectSelector,
-			EnvironmentValue: os.Getenv(project.EnvironmentProjectSelector),
-		})
+		runtime, err := runtimeAppForSelector(cmd.Context(), projectSelector)
 		if err != nil {
 			return err
 		}
 
-		repoRoot := resolved.RepoRootAbs
-		if repoRoot == "" {
-			repoRoot = filepath.Dir(resolved.MnemonicFilePath)
-		}
-		memoriesRoot, err := project.ResolveMemoriesRoot(project.MemoriesRootInput{
-			Kind:         resolved.Project.Kind,
-			Slug:         resolved.Project.Slug,
-			MemoriesPath: resolved.Project.MemoriesPath,
-			MemoriesHome: container.Paths.MemoriesHome,
-			RepoRoot:     repoRoot,
-		})
-		if err != nil {
-			return err
+		repoRoot := runtime.KB.RepoRootDir
+		if repoRoot == "" && runtime.KB.ManifestPath != "" {
+			repoRoot = filepath.Dir(runtime.KB.ManifestPath)
 		}
 
-		result, err := doctorProject(container.Paths.MemoriesHome, resolved, repoRoot, memoriesRoot)
+		result, err := doctorProject(container.Paths.MemoriesHome, runtime.KB, repoRoot)
 		if err != nil {
 			return err
 		}
@@ -101,20 +88,16 @@ type doctorCheck struct {
 	Count  int    `json:"count,omitempty"`
 }
 
-func doctorProject(memoriesHome string, resolved app.ProjectResolution, repoRoot, memoriesRoot string) (doctorResult, error) {
+func doctorProject(memoriesHome string, resolved kb.KnowledgeBase, repoRoot string) (doctorResult, error) {
 	result := doctorResult{Status: "ok"}
 	result.addCheck(doctorCheck{Name: "registry file-based", Status: doctorRegistryFileCheck(memoriesHome)})
 	result.addCheck(doctorCheck{Name: "project path exists", Status: pathStatus(repoRoot)})
 
-	if resolved.Project.Kind != string(project.ProjectKindLocal) {
-		result.addCheck(doctorParseCheck("mnemonic.toml", resolved.ManifestAbs))
+	if resolved.Kind != string(project.ProjectKindLocal) {
+		result.addCheck(doctorParseCheck("mnemonic.toml", resolved.ManifestPath))
 	}
 
-	indexPath, err := index.Path(resolved.Project.ID)
-	if err != nil {
-		return doctorResult{}, err
-	}
-	if _, err := os.Stat(indexPath); err != nil {
+	if _, err := os.Stat(resolved.IndexPath); err != nil {
 		if os.IsNotExist(err) {
 			result.Status = "needs_reindex"
 			result.addCheck(doctorCheck{Name: "index exists", Status: "missing"})
@@ -124,12 +107,12 @@ func doctorProject(memoriesHome string, resolved app.ProjectResolution, repoRoot
 	}
 	result.addCheck(doctorCheck{Name: "index exists", Status: "ok"})
 
-	if err := index.QuickCheck(indexPath); err != nil {
+	if err := index.QuickCheck(resolved.IndexPath); err != nil {
 		return doctorResult{}, err
 	}
 	result.addCheck(doctorCheck{Name: "index quick_check", Status: "ok"})
 
-	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(indexPath)+"?mode=ro")
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(resolved.IndexPath)+"?mode=ro")
 	if err != nil {
 		return doctorResult{}, err
 	}
@@ -145,7 +128,7 @@ func doctorProject(memoriesHome string, resolved app.ProjectResolution, repoRoot
 	}
 	result.addCheck(doctorCheck{Name: "index schema", Status: "ok"})
 
-	dupUUIDs, dupSlugs, unresolved, trashIgnored, err := doctorNoteChecks(memoriesRoot, db)
+	dupUUIDs, dupSlugs, unresolved, trashIgnored, err := doctorNoteChecks(resolved.RootDir, db)
 	if err != nil {
 		return doctorResult{}, err
 	}

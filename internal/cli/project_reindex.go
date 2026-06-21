@@ -1,10 +1,9 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 
-	"github.com/ilyachch/mnemonic/internal/index"
-	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -27,7 +26,7 @@ var projectReindexCmd = &cobra.Command{
 		case all && len(args) > 0:
 			return fmt.Errorf("--all cannot be combined with a project selector")
 		case len(args) == 1:
-			result, err := reindexSingleProject(container.Paths.MemoriesHome, args[0])
+			result, err := reindexSingleProject(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
@@ -68,24 +67,25 @@ type projectReindexProjectResult struct {
 	Error        string `json:"error,omitempty"`
 }
 
-func reindexSingleProject(memoriesHome, selector string) (projectReindexProjectResult, error) {
-	entry, err := registry.Resolve(memoriesHome, selector)
+func reindexSingleProject(ctx context.Context, selector string) (projectReindexProjectResult, error) {
+	runtime, err := runtimeAppForSelector(ctx, selector)
 	if err != nil {
 		return projectReindexProjectResult{}, err
 	}
 
-	if entry.MemoriesAbs == "" {
-		return projectReindexProjectResult{}, fmt.Errorf("no memories path for project %q", selector)
+	indexService := runtime.Services.Index
+	if indexService == nil {
+		return projectReindexProjectResult{}, fmt.Errorf("runtime index service is not configured")
 	}
 
-	result, err := index.RebuildProjectIndex(entry.ProjectID, entry.MemoriesAbs)
+	result, err := indexService.Rebuild(ctx)
 	if err != nil {
 		return projectReindexProjectResult{}, err
 	}
 
 	return projectReindexProjectResult{
-		ProjectID:    result.ProjectID,
-		Slug:         entry.Slug,
+		ProjectID:    result.KBID,
+		Slug:         runtime.KB.Slug,
 		NotesSeen:    result.NotesSeen,
 		NotesIndexed: result.NotesIndexed,
 		Status:       result.Status,

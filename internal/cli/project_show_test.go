@@ -63,6 +63,6 @@ func TestProjectShowCommandMissingProject(t *testing.T) {
 	t.Setenv("MNEMONIC_MEMORIES_HOME", t.TempDir())
 	result := executeCommand("project", "show", "missing", "--json")
 	require.Error(t, result.Err)
-	require.Equal(t, 1, ExitCodeForError(result.Err))
+	require.Equal(t, 3, ExitCodeForError(result.Err))
 	require.Contains(t, result.Err.Error(), `project "missing" not found`)
 }

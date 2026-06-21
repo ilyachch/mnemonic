@@ -2,10 +2,7 @@ package cli
 
 import (
 	"fmt"
-	"path/filepath"
 
-	"github.com/ilyachch/mnemonic/internal/paths"
-	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -15,16 +12,23 @@ var projectShowCmd = &cobra.Command{
 	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: completeProjectNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		container, err := mustAppContainer()
+		runtime, err := runtimeAppForSelector(cmd.Context(), args[0])
 		if err != nil {
 			return err
 		}
 
-		project, err := loadProjectBySelector(container.Paths, args[0])
-		if err != nil {
-			return err
+		project := projectShowOutput{
+			ProjectID: runtime.KB.ID,
+			Name:      runtime.KB.Name,
+			Slug:      runtime.KB.Slug,
+			Type:      runtime.KB.Kind,
+			StateHome: runtime.KB.StateDir,
+			Location: projectLocationOutput{
+				MemoriesAbs: runtime.KB.RootDir,
+				ManifestAbs: runtime.KB.ManifestPath,
+				RepoRootAbs: runtime.KB.RepoRootDir,
+			},
 		}
-
 		human := fmt.Sprintf("%s %s\n", project.ProjectID, project.Name)
 		return PrintOutput(cmd.OutOrStdout(), human, project)
 	},
@@ -47,24 +51,4 @@ type projectLocationOutput struct {
 	MemoriesAbs string `json:"memories_abs"`
 	ManifestAbs string `json:"manifest_abs"`
 	RepoRootAbs string `json:"repo_root_abs"`
-}
-
-func loadProjectBySelector(effectivePaths paths.EffectivePaths, selector string) (projectShowOutput, error) {
-	entry, err := registry.Resolve(effectivePaths.MemoriesHome, selector)
-	if err != nil {
-		return projectShowOutput{}, err
-	}
-
-	return projectShowOutput{
-		ProjectID: entry.ProjectID,
-		Name:      entry.Name,
-		Slug:      entry.Slug,
-		Type:      entry.Type,
-		StateHome: filepath.Join(effectivePaths.StateHome, "mnemonic", "projects", entry.ProjectID),
-		Location: projectLocationOutput{
-			MemoriesAbs: entry.MemoriesAbs,
-			ManifestAbs: entry.ManifestPath,
-			RepoRootAbs: entry.RepoRootAbs,
-		},
-	}, nil
 }

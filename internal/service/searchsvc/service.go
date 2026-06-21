@@ -2,7 +2,9 @@ package searchsvc
 
 import (
 	"context"
+	"strings"
 
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
 	"github.com/ilyachch/mnemonic/internal/graph"
 	"github.com/ilyachch/mnemonic/internal/search"
@@ -110,6 +112,9 @@ func (s Service) Backlinks(ctx context.Context, input BacklinksInput) ([]graph.B
 
 	target, err := s.Index.LookupNoteByIdentifier(db, input.Identifier)
 	if err != nil {
+		if strings.HasPrefix(err.Error(), "note ") && strings.HasSuffix(err.Error(), " not found") {
+			return nil, apperr.NotFound(err.Error(), nil)
+		}
 		return nil, err
 	}
 

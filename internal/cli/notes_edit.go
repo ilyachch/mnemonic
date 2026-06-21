@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
-	"github.com/ilyachch/mnemonic/internal/notes"
+	"github.com/ilyachch/mnemonic/internal/service/notesvc"
 	"github.com/spf13/cobra"
 )
 
@@ -45,13 +45,12 @@ var notesEditCmd = &cobra.Command{
 			return apperr.CLIUsage("--append and --body-file cannot be combined", nil)
 		}
 
-		root, err := resolveNotesProjectRoot()
+		runtime, err := runtimeAppForSelectedProject(cmd.Context())
 		if err != nil {
 			return err
 		}
 
-		editInput := notes.EditInput{
-			RootDir:  root,
+		editInput := notesvc.EditInput{
 			Selector: args[0],
 			Set:      setFields,
 			IfMatch:  ifMatch,
@@ -67,7 +66,7 @@ var notesEditCmd = &cobra.Command{
 			editInput.Append = []byte(appendText)
 		}
 
-		edited, err := notes.Edit(editInput)
+		edited, err := runtime.Services.Notes.Edit(editInput)
 		if err != nil {
 			return err
 		}

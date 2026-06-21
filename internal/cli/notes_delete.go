@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/ilyachch/mnemonic/internal/notes"
+	"github.com/ilyachch/mnemonic/internal/service/notesvc"
 	"github.com/spf13/cobra"
 )
 
@@ -25,13 +25,12 @@ var notesDeleteCmd = &cobra.Command{
 			return err
 		}
 
-		root, err := resolveNotesProjectRoot()
+		runtime, err := runtimeAppForSelectedProject(cmd.Context())
 		if err != nil {
 			return err
 		}
 
-		deleted, err := notes.Delete(notes.DeleteInput{
-			RootDir:  root,
+		deleted, err := runtime.Services.Notes.Delete(notesvc.DeleteInput{
 			Selector: args[0],
 			DryRun:   dryRun,
 			Hard:     hard,

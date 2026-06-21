@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/ilyachch/mnemonic/internal/notes"
+	"github.com/ilyachch/mnemonic/internal/service/notesvc"
 	"github.com/spf13/cobra"
 )
 
@@ -19,12 +19,12 @@ var notesListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List notes",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		root, err := resolveNotesProjectRoot()
+		runtime, err := runtimeAppForSelectedProject(cmd.Context())
 		if err != nil {
 			return err
 		}
 
-		list, err := notes.List(root)
+		list, err := runtime.Services.Notes.List()
 		if err != nil {
 			return err
 		}
@@ -41,5 +41,5 @@ func init() {
 }
 
 type notesListOutput struct {
-	Notes []notes.NoteSummary `json:"notes"`
+	Notes []notesvc.NoteSummary `json:"notes"`
 }

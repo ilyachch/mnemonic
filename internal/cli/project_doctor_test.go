@@ -36,26 +36,10 @@ func TestProjectDoctorReturnsOkForHealthyProject(t *testing.T) {
 	defer restoreWD()
 
 	memoriesRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
-	_, err = notes.Create(notes.CreateInput{
-		RootDir: memoriesRoot,
-		Title:   "Target Note",
-		Body:    []byte("target body\n"),
-		UUID: func() string {
-			return "550e8400-e29b-41d4-a716-446655440001"
-		},
-	})
-	require.NoError(t, err)
-	_, err = notes.Create(notes.CreateInput{
-		RootDir: memoriesRoot,
-		Title:   "Source Note",
-		Body:    []byte("[[Target Note]]\n"),
-		UUID: func() string {
-			return "550e8400-e29b-41d4-a716-446655440002"
-		},
-	})
-	require.NoError(t, err)
-	_, err = index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoriesRoot)
-	require.NoError(t, err)
+	writeTaggedNote(t, filepath.Join(memoriesRoot, "target-note.md"), "550e8400-e29b-41d4-a716-446655440001", "Target Note", "target-note", nil, "target body\n")
+	writeTaggedNote(t, filepath.Join(memoriesRoot, "source-note.md"), "550e8400-e29b-41d4-a716-446655440002", "Source Note", "source-note", nil, "[[Target Note]]\n")
+	reindexResult := executeCommand("project", "reindex", "personal", "--json")
+	require.NoError(t, reindexResult.Err, "project reindex returned error\nstderr: %s", reindexResult.Stderr)
 
 	before := mustNoteSnapshot(t, memoriesRoot)
 	result := executeCommand("project", "doctor", "personal", "--json")
@@ -146,17 +130,9 @@ func TestProjectDoctorReportsStaleTempFileWithoutDeletingIt(t *testing.T) {
 	defer restoreWD()
 
 	memoriesRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
-	_, err = notes.Create(notes.CreateInput{
-		RootDir: memoriesRoot,
-		Title:   "Healthy Note",
-		Body:    []byte("body\n"),
-		UUID: func() string {
-			return "550e8400-e29b-41d4-a716-446655440001"
-		},
-	})
-	require.NoError(t, err)
-	_, err = index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoriesRoot)
-	require.NoError(t, err)
+	writeTaggedNote(t, filepath.Join(memoriesRoot, "healthy-note.md"), "550e8400-e29b-41d4-a716-446655440001", "Healthy Note", "healthy-note", nil, "body\n")
+	reindexResult := executeCommand("project", "reindex", "personal", "--json")
+	require.NoError(t, reindexResult.Err, "project reindex returned error\nstderr: %s", reindexResult.Stderr)
 
 	tempPath := filepath.Join(memoriesRoot, ".tmp-test")
 	err = os.WriteFile(tempPath, []byte("stale\n"), 0o644)

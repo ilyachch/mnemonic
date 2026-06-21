@@ -8,8 +8,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ilyachch/mnemonic/internal/index"
-	"github.com/ilyachch/mnemonic/internal/notes"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 )
@@ -35,18 +33,10 @@ func TestNotesSearchCommandReturnsHits(t *testing.T) {
 	defer restoreWD()
 
 	memoriesRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
-	_, err := notes.Create(notes.CreateInput{
-		RootDir: memoriesRoot,
-		Title:   "Auth migration",
-		Body:    []byte("Search this body.\nObservation queryterm.\n"),
-		UUID: func() string {
-			return "550e8400-e29b-41d4-a716-446655440001"
-		},
-	})
-	require.NoError(t, err)
+	writeTaggedNote(t, filepath.Join(memoriesRoot, "auth-migration.md"), "550e8400-e29b-41d4-a716-446655440001", "Auth migration", "auth-migration", nil, "Search this body.\nObservation queryterm.\n")
 
-	_, err = index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", filepath.Join(projectRoot, ".mnemonic-memories", "personal"))
-	require.NoError(t, err)
+	reindexResult := executeCommand("project", "reindex", "personal", "--json")
+	require.NoError(t, reindexResult.Err, "stderr: %s", reindexResult.Stderr)
 
 	result := executeCommand("notes", "search", "auth", "--project", "personal", "--json")
 	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
@@ -97,19 +87,11 @@ func TestNotesSearchCommandRespectsLimit(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		title := "Query Term " + string(rune('A'+i))
 		uid := "550e8400-e29b-41d4-a716-44665544000" + string(rune('2'+i))
-		_, err := notes.Create(notes.CreateInput{
-			RootDir: filepath.Join(projectRoot, ".mnemonic-memories", "personal"),
-			Title:   title,
-			Body:    []byte("queryterm queryterm\n"),
-			UUID: func() string {
-				return uid
-			},
-		})
-		require.NoError(t, err)
+		writeTaggedNote(t, filepath.Join(projectRoot, ".mnemonic-memories", "personal", "query-term-"+string(rune('a'+i))+".md"), uid, title, "query-term-"+string(rune('a'+i)), nil, "queryterm queryterm\n")
 	}
 
-	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", filepath.Join(projectRoot, ".mnemonic-memories", "personal"))
-	require.NoError(t, err)
+	reindexResult := executeCommand("project", "reindex", "personal", "--json")
+	require.NoError(t, reindexResult.Err, "stderr: %s", reindexResult.Stderr)
 
 	result := executeCommand("notes", "search", "queryterm", "--project", "personal", "--limit", "2", "--json")
 	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
@@ -143,8 +125,8 @@ func TestNotesSearchCommandFiltersByTag(t *testing.T) {
 	memoriesRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
 	writeTaggedNote(t, filepath.Join(memoriesRoot, "frontmatter-tag.md"), "550e8400-e29b-41d4-a716-446655440001", "Frontmatter tag", "frontmatter-tag", []string{"django"}, "auth queryterm\n")
 	writeTaggedNote(t, filepath.Join(memoriesRoot, "inline-tag.md"), "550e8400-e29b-41d4-a716-446655440002", "Inline tag", "inline-tag", nil, "auth queryterm #django\n")
-	_, err := index.RebuildProjectIndex("550e8400-e29b-41d4-a716-446655440000", memoriesRoot)
-	require.NoError(t, err)
+	reindexResult := executeCommand("project", "reindex", "personal", "--json")
+	require.NoError(t, reindexResult.Err, "stderr: %s", reindexResult.Stderr)
 
 	result := executeCommand("notes", "search", "auth", "--project", "personal", "--tag", "django", "--json")
 	require.NoError(t, result.Err, "stderr: %s", result.Stderr)

@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/notes"
 	"github.com/spf13/cobra"
 )
 
@@ -15,18 +14,17 @@ var notesShowCmd = &cobra.Command{
 	Short: "Show a note",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		root, err := resolveNotesProjectRoot()
+		runtime, err := runtimeAppForSelectedProject(cmd.Context())
 		if err != nil {
 			return err
 		}
 
-		resolved, err := notes.Resolve(root, args[0])
+		resolved, err := runtime.Services.Notes.Show(args[0])
 		if err != nil {
 			return err
 		}
 
-		absPath := filepath.Join(root, filepath.FromSlash(resolved.Path))
-		data, err := os.ReadFile(absPath)
+		data, err := os.ReadFile(filepath.Join(runtime.KB.RootDir, filepath.FromSlash(resolved.Path)))
 		if err != nil {
 			return fmt.Errorf("read note %q: %w", resolved.Path, err)
 		}
@@ -39,7 +37,7 @@ var notesShowCmd = &cobra.Command{
 				Path:        resolved.Path,
 				Frontmatter: resolved.Note.Frontmatter,
 				Body:        string(resolved.Note.Body),
-				ContentHash: notes.HashBytes(data),
+				ContentHash: resolved.ContentHash,
 				UpdatedAt:   resolved.Note.UpdatedAt.UTC().Format(time.RFC3339),
 			},
 		}

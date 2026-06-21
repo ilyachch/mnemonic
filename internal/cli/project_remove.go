@@ -2,13 +2,8 @@ package cli
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-
-	"github.com/ilyachch/mnemonic/internal/apperr"
-	"github.com/ilyachch/mnemonic/internal/index"
-	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/spf13/cobra"
+	"os"
 )
 
 var projectRemoveCmd = &cobra.Command{
@@ -31,69 +26,55 @@ Index and lock files are always cleaned up.`,
 			return err
 		}
 
-		container, err := mustAppContainer()
+		_, err = mustAppContainer()
 		if err != nil {
 			return err
 		}
 
-		entry, err := registry.Resolve(container.Paths.MemoriesHome, args[0])
+		runtime, err := runtimeAppForSelector(cmd.Context(), args[0])
 		if err != nil {
-			if _, ok := err.(registry.ErrNotFound); ok {
-				return apperr.NotFound(err.Error(), nil)
-			}
 			return err
 		}
 
 		// Remove registry entry.
 		registryRemoved := false
-		registryPath := registryPathForEntry(container.Paths.MemoriesHome, entry)
-		if registryPath != "" {
-			if entry.Type == "central" {
-				if err := os.Remove(registryPath); err != nil && !os.IsNotExist(err) {
-					return fmt.Errorf("remove registry entry %q: %w", registryPath, err)
-				}
-			} else if err := os.Remove(registryPath); err != nil && !os.IsNotExist(err) {
-				return fmt.Errorf("remove registry entry %q: %w", registryPath, err)
+		if runtime.KB.ManifestPath != "" {
+			if err := os.Remove(runtime.KB.ManifestPath); err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("remove registry entry %q: %w", runtime.KB.ManifestPath, err)
 			}
 			registryRemoved = true
 		}
 
 		// Remove index and lock artifacts.
 		indexDeleted := false
-		if entry.ProjectID != "" {
-			idxPath, err := index.Path(entry.ProjectID)
-			if err == nil {
-				for _, p := range []string{idxPath, idxPath + "-wal", idxPath + "-shm"} {
-					if _, err := os.Stat(p); err == nil {
-						_ = os.Remove(p)
-						indexDeleted = true
-					}
+		if runtime.KB.IndexPath != "" {
+			for _, p := range []string{runtime.KB.IndexPath, runtime.KB.IndexPath + "-wal", runtime.KB.IndexPath + "-shm"} {
+				if _, err := os.Stat(p); err == nil {
+					_ = os.Remove(p)
+					indexDeleted = true
 				}
 			}
-
-			// Remove the entire state directory.
-			stateDir := filepath.Join(container.Paths.StateHome, "mnemonic", "projects", entry.ProjectID)
-			_ = os.RemoveAll(stateDir)
+			_ = os.RemoveAll(runtime.KB.StateDir)
 		}
 
 		// Wipe markdown if requested.
 		markdownDeleted := false
-		if wipe && entry.MemoriesAbs != "" {
-			if err := os.RemoveAll(entry.MemoriesAbs); err != nil {
+		if wipe && runtime.KB.RootDir != "" {
+			if err := os.RemoveAll(runtime.KB.RootDir); err != nil {
 				return fmt.Errorf("wipe markdown: %w", err)
 			}
 			markdownDeleted = true
 		}
 
 		output := projectRemoveOutput{
-			ProjectID:       entry.ProjectID,
-			Slug:            entry.Slug,
+			ProjectID:       runtime.KB.ID,
+			Slug:            runtime.KB.Slug,
 			RegistryRemoved: registryRemoved,
 			IndexDeleted:    indexDeleted,
 			MarkdownDeleted: markdownDeleted,
 			FullWipe:        wipe,
 		}
-		human := fmt.Sprintf("%s removed\n", entry.Slug)
+		human := fmt.Sprintf("%s removed\n", runtime.KB.Slug)
 		return PrintOutput(cmd.OutOrStdout(), human, output)
 	},
 }
@@ -110,15 +91,4 @@ type projectRemoveOutput struct {
 	IndexDeleted    bool   `json:"index_deleted"`
 	MarkdownDeleted bool   `json:"markdown_deleted"`
 	FullWipe        bool   `json:"full_wipe"`
-}
-
-func registryPathForEntry(memoriesHome string, entry registry.Entry) string {
-	switch entry.Type {
-	case "central":
-		return filepath.Join(memoriesHome, entry.Slug, "mnemonic.toml")
-	case "local":
-		return filepath.Join(memoriesHome, entry.Slug+".toml")
-	default:
-		return ""
-	}
 }

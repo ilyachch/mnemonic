@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/index"
-	"github.com/ilyachch/mnemonic/internal/notes"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
@@ -39,14 +38,7 @@ func TestProjectReindexSingleProject(t *testing.T) {
 	manifest.Generator.App = "mnemonic"
 	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))
 
-	// Create notes
-	_, err := notes.Create(notes.CreateInput{
-		RootDir: projectDir,
-		Title:   "My Note",
-		Body:    []byte("body\n"),
-		UUID:    func() string { return "550e8400-e29b-41d4-a716-446655440010" },
-	})
-	require.NoError(t, err)
+	writeTaggedNote(t, filepath.Join(projectDir, "my-note.md"), "550e8400-e29b-41d4-a716-446655440010", "My Note", "my-note", nil, "body\n")
 
 	result := executeCommand("project", "reindex", "personal")
 	require.NoError(t, result.Err, "project reindex returned error\nstderr: %s", result.Stderr)
@@ -113,13 +105,7 @@ func TestProjectReindexRebuildsIndex(t *testing.T) {
 	manifest.Generator.App = "mnemonic"
 	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))
 
-	_, err := notes.Create(notes.CreateInput{
-		RootDir: projectDir,
-		Title:   "Healthy Note",
-		Body:    []byte("body\n"),
-		UUID:    func() string { return "550e8400-e29b-41d4-a716-446655440001" },
-	})
-	require.NoError(t, err)
+	writeTaggedNote(t, filepath.Join(projectDir, "healthy-note.md"), "550e8400-e29b-41d4-a716-446655440001", "Healthy Note", "healthy-note", nil, "body\n")
 
 	// Initial index
 	result := executeCommand("project", "reindex", "personal")

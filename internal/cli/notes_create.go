@@ -5,10 +5,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/apperr"
-	"github.com/ilyachch/mnemonic/internal/notes"
-	"github.com/ilyachch/mnemonic/internal/project"
+	"github.com/ilyachch/mnemonic/internal/service/notesvc"
 	"github.com/spf13/cobra"
 )
 
@@ -39,7 +37,7 @@ var notesCreateCmd = &cobra.Command{
 			return apperr.CLIUsage("--stdin and --body-file cannot be combined", nil)
 		}
 
-		root, err := resolveNotesProjectRoot()
+		runtime, err := runtimeAppForSelectedProject(cmd.Context())
 		if err != nil {
 			return err
 		}
@@ -58,11 +56,10 @@ var notesCreateCmd = &cobra.Command{
 			}
 		}
 
-		created, err := notes.Create(notes.CreateInput{
-			RootDir: root,
-			Title:   title,
-			Body:    body,
-			Tags:    tags,
+		created, err := runtime.Services.Notes.Create(notesvc.CreateInput{
+			Title: title,
+			Body:  body,
+			Tags:  tags,
 		})
 		if err != nil {
 			return err
@@ -91,27 +88,4 @@ type notesCreateOutput struct {
 	Slug        string `json:"slug"`
 	Path        string `json:"path"`
 	ContentHash string `json:"content_hash"`
-}
-
-func resolveNotesProjectRoot() (string, error) {
-	container, err := mustAppContainer()
-	if err != nil {
-		return "", err
-	}
-
-	resolvedProject, err := container.Services.ProjectResolver.Resolve(app.ProjectResolveInput{
-		ProjectSelector:  projectSelectorValue(),
-		EnvironmentValue: os.Getenv(project.EnvironmentProjectSelector),
-	})
-	if err != nil {
-		return "", err
-	}
-
-	return project.ResolveMemoriesRoot(project.MemoriesRootInput{
-		Kind:         string(resolvedProject.Project.Kind),
-		Slug:         resolvedProject.Project.Slug,
-		MemoriesPath: resolvedProject.Project.MemoriesPath,
-		MemoriesHome: container.Paths.MemoriesHome,
-		RepoRoot:     resolvedProject.RepoRootAbs,
-	})
 }
