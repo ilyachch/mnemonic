@@ -34,7 +34,10 @@ func TestNewRuntimeAppStoresKnowledgeBase(t *testing.T) {
 	require.NotNil(t, runtime.Services.Notes)
 	require.NotNil(t, runtime.Services.Search)
 	require.NotNil(t, runtime.Services.Index)
-	require.Equal(t, resolved, runtime.Services.Notes.KB)
+	require.Equal(t, resolved.RootDir, runtime.Services.Notes.Notes.RootDir)
+	require.Equal(t, resolved.IndexPath, runtime.Services.Notes.Index.IndexPath)
+	require.Equal(t, resolved.RootDir, runtime.Services.Notes.Index.RootDir)
+	require.Equal(t, resolved.ID, runtime.Services.Notes.Index.KBID)
 	require.Equal(t, resolved, runtime.Services.Search.KB)
 	require.Equal(t, resolved, runtime.Services.Index.KB)
 
