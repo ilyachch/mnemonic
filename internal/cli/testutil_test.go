@@ -47,15 +47,12 @@ func executeCommand(args ...string) cmdResult {
 	if flag := mcpCmd.Flags().Lookup("help"); flag != nil {
 		flag.Changed = false
 	}
-	_ = webCmd.PersistentFlags().Set("auth-db", "")
 	_ = webServeCmd.Flags().Set("addr", "")
 	_ = webServeCmd.Flags().Set("port", "")
-	_ = webServeCmd.Flags().Set("projects", "")
 	_ = webServeCmd.Flags().Set("help", "false")
 	if flag := webServeCmd.Flags().Lookup("help"); flag != nil {
 		flag.Changed = false
 	}
-	_ = webPermsGrantCmd.Flags().Set("level", "ro")
 	bufOut := new(bytes.Buffer)
 	bufErr := new(bytes.Buffer)
 

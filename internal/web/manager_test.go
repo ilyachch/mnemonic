@@ -1,7 +1,6 @@
 package web
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,22 +11,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
-	"github.com/ilyachch/mnemonic/internal/webauth"
 	"github.com/stretchr/testify/require"
 )
 
 type webFixture struct {
 	manager *ServerManager
-	store   *webauth.Store
-	token   string
-	userID  string
 	count   *atomic.Int32
 }
 
-func newWebFixture(t *testing.T, superuserToken string) *webFixture {
+func newWebFixture(t *testing.T) *webFixture {
 	t.Helper()
 
 	root := testutil.CleanEnvForTest(t)
@@ -52,23 +48,26 @@ func newWebFixture(t *testing.T, superuserToken string) *webFixture {
 	_, err := index.RebuildProjectIndex(projectID, projectRoot)
 	require.NoError(t, err)
 
-	authPath, err := webauth.ResolveDBPath("")
-	require.NoError(t, err)
-	store, err := webauth.NewStore(authPath)
-	require.NoError(t, err)
-
-	token := "user-token-123"
-	user, err := store.CreateUser(context.Background(), "alice", token)
-	require.NoError(t, err)
-
-	manager, err := NewServerManager(store, superuserToken, memoriesHome, []string{slug})
+	manager, err := NewServerManager(app.ProjectResolution{
+		MnemonicFilePath: filepath.Join(projectRoot, "mnemonic.toml"),
+		RepoRootAbs:      memoriesHome,
+		MemoriesAbs:      projectRoot,
+		ManifestAbs:      filepath.Join(projectRoot, "mnemonic.toml"),
+		Project: app.ProjectRecord{
+			ID:           projectID,
+			Name:         "Demo",
+			Slug:         slug,
+			Kind:         "central",
+			MemoriesPath: filepath.Base(projectRoot),
+		},
+	}, memoriesHome)
 	require.NoError(t, err)
 
 	count := &atomic.Int32{}
 	baseFactory := manager.instanceFactory
-	manager.instanceFactory = func(requested string) (*ProjectInstance, error) {
+	manager.instanceFactory = func() (*ProjectInstance, error) {
 		count.Add(1)
-		return baseFactory(requested)
+		return baseFactory()
 	}
 
 	t.Cleanup(func() {
@@ -77,20 +76,14 @@ func newWebFixture(t *testing.T, superuserToken string) *webFixture {
 
 	return &webFixture{
 		manager: manager,
-		store:   store,
-		token:   token,
-		userID:  user.UserID,
 		count:   count,
 	}
 }
 
-func (f *webFixture) request(method, path, token string) (*http.Response, error) {
+func (f *webFixture) request(method, path string) (*http.Response, error) {
 	req, err := http.NewRequest(method, "http://example.test"+path, nil)
 	if err != nil {
 		return nil, err
-	}
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
 	recorder := httptest.NewRecorder()
@@ -98,87 +91,23 @@ func (f *webFixture) request(method, path, token string) (*http.Response, error)
 	return recorder.Result(), nil
 }
 
-func TestServerManagerAuth(t *testing.T) {
-	t.Run("missing token", func(t *testing.T) {
-		f := newWebFixture(t, "")
-		resp, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing", "")
-		require.NoError(t, err)
-		defer resp.Body.Close()
-		require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
-	})
+func TestServerManagerRoutesConfiguredSlugWithoutAuth(t *testing.T) {
+	f := newWebFixture(t)
 
-	t.Run("invalid token", func(t *testing.T) {
-		f := newWebFixture(t, "")
-		resp, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing", "does-not-exist")
-		require.NoError(t, err)
-		defer resp.Body.Close()
-		require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
-	})
-
-	t.Run("missing permission", func(t *testing.T) {
-		f := newWebFixture(t, "")
-		resp, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing", f.token)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-		require.Equal(t, http.StatusForbidden, resp.StatusCode)
-	})
-
-	t.Run("superuser bypass", func(t *testing.T) {
-		f := newWebFixture(t, "super-token")
-		resp, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing", "super-token")
-		require.NoError(t, err)
-		defer resp.Body.Close()
-		require.Equal(t, http.StatusNotFound, resp.StatusCode)
-		require.EqualValues(t, 1, f.count.Load())
-	})
-}
-
-func TestServerManagerLazyInitAndCache(t *testing.T) {
-	f := newWebFixture(t, "")
-	require.NoError(t, f.store.GrantPermission(context.Background(), f.userID, "demo", "ro"))
-
-	resp1, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing", f.token)
+	resp, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing")
 	require.NoError(t, err)
-	require.Equal(t, http.StatusNotFound, resp1.StatusCode)
-	_ = resp1.Body.Close()
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 
-	resp2, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing", f.token)
+	resp, err = f.request(http.MethodPost, "/mcp/other/messages?sessionid=missing")
 	require.NoError(t, err)
-	require.Equal(t, http.StatusNotFound, resp2.StatusCode)
-	_ = resp2.Body.Close()
-
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	require.EqualValues(t, 1, f.count.Load())
 }
 
-func TestServerManagerCachesInstancesByAccessLevel(t *testing.T) {
-	f := newWebFixture(t, "")
-
-	rwUser, err := f.store.CreateUser(context.Background(), "bob", "user-token-456")
-	require.NoError(t, err)
-	require.NoError(t, f.store.GrantPermission(context.Background(), f.userID, "demo", "ro"))
-	require.NoError(t, f.store.GrantPermission(context.Background(), rwUser.UserID, "demo", "rw"))
-
-	resp1, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing", f.token)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusNotFound, resp1.StatusCode)
-	_ = resp1.Body.Close()
-
-	resp2, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing", "user-token-456")
-	require.NoError(t, err)
-	require.Equal(t, http.StatusNotFound, resp2.StatusCode)
-	_ = resp2.Body.Close()
-
-	resp3, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing", f.token)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusNotFound, resp3.StatusCode)
-	_ = resp3.Body.Close()
-
-	require.EqualValues(t, 2, f.count.Load())
-}
-
-func TestServerManagerConcurrentRequestsShareOneInstance(t *testing.T) {
-	f := newWebFixture(t, "")
-	require.NoError(t, f.store.GrantPermission(context.Background(), f.userID, "demo", "ro"))
+func TestServerManagerCachesSingleInstance(t *testing.T) {
+	f := newWebFixture(t)
 
 	const concurrency = 8
 	var wg sync.WaitGroup
@@ -188,7 +117,7 @@ func TestServerManagerConcurrentRequestsShareOneInstance(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			resp, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing", f.token)
+			resp, err := f.request(http.MethodPost, "/mcp/demo/messages?sessionid=missing")
 			if err != nil {
 				errCh <- err
 				return

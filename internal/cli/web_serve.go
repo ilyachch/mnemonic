@@ -6,16 +6,15 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ilyachch/mnemonic/internal/paths"
+	"github.com/ilyachch/mnemonic/internal/app"
+	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/web"
 	"github.com/spf13/cobra"
 )
 
 var (
-	webServePortFlag     string
-	webServeProjectsFlag string
-	webServeAddrFlag     string
-	webServeAuthDBFlag   string
+	webServePortFlag string
+	webServeAddrFlag string
 )
 
 var webServeCmd = &cobra.Command{
@@ -23,26 +22,21 @@ var webServeCmd = &cobra.Command{
 	Short:        "Serve MCP over HTTP/SSE",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		mnemonicPaths, err := paths.GetMnemonicPaths()
+		container, err := mustAppContainer()
 		if err != nil {
 			return err
 		}
 
-		slugs := resolveWebServeProjects(webServeProjectsFlag)
-		validator, err := web.NewServerManager(nil, os.Getenv("MNEMONIC_SUPERUSER_TOKEN"), mnemonicPaths.MemoriesHome, slugs)
-		if err != nil {
-			return err
-		}
-		_ = validator.Close()
-
-		authStore, err := openWebAuthStore(webServeAuthDBFlag)
+		resolvedProject, err := container.Services.ProjectResolver.Resolve(app.ProjectResolveInput{
+			ProjectSelector:  projectSelectorValue(),
+			EnvironmentValue: os.Getenv(project.EnvironmentProjectSelector),
+		})
 		if err != nil {
 			return err
 		}
 
-		manager, err := web.NewServerManager(authStore, os.Getenv("MNEMONIC_SUPERUSER_TOKEN"), mnemonicPaths.MemoriesHome, slugs)
+		manager, err := web.NewServerManager(resolvedProject, container.Paths.MemoriesHome)
 		if err != nil {
-			_ = authStore.Close()
 			return err
 		}
 		defer func() {
@@ -51,7 +45,7 @@ var webServeCmd = &cobra.Command{
 
 		addr := web.ServeAddr(webServeAddrFlag)
 		if strings.TrimSpace(webServePortFlag) != "" {
-			addr = normalizeWebListenAddr(webServePortFlag, "")
+			addr = normalizeWebListenAddr(webServePortFlag)
 		}
 		server := &http.Server{
 			Addr:    addr,
@@ -67,12 +61,17 @@ var webServeCmd = &cobra.Command{
 }
 
 func init() {
-	webCmd.PersistentFlags().StringVar(&webServeAuthDBFlag, "auth-db", "", "path to the web auth database")
-
 	webServeCmd.Flags().StringVar(&webServePortFlag, "port", "", "listen port for the web server")
-	webServeCmd.Flags().StringVar(&webServeProjectsFlag, "projects", "", "comma-separated project slugs to expose")
 	webServeCmd.Flags().StringVar(&webServeAddrFlag, "addr", "", "listen address for the web server")
 	_ = webServeCmd.Flags().MarkHidden("addr")
 
 	webCmd.AddCommand(webServeCmd)
+}
+
+func normalizeWebListenAddr(portFlag string) string {
+	port := strings.TrimSpace(strings.TrimPrefix(portFlag, ":"))
+	if port == "" {
+		return ""
+	}
+	return fmt.Sprintf(":%s", port)
 }

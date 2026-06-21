@@ -1,20 +1,20 @@
 # mnemonic
 
-mnemonic is a local-first knowledge base, search tool, and multi-tenant MCP server for Markdown notes.
+mnemonic is a local-first knowledge base, search tool, and MCP server for Markdown notes.
 
 It provides:
 
-- a CLI for project, note, and web authorization lifecycle management,
+- a CLI for project, note, and web serving management,
 - a file-based registry for central and local project spaces,
 - a disposable per-project SQLite index for search/backlinks/tags,
-- an **HTTP Web MCP Server** utilizing the **Server-Sent Events (SSE)** transport with explicit token authorization.
+- an **HTTP Web MCP Server** utilizing the **Server-Sent Events (SSE)** transport.
 
 ## Principles
 
 - Markdown files are the source of truth.
 - The project registry is simple and fully file-based (no database).
 - Index databases are disposable and can be rebuilt at any time.
-- Web routing state is deterministic: projects are validated on boot and connections are pooled efficiently.
+- Web routing state is deterministic: the selected project is validated on boot and connections are pooled efficiently.
 - Human-readable output is friendly; `--json` is automation-friendly.
 
 ## Feature Highlights
@@ -63,41 +63,25 @@ Build the initial index:
 mnemonic project reindex my-notes
 ```
 
-### 2. Multi-Tenant Web Server Setup
+### 2. Web Server Setup
 
-Provision a new web user (this will generate and output a secure API token):
-
-```bash
-mnemonic web users add alice
-```
-
-_Save the printed token! Only its SHA-256 hash is committed to the authentication storage._
-
-Grant the user access to your project:
+Start the HTTP Web MCP server for the selected project:
 
 ```bash
-mnemonic web perms grant alice my-notes --level rw
+mnemonic web serve --port 8080 --project my-notes
 ```
 
-Start the HTTP Web MCP server:
-
-```bash
-export MNEMONIC_SUPERUSER_TOKEN="my-secure-root-token"
-mnemonic web serve --port 8080 --projects my-notes
-```
-
-Your AI client can now establish an MCP session using the standard HTTP/SSE endpoints by providing the Bearer token:
+Your AI client can now establish an MCP session using the standard HTTP/SSE endpoints:
 
 - **SSE Connection:** `GET http://localhost:8080/mcp/my-notes/sse`
 - **Client Messages:** `POST http://localhost:8080/mcp/my-notes/messages`
 
 ## Data Model and Paths
 
-mnemonic strictly separates content, registry metadata, authentication states, and ephemeral cache paths:
+mnemonic strictly separates content, registry metadata, and ephemeral cache paths:
 
 - **Config:** `$XDG_CONFIG_HOME/mnemonic/config.toml`
 - **Registry & Projects (`memories_home`):** `~/.mnemonic/` (default)
-- **Web Authorization Database:** `$XDG_STATE_HOME/mnemonic/web_auth.sqlite` (configurable via `MNEMONIC_WEB_AUTH_DB` or `--auth-db`)
 - **Per-project Indexes:** `$XDG_STATE_HOME/mnemonic/projects/<PROJECT_ID>/index.sqlite`
 - **Locks:** `$XDG_STATE_HOME/mnemonic/projects/<PROJECT_ID>/locks/`
 
@@ -113,7 +97,7 @@ Top-level command scopes:
 - `project`: project operations.
 - `tags`: tag listing.
 - `version`: print build version.
-- `web`: administrative web server controls (serving, users, perms).
+- `web`: HTTP MCP server controls.
 
 ### `web` command group
 
@@ -122,50 +106,10 @@ Administrative management for the HTTP Server-Sent Events architecture.
 #### `web serve`
 
 ```bash
-mnemonic web serve [--port 8080] [--projects common,code] [--auth-db /path/to/db]
+mnemonic web serve [--port 8080]
 ```
 
-Launches the HTTP web listener. Parses the project targets, mapping allowed routes immediately. If any target in the explicit list is physically missing from the registry, the server aborts initialization with exit code `3` (`CodeNotFound`). Project databases are opened lazily upon the first incoming client request to optimize memory.
-
-#### `web users add`
-
-```bash
-mnemonic web users add <username> [--json]
-```
-
-Creates a new web consumer. Generates a cryptographically strong token, writing its SHA-256 digest to the authentication storage. Outputs the raw plaintext token precisely once.
-
-#### `web users list`
-
-```bash
-mnemonic web users list [--json]
-```
-
-Lists registered web consumer names.
-
-#### `web users revoke`
-
-```bash
-mnemonic web users revoke <username>
-```
-
-Permanently deletes the user record. Associated permission scopes are automatically purged via cascading foreign keys.
-
-#### `web perms grant`
-
-```bash
-mnemonic web perms grant <username> <project-slug> --level [ro|rw]
-```
-
-Maps access rights for a user to a specific knowledge base slot.
-
-#### `web perms revoke`
-
-```bash
-mnemonic web perms revoke <username> <project-slug>
-```
-
-Removes targeted knowledge base accessibility fields for the selected user.
+Launches the HTTP web listener for one resolved project. The server uses the normal project selector order and mounts that project under `/mcp/<slug>/...`.
 
 ### `project` commands
 
@@ -263,12 +207,11 @@ flowchart LR
     end
 
     %% 2. Core & Server Management
-    App{"⚙️ Web Server Manager\n(Auth, Lazy-Loading,\nInstance Routing)"}:::core
+    App{"⚙️ Web Server Manager\n(Single Project,\nLazy-Loading)"}:::core
 
     %% 3. Business Logic
     subgraph Services ["2. Business Services"]
         direction TB
-        Auth("🔑 Web Auth Store"):::logic
         Proj("📁 Project Space"):::logic
         Note["📝 Notes Engine"]:::logic
     end
@@ -283,7 +226,6 @@ flowchart LR
     %% 5. Databases
     subgraph DBs ["4. Isolated Storage (SQLite)"]
         direction TB
-        AuthDB[("🔒 web_auth.sqlite\n(Tokens & Perms)")]:::db
         FTS[("⚡ index.sqlite\n(Pooled per Project)")]:::db
     end
 
@@ -292,11 +234,9 @@ flowchart LR
     WEB --> App
     STDIO --> Proj
 
-    App --> Auth
     App --> Proj
     App --> Note
 
-    Auth --> AuthDB
     Proj --> Reg
     Note --> MD
     Note -. Scanned by .-> FTS
@@ -324,7 +264,6 @@ flowchart TD
     subgraph Core ["2. Access & Lifecycle Security"]
         direction LR
         Manager{"⚙️ Server Manager\n(Lazy Thread Cache)"}:::core
-        AuthStore("🔑 Auth Subsystem\n(internal/webauth)"):::core
     end
 
     subgraph Domain ["3. Domain layer (Business Objects)"]
@@ -342,18 +281,15 @@ flowchart TD
 
     subgraph Infra ["5. Infrastructure & Storage"]
         direction LR
-        AuthDB[("🔒 web_auth.sqlite")]:::db
         IndexDB[("🗄️ index.sqlite")]:::db
         Sys("💾 Locks & Filesystem"):::infra
     end
 
     %% Flow: Web Routing & Guarding
     WebServe --> Manager
-    Manager --> AuthStore
-    AuthStore --> AuthDB
 
     %% Flow: Instance Lazy Hydration
-    Manager -. Creates pool .-> IndexDB
+    Manager -. Creates single cache .-> IndexDB
     Manager --> Proj
     Manager --> Notes
 
