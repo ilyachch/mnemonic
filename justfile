@@ -33,8 +33,8 @@ install:
     go install ./cmd/mnemonic
 
 clean:
-    rm -rf ./bin
-    rm -f ./coverage.out ./coverage.html ./mnemonic.md ./mnemonic_no_tests.md
+    rm -rf ./bin ./.tmp
+    rm -f ./coverage.out ./coverage.html
 
 coverage:
     go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out -o coverage.html
@@ -43,8 +43,7 @@ coverage-report:
     go test -coverprofile=coverage.out ./... && go tool cover -func=coverage.out
 
 collect-content:
-    collect_content . --skip-empty --format md --sort dirs-first --ext ".go" > mnemonic.md
+    collect_content . --skip-empty --format md --sort dirs-first --ext ".go" > .tmp/mnemonic.md
 
-# Сборка содержимого исходного кода (без тестов) в один Markdown-файл
 collect-content-no-tests:
-    collect_content . --skip-empty --format md --sort dirs-first --ext ".go" --exclude "*_test.go" > mnemonic_no_tests.md
+    collect_content . --skip-empty --format md --sort dirs-first --ext ".go" --exclude "*_test.go" > .tmp/mnemonic_no_tests.md
