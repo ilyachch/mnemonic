@@ -84,9 +84,16 @@ func newWebFixture(t *testing.T, readOnly bool) *webFixture {
 }
 
 func (f *webFixture) request(method, path string, body []byte) (*http.Response, error) {
+	return f.requestWithHeaders(method, path, body, nil)
+}
+
+func (f *webFixture) requestWithHeaders(method, path string, body []byte, headers map[string]string) (*http.Response, error) {
 	req, err := http.NewRequest(method, "http://example.test"+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
+	}
+	for key, value := range headers {
+		req.Header.Set(key, value)
 	}
 	recorder := httptest.NewRecorder()
 	f.server.ServeHTTP(recorder, req)
@@ -96,6 +103,7 @@ func (f *webFixture) request(method, path string, body []byte) (*http.Response, 
 func TestServerServesSSEAndMessages(t *testing.T) {
 	f := newWebFixture(t, false)
 	defer func() { _ = f.server.Close() }()
+	f.server.projectToken = "secret"
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -103,6 +111,7 @@ func TestServerServesSSEAndMessages(t *testing.T) {
 	recorder := newStreamingRecorder()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://example.test/sse", nil)
 	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer secret")
 
 	done := make(chan struct{})
 	go func() {
@@ -123,7 +132,9 @@ func TestServerServesSSEAndMessages(t *testing.T) {
 	}
 	require.NotEmpty(t, sessionID)
 
-	resp, err := f.request(http.MethodPost, "/messages?sessionid="+sessionID, []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`))
+	resp, err := f.requestWithHeaders(http.MethodPost, "/messages?sessionid="+sessionID, []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`), map[string]string{
+		"Authorization": "Bearer secret",
+	})
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusAccepted, resp.StatusCode)

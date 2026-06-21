@@ -16,9 +16,10 @@ import (
 )
 
 var (
-	webServePortFlag string
-	webServeAddrFlag string
-	openWebIndexDB   = openWebIndexDBReal
+	webServePortFlag       string
+	webServeAddrFlag       string
+	openWebIndexDB         = openWebIndexDBReal
+	webServeListenAndServe = webServeListenAndServeReal
 )
 
 var webServeCmd = &cobra.Command{
@@ -36,6 +37,9 @@ var webServeCmd = &cobra.Command{
 			EnvironmentValue: os.Getenv(project.EnvironmentProjectSelector),
 		})
 		if err != nil {
+			if app.IsNoProjectSelected(err) {
+				return app.NewNotFoundError(err.Error(), nil)
+			}
 			return err
 		}
 
@@ -44,7 +48,7 @@ var webServeCmd = &cobra.Command{
 			return err
 		}
 
-		manager, err := web.NewServer(resolvedProject, container.Paths, indexDB, os.Getenv("MNEMONIC_WEB_TOKEN"), mcpReadOnlyEnabled())
+		manager, err := web.NewServer(resolvedProject, container.Paths, indexDB, os.Getenv("MNEMONIC_PROJECT_TOKEN"), mcpReadOnlyEnabled())
 		if err != nil {
 			_ = indexDB.Close()
 			return err
@@ -62,7 +66,7 @@ var webServeCmd = &cobra.Command{
 			Handler: manager,
 		}
 
-		err = server.ListenAndServe()
+		err = webServeListenAndServe(server)
 		if err != nil && err != http.ErrServerClosed {
 			return fmt.Errorf("serve web MCP: %w", err)
 		}
@@ -84,6 +88,10 @@ func normalizeWebListenAddr(portFlag string) string {
 		return ""
 	}
 	return fmt.Sprintf(":%s", port)
+}
+
+func webServeListenAndServeReal(server *http.Server) error {
+	return server.ListenAndServe()
 }
 
 func openWebIndexDBReal(resolution app.ProjectResolution) (*sql.DB, error) {

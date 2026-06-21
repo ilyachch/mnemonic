@@ -68,13 +68,13 @@ mnemonic project reindex my-notes
 Start the HTTP Web MCP server for the selected project:
 
 ```bash
-mnemonic web serve --port 8080 --project my-notes
+mnemonic web serve --project my-notes --port 8080
 ```
 
-Your AI client can now establish an MCP session using the standard HTTP/SSE endpoints:
+Your AI client can now establish an MCP session using the standard HTTP/SSE endpoints. The server is scoped to one resolved project and requires `MNEMONIC_PROJECT_TOKEN` when bearer auth is enabled:
 
-- **SSE Connection:** `GET http://localhost:8080/mcp/my-notes/sse`
-- **Client Messages:** `POST http://localhost:8080/mcp/my-notes/messages`
+- **SSE Connection:** `GET http://localhost:8080/sse`
+- **Client Messages:** `POST http://localhost:8080/messages`
 
 ## Data Model and Paths
 
@@ -106,10 +106,10 @@ Administrative management for the HTTP Server-Sent Events architecture.
 #### `web serve`
 
 ```bash
-mnemonic web serve [--port 8080]
+mnemonic web serve --project PROJECT [--port 8080]
 ```
 
-Launches the HTTP web listener for one resolved project. The server uses the normal project selector order and mounts that project under `/mcp/<slug>/...`.
+Launches the HTTP web listener for one resolved project. The server uses the normal project selector order, exposes only `/sse` and `/messages`, and authenticates with `MNEMONIC_PROJECT_TOKEN` when configured.
 
 ### `project` commands
 

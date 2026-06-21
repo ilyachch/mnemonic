@@ -2,6 +2,7 @@ package cli
 
 import (
 	"database/sql"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -49,27 +50,36 @@ func TestWebServeOpensIndexOnceBeforeListen(t *testing.T) {
 	t.Setenv("MNEMONIC_WEB_ADDR", ":9090")
 
 	var calls atomic.Int32
+	var sequence []string
 	origOpen := openWebIndexDB
+	origListen := webServeListenAndServe
 	openWebIndexDB = func(resolution app.ProjectResolution) (*sql.DB, error) {
+		sequence = append(sequence, "open")
 		calls.Add(1)
 		return sql.Open("sqlite", ":memory:")
 	}
+	webServeListenAndServe = func(server *http.Server) error {
+		require.EqualValues(t, 1, calls.Load())
+		sequence = append(sequence, "listen")
+		return http.ErrServerClosed
+	}
 	t.Cleanup(func() {
 		openWebIndexDB = origOpen
+		webServeListenAndServe = origListen
 	})
 
-	result := executeCommand("web", "serve", "--port", "not-a-port")
-	require.Error(t, result.Err)
-	require.Equal(t, int(app.CodeInternal), ExitCodeForError(result.Err))
-	require.Contains(t, result.Err.Error(), "serve web MCP")
+	result := executeCommand("web", "serve")
+	require.NoError(t, result.Err)
 	require.EqualValues(t, 1, calls.Load())
+	require.Equal(t, []string{"open", "listen"}, sequence)
 }
 
 func TestWebServeRejectsMissingProjectSelection(t *testing.T) {
 	testutil.CleanEnvForTest(t)
 
-	result := executeCommand("web", "serve", "--port", "not-a-port")
+	result := executeCommand("web", "serve")
 	require.Error(t, result.Err)
+	require.Equal(t, int(app.CodeNotFound), ExitCodeForError(result.Err))
 	require.Contains(t, result.Err.Error(), "no project selected")
 }
 
@@ -78,7 +88,8 @@ func TestWebServeRejectsInvalidProjectSelection(t *testing.T) {
 	t.Setenv("MNEMONIC_MEMORIES_HOME", filepath.Join(root, ".mnemonic"))
 	t.Setenv("MNEMONIC_PROJECT", "missing")
 
-	result := executeCommand("web", "serve", "--port", "not-a-port")
+	result := executeCommand("web", "serve")
 	require.Error(t, result.Err)
+	require.Equal(t, int(app.CodeNotFound), ExitCodeForError(result.Err))
 	require.Contains(t, result.Err.Error(), `project "missing" not found`)
 }
