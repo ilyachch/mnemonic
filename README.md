@@ -1,12 +1,15 @@
 # mnemonic
 
 mnemonic is a local-first knowledge base, search tool, and MCP server for Markdown notes.
+mnemonic is a local-first knowledge base, search tool, and MCP server for Markdown notes.
 
 It provides:
 
 - a CLI for project, note, and web serving management,
+- a CLI for project, note, and web serving management,
 - a file-based registry for central and local project spaces,
 - a disposable per-project SQLite index for search/backlinks/tags,
+- an **HTTP Web MCP Server** utilizing the **Server-Sent Events (SSE)** transport.
 - an **HTTP Web MCP Server** utilizing the **Server-Sent Events (SSE)** transport.
 
 ## Principles
@@ -14,6 +17,7 @@ It provides:
 - Markdown files are the source of truth.
 - The project registry is simple and fully file-based (no database).
 - Index databases are disposable and can be rebuilt at any time.
+- Web routing state is deterministic: the selected project is validated on boot and connections are pooled efficiently.
 - Web routing state is deterministic: the selected project is validated on boot and connections are pooled efficiently.
 - Human-readable output is friendly; `--json` is automation-friendly.
 
@@ -64,20 +68,27 @@ mnemonic project reindex my-notes
 ```
 
 ### 2. Web Server Setup
+### 2. Web Server Setup
 
+Start the HTTP Web MCP server for the selected project:
 Start the HTTP Web MCP server for the selected project:
 
 ```bash
 mnemonic web serve --project my-notes --port 8080
+mnemonic web serve --project my-notes --port 8080
 ```
 
 Your AI client can now establish an MCP session using the standard HTTP/SSE endpoints. The server is scoped to one resolved project and requires `MNEMONIC_PROJECT_TOKEN` when bearer auth is enabled:
+Your AI client can now establish an MCP session using the standard HTTP/SSE endpoints. The server is scoped to one resolved project and requires `MNEMONIC_PROJECT_TOKEN` when bearer auth is enabled:
 
+- **SSE Connection:** `GET http://localhost:8080/sse`
+- **Client Messages:** `POST http://localhost:8080/messages`
 - **SSE Connection:** `GET http://localhost:8080/sse`
 - **Client Messages:** `POST http://localhost:8080/messages`
 
 ## Data Model and Paths
 
+mnemonic strictly separates content, registry metadata, and ephemeral cache paths:
 mnemonic strictly separates content, registry metadata, and ephemeral cache paths:
 
 - **Config:** `$XDG_CONFIG_HOME/mnemonic/config.toml`
@@ -97,6 +108,7 @@ Top-level command scopes:
 - `tags`: tag listing.
 - `version`: print build version.
 - `web`: HTTP MCP server controls.
+- `web`: HTTP MCP server controls.
 
 ### `web` command group
 
@@ -105,9 +117,10 @@ Administrative management for the HTTP Server-Sent Events architecture.
 #### `web serve`
 
 ```bash
-mnemonic --project PROJECT web serve [--port 8080]
+mnemonic web serve --project PROJECT [--port 8080]
 ```
 
+Launches the HTTP web listener for one resolved project. The server uses the normal project selector order, exposes only `/sse` and `/messages`, and authenticates with `MNEMONIC_PROJECT_TOKEN` when configured.
 Launches the HTTP web listener for one resolved project. The server uses the normal project selector order, exposes only `/sse` and `/messages`, and authenticates with `MNEMONIC_PROJECT_TOKEN` when configured.
 
 ### `project` commands
@@ -207,6 +220,7 @@ STDIO("🤖 Stdio Adapter\n(stdio CLI)"):::interface
 
     %% 2. Core & Server Management
     App{"⚙️ Web Server Manager\n(Single Project,\nLazy-Loading)"}:::core
+    App{"⚙️ Web Server Manager\n(Single Project,\nLazy-Loading)"}:::core
 
     %% 3. Business Logic
     subgraph Services ["2. Business Services"]
@@ -288,6 +302,7 @@ flowchart TD
     WebServe --> Manager
 
     %% Flow: Instance Lazy Hydration
+    Manager -. Creates single cache .-> IndexDB
     Manager -. Creates single cache .-> IndexDB
     Manager --> Proj
     Manager --> Notes
