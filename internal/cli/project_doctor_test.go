@@ -49,6 +49,69 @@ func TestProjectDoctorReturnsOkForHealthyProject(t *testing.T) {
 	require.Equal(t, before, after, "markdown snapshot changed")
 }
 
+func TestProjectDoctorUsesEnvironmentSelector(t *testing.T) {
+	projectRoot := testutil.CleanEnvForTest(t)
+	t.Setenv("MNEMONIC_PROJECT", "personal")
+
+	restoreClock := project.SetClock(testutil.NewClock(
+		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		"550e8400-e29b-41d4-a716-446655440000",
+	))
+	defer restoreClock()
+
+	err := project.InitProject(project.InitInput{
+		CWD:          projectRoot,
+		MemoriesHome: filepath.Join(projectRoot, ".mnemonic-memories"),
+		Name:         "personal",
+		Mode:         project.InitModeLocal,
+	})
+	require.NoError(t, err)
+	setLocalProjectMemoriesHome(t, projectRoot)
+
+	restoreWD := chdirForNotesTest(t, projectRoot)
+	defer restoreWD()
+
+	memoriesRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
+	writeTaggedNote(t, filepath.Join(memoriesRoot, "healthy-note.md"), "550e8400-e29b-41d4-a716-446655440001", "Healthy Note", "healthy-note", nil, "body\n")
+	reindexResult := executeCommand("project", "reindex", "--json")
+	require.NoError(t, reindexResult.Err, "project reindex returned error\nstderr: %s", reindexResult.Stderr)
+
+	result := executeCommand("project", "doctor", "--json")
+	require.NoError(t, result.Err, "project doctor returned error\nstderr: %s", result.Stderr)
+	require.Contains(t, result.Stdout, `"status": "ok"`)
+}
+
+func TestProjectDoctorPositionalProjectWinsOverFlag(t *testing.T) {
+	projectRoot := testutil.CleanEnvForTest(t)
+
+	restoreClock := project.SetClock(testutil.NewClock(
+		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		"550e8400-e29b-41d4-a716-446655440000",
+	))
+	defer restoreClock()
+
+	err := project.InitProject(project.InitInput{
+		CWD:          projectRoot,
+		MemoriesHome: filepath.Join(projectRoot, ".mnemonic-memories"),
+		Name:         "personal",
+		Mode:         project.InitModeLocal,
+	})
+	require.NoError(t, err)
+	setLocalProjectMemoriesHome(t, projectRoot)
+
+	restoreWD := chdirForNotesTest(t, projectRoot)
+	defer restoreWD()
+
+	memoriesRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
+	writeTaggedNote(t, filepath.Join(memoriesRoot, "healthy-note.md"), "550e8400-e29b-41d4-a716-446655440001", "Healthy Note", "healthy-note", nil, "body\n")
+	reindexResult := executeCommand("project", "reindex", "personal", "--project", "work", "--json")
+	require.NoError(t, reindexResult.Err, "project reindex returned error\nstderr: %s", reindexResult.Stderr)
+
+	result := executeCommand("project", "doctor", "personal", "--project", "work", "--json")
+	require.NoError(t, result.Err, "project doctor returned error\nstderr: %s", result.Stderr)
+	require.Contains(t, result.Stdout, `"status": "ok"`)
+}
+
 func TestProjectDoctorMissingIndexReturnsNeedsReindex(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
@@ -73,6 +136,16 @@ func TestProjectDoctorMissingIndexReturnsNeedsReindex(t *testing.T) {
 	result := executeCommand("project", "doctor", "personal", "--json")
 	require.NoError(t, result.Err, "project doctor returned error\nstderr: %s", result.Stderr)
 	require.Contains(t, result.Stdout, `"status": "needs_reindex"`)
+}
+
+func TestProjectDoctorRequiresSelector(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+	t.Setenv("MNEMONIC_MEMORIES_HOME", t.TempDir())
+
+	result := executeCommand("project", "doctor", "--json")
+	require.Error(t, result.Err)
+	require.Equal(t, 2, ExitCodeForError(result.Err))
+	require.Contains(t, result.Err.Error(), "project selector is required")
 }
 
 func TestProjectDoctorCorruptedIndexReturnsExitSix(t *testing.T) {
@@ -106,6 +179,26 @@ func TestProjectDoctorCorruptedIndexReturnsExitSix(t *testing.T) {
 	result := executeCommand("project", "doctor", "personal", "--json")
 	require.Error(t, result.Err, "project doctor error = nil, want corrupted index")
 	require.Equal(t, 6, ExitCodeForError(result.Err))
+}
+
+func TestProjectDoctorAllRejectsExplicitProjectSelector(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+	t.Setenv("MNEMONIC_MEMORIES_HOME", t.TempDir())
+
+	result := executeCommand("project", "doctor", "--all", "--project", "work", "--json")
+	require.Error(t, result.Err)
+	require.Equal(t, 2, ExitCodeForError(result.Err))
+	require.Contains(t, result.Err.Error(), "--all cannot be combined with a project selector")
+}
+
+func TestProjectDoctorAllRejectsPositionalSelector(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+	t.Setenv("MNEMONIC_MEMORIES_HOME", t.TempDir())
+
+	result := executeCommand("project", "doctor", "--all", "personal", "--json")
+	require.Error(t, result.Err)
+	require.Equal(t, 2, ExitCodeForError(result.Err))
+	require.Contains(t, result.Err.Error(), "--all cannot be combined with a project selector")
 }
 
 func TestProjectDoctorReportsStaleTempFileWithoutDeletingIt(t *testing.T) {

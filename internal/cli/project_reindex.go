@@ -8,11 +8,17 @@ import (
 )
 
 var projectReindexCmd = &cobra.Command{
-	Use:               "reindex [SLUG]",
+	Use:               "reindex [PROJECT]",
 	Short:             "Rebuild project indexes",
+	Args:              cobra.MaximumNArgs(1),
 	ValidArgsFunction: completeProjectNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		all, err := cmd.Flags().GetBool("all")
+		if err != nil {
+			return err
+		}
+
+		selector, err := resolveProjectSelector(cmd, args, all)
 		if err != nil {
 			return err
 		}
@@ -23,14 +29,6 @@ var projectReindexCmd = &cobra.Command{
 		}
 
 		switch {
-		case all && len(args) > 0:
-			return fmt.Errorf("--all cannot be combined with a project selector")
-		case len(args) == 1:
-			result, err := reindexSingleProject(cmd.Context(), args[0])
-			if err != nil {
-				return err
-			}
-			return PrintOutput(cmd.OutOrStdout(), fmt.Sprintf("%s reindexed\n", result.ProjectID), result)
 		case all:
 			if container.Services.Maint == nil {
 				return fmt.Errorf("maintenance service is not configured")
@@ -41,14 +39,11 @@ var projectReindexCmd = &cobra.Command{
 			}
 			return PrintOutput(cmd.OutOrStdout(), fmt.Sprintf("%d projects reindexed\n", result.Indexed), result)
 		default:
-			if container.Services.Maint == nil {
-				return fmt.Errorf("maintenance service is not configured")
-			}
-			result, err := container.Services.Maint.ReindexAll(cmd.Context())
+			result, err := reindexSingleProject(cmd.Context(), selector)
 			if err != nil {
 				return err
 			}
-			return PrintOutput(cmd.OutOrStdout(), fmt.Sprintf("%d projects reindexed\n", result.Indexed), result)
+			return PrintOutput(cmd.OutOrStdout(), fmt.Sprintf("%s reindexed\n", result.ProjectID), result)
 		}
 	},
 }
