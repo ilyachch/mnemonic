@@ -42,6 +42,10 @@ func TestNewRuntimeAppStoresKnowledgeBase(t *testing.T) {
 	require.Equal(t, resolved.RootDir, runtime.Services.Search.Index.RootDir)
 	require.Equal(t, resolved.ID, runtime.Services.Search.Index.KBID)
 	require.Equal(t, resolved, runtime.Services.Index.KB)
+	require.Equal(t, resolved.RootDir, runtime.Services.Index.Notes.RootDir)
+	require.Equal(t, resolved.IndexPath, runtime.Services.Index.Index.IndexPath)
+	require.Equal(t, resolved.RootDir, runtime.Services.Index.Index.RootDir)
+	require.Equal(t, resolved.ID, runtime.Services.Index.Index.KBID)
 
 	typ := reflect.TypeOf(*runtime)
 	require.Equal(t, 2, typ.NumField())
