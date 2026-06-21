@@ -5,6 +5,7 @@ import (
 	"github.com/ilyachch/mnemonic/internal/paths"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/registry"
+	"github.com/ilyachch/mnemonic/internal/service/catalogsvc"
 )
 
 // Input configures app container creation.
@@ -50,6 +51,10 @@ func New(input Input) (*App, error) {
 		Config: cfg,
 		Paths:  effective,
 		Services: Services{
+			Catalog: &catalogsvc.Service{
+				MemoriesHome: effective.MemoriesHome,
+				StateHome:    effective.StateHome,
+			},
 			ProjectResolver: &FileResolver{
 				MemoriesHome: effective.MemoriesHome,
 			},

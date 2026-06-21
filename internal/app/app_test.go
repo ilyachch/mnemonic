@@ -38,6 +38,7 @@ func TestNewBuildsConfigPathsRegistryAndServices(t *testing.T) {
 	require.Equal(t, filepath.Clean(configHome), container.Paths.ConfigHome)
 	require.Equal(t, filepath.Clean(cacheHome), container.Paths.CacheHome)
 	require.Equal(t, filepath.Clean(memoriesHome), container.Paths.MemoriesHome)
+	require.NotNil(t, container.Services.Catalog)
 	require.NotNil(t, container.Services.ProjectResolver)
 }
 
