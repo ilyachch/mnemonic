@@ -52,6 +52,22 @@ func TestLookupNoteAndBacklinks(t *testing.T) {
 	require.Equal(t, "alpha", links[0].Slug)
 }
 
+func TestCountUnresolvedLinks(t *testing.T) {
+	store, db := seedQueryStore(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	_, err := db.Exec(
+		`INSERT INTO links(link_id, note_id, to_note_id, target, relation_type, source_line)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		"link-unresolved", "gamma-id", nil, "missing-target", "wikilink", 4,
+	)
+	require.NoError(t, err)
+
+	count, err := store.CountUnresolvedLinks(db)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+}
+
 func seedQueryStore(t *testing.T) (Store, *sql.DB) {
 	t.Helper()
 

@@ -120,7 +120,7 @@ func (s Service) Doctor(ctx context.Context) (DoctorOutput, error) {
 	}
 	result.addCheck(DoctorCheck{Name: "index schema", Status: "ok"})
 
-	dupUUIDs, dupSlugs, unresolved, trashIgnored, err := doctorNoteChecks(root, db)
+	dupUUIDs, dupSlugs, unresolved, trashIgnored, err := doctorNoteChecks(root, s.Index, db)
 	if err != nil {
 		return DoctorOutput{}, err
 	}
@@ -165,7 +165,7 @@ func doctorParseCheck(name, path string) DoctorCheck {
 	return DoctorCheck{Name: name, Status: "ok"}
 }
 
-func doctorNoteChecks(root string, db *sql.DB) (dupUUIDs int, dupSlugs int, unresolved int, trashIgnored int, err error) {
+func doctorNoteChecks(root string, index sqliteindex.Store, db *sql.DB) (dupUUIDs int, dupSlugs int, unresolved int, trashIgnored int, err error) {
 	paths, err := (markdownstore.Store{RootDir: root}).Walk()
 	if err != nil {
 		return 0, 0, 0, 0, err
@@ -201,7 +201,8 @@ func doctorNoteChecks(root string, db *sql.DB) (dupUUIDs int, dupSlugs int, unre
 			dupSlugs++
 		}
 	}
-	if err := db.QueryRow(`SELECT COUNT(*) FROM links WHERE to_note_id IS NULL`).Scan(&unresolved); err != nil {
+	unresolved, err = index.CountUnresolvedLinks(db)
+	if err != nil {
 		return 0, 0, 0, 0, err
 	}
 	return dupUUIDs, dupSlugs, unresolved, trashIgnored, nil

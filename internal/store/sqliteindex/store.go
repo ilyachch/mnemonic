@@ -312,6 +312,19 @@ func (s Store) Backlinks(db *sql.DB, targetNoteID string, limit int) ([]Backlink
 	return out, nil
 }
 
+// CountUnresolvedLinks returns the number of links without a resolved target note.
+func (s Store) CountUnresolvedLinks(db *sql.DB) (int, error) {
+	if db == nil {
+		return 0, fmt.Errorf("db is required")
+	}
+
+	var unresolved int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM links WHERE to_note_id IS NULL`).Scan(&unresolved); err != nil {
+		return 0, fmt.Errorf("count unresolved links: %w", err)
+	}
+	return unresolved, nil
+}
+
 func (s Store) validateIndexPath() error {
 	if strings.TrimSpace(s.IndexPath) == "" {
 		return fmt.Errorf("index path is required")
