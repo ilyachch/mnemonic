@@ -21,7 +21,6 @@ func TestRootCmdWiringSmoke(t *testing.T) {
 
 	for _, path := range [][]string{
 		{"config", "show"},
-		{"hello"},
 		{"stdio"},
 		{"mcp"},
 		{"notes"},

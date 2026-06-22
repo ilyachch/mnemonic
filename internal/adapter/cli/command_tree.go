@@ -7,8 +7,6 @@ func buildCommandTree() []*cobra.Command {
 	configShow := cloneCommand(configShowCmd)
 	config.AddCommand(configShow)
 
-	hello := cloneCommand(helloCmd)
-
 	stdio := cloneCommand(stdioCmd)
 	stdio.Flags().Bool("read-only", false, "run the MCP server without write tools")
 	mcp := cloneCommand(mcpCmd)
@@ -78,7 +76,7 @@ func buildCommandTree() []*cobra.Command {
 	_ = webServe.Flags().MarkHidden("addr")
 	web.AddCommand(webServe)
 
-	return []*cobra.Command{config, hello, stdio, mcp, notes, project, tags, version, web}
+	return []*cobra.Command{config, stdio, mcp, notes, project, tags, version, web}
 }
 
 func cloneCommand(src *cobra.Command) *cobra.Command {
