@@ -75,6 +75,6 @@ type projectImportOutput struct {
 	CopiedFiles int                           `json:"copied_files"`
 	Indexed     int                           `json:"indexed"`
 	IndexStatus string                        `json:"index_status"`
-	IndexErrors []catalogsvc.ImportIndexError `json:"index_errors"`
+	IndexErrors []catalogsvc.ImportIndexError `json:"index_errors,omitempty"`
 	Candidates  []catalogsvc.ImportCandidate  `json:"candidates,omitempty"`
 }

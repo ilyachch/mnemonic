@@ -42,7 +42,7 @@ func TestNotesCreateCommandCreatesMarkdownNote(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal([]byte(result.Stdout), &got), "stdout: %s", result.Stdout)
 	require.Contains(t, result.Stdout, `"index_status": "ok"`)
-	require.Contains(t, result.Stdout, `"index_error": ""`)
+	require.NotContains(t, result.Stdout, `"index_error"`)
 	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", got.NoteID)
 	require.Equal(t, "auth-migration", got.Slug)
 	require.Equal(t, "auth-migration.md", got.Path)

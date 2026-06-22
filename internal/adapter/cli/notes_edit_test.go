@@ -48,7 +48,7 @@ func TestNotesEditCommandAppendsBodyAndUpdatesTimestamp(t *testing.T) {
 	editResult := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--append", "Next step", "--json")
 	require.NoError(t, editResult.Err, "stderr: %s", editResult.Stderr)
 	require.Contains(t, editResult.Stdout, `"index_status": "ok"`)
-	require.Contains(t, editResult.Stdout, `"index_error": ""`)
+	require.NotContains(t, editResult.Stdout, `"index_error"`)
 	var editGot struct {
 		IndexStatus string `json:"index_status"`
 		IndexError  string `json:"index_error"`
@@ -115,7 +115,7 @@ func TestNotesEditCommandReplacesBodyFromFile(t *testing.T) {
 	result := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--body-file", bodyFile, "--json")
 	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 	require.Contains(t, result.Stdout, `"index_status": "ok"`)
-	require.Contains(t, result.Stdout, `"index_error": ""`)
+	require.NotContains(t, result.Stdout, `"index_error"`)
 
 	parsed, err := markdown.ParseNote(readNoteFile(t, notePath))
 	require.NoError(t, err)
@@ -160,7 +160,7 @@ func TestNotesEditCommandAllowsEmptyBodyFile(t *testing.T) {
 	result := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--body-file", bodyFile, "--json")
 	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 	require.Contains(t, result.Stdout, `"index_status": "ok"`)
-	require.Contains(t, result.Stdout, `"index_error": ""`)
+	require.NotContains(t, result.Stdout, `"index_error"`)
 
 	parsed, err := markdown.ParseNote(readNoteFile(t, notePath))
 	require.NoError(t, err)
@@ -203,7 +203,7 @@ func TestNotesEditCommandSetsFrontmatterField(t *testing.T) {
 	result := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--set", "type=decision", "--json")
 	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 	require.Contains(t, result.Stdout, `"index_status": "ok"`)
-	require.Contains(t, result.Stdout, `"index_error": ""`)
+	require.NotContains(t, result.Stdout, `"index_error"`)
 
 	showResult := executeCommand("notes", "show", "auth-migration", "--project", "personal", "--json")
 	require.NoError(t, showResult.Err, "stderr: %s", showResult.Stderr)

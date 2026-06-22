@@ -51,7 +51,7 @@ func TestNotesDeleteCommandDryRunShowsTrashPath(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal([]byte(result.Stdout), &got), "stdout: %s", result.Stdout)
 	require.Contains(t, result.Stdout, `"index_status": "skipped"`)
-	require.Contains(t, result.Stdout, `"index_error": ""`)
+	require.NotContains(t, result.Stdout, `"index_error"`)
 	require.Equal(t, "trash", got.Mode)
 	require.NotEmpty(t, got.TrashPath)
 	require.Equal(t, "skipped", got.IndexStatus)
@@ -100,7 +100,7 @@ func TestNotesDeleteCommandMovesNoteToTrash(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal([]byte(result.Stdout), &got), "stdout: %s", result.Stdout)
 	require.Contains(t, result.Stdout, `"index_status": "ok"`)
-	require.Contains(t, result.Stdout, `"index_error": ""`)
+	require.NotContains(t, result.Stdout, `"index_error"`)
 	require.Equal(t, "trash", got.Mode)
 	require.Equal(t, "auth-migration.md", got.Path)
 	require.NotEmpty(t, got.TrashPath)

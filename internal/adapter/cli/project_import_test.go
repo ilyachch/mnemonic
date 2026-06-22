@@ -35,6 +35,7 @@ func TestProjectImportCommandDefaultsToDot(t *testing.T) {
 	require.Equal(t, 1, got.Indexed)
 	require.Equal(t, "ok", got.IndexStatus)
 	require.Empty(t, got.IndexErrors)
+	require.NotContains(t, result.Stdout, `"index_errors"`)
 	indexPath := testIndexPath(importRoot, "550e8400-e29b-41d4-a716-446655440000")
 	_, err = os.Stat(indexPath)
 	require.NoError(t, err, "index file missing")
@@ -116,6 +117,7 @@ func TestProjectImportCommandNormalizesRelativePath(t *testing.T) {
 	require.Equal(t, 1, got.Indexed)
 	require.Equal(t, "ok", got.IndexStatus)
 	require.Empty(t, got.IndexErrors)
+	require.NotContains(t, result.Stdout, `"index_errors"`)
 }
 
 func TestProjectImportCommandWarnsWhenIndexStaysStaleInHumanMode(t *testing.T) {

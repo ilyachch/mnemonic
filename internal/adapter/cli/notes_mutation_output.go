@@ -8,7 +8,7 @@ type notesCreateOutput struct {
 	Path        string `json:"path"`
 	ContentHash string `json:"content_hash"`
 	IndexStatus string `json:"index_status"`
-	IndexError  string `json:"index_error"`
+	IndexError  string `json:"index_error,omitempty"`
 }
 
 type notesEditOutput struct {
@@ -19,7 +19,7 @@ type notesEditOutput struct {
 	CreatedAt   string `json:"created_at"`
 	UpdatedAt   string `json:"updated_at"`
 	IndexStatus string `json:"index_status"`
-	IndexError  string `json:"index_error"`
+	IndexError  string `json:"index_error,omitempty"`
 }
 
 type notesDeleteOutput struct {
@@ -27,7 +27,7 @@ type notesDeleteOutput struct {
 	Path        string `json:"path,omitempty"`
 	TrashPath   string `json:"trash_path,omitempty"`
 	IndexStatus string `json:"index_status"`
-	IndexError  string `json:"index_error"`
+	IndexError  string `json:"index_error,omitempty"`
 }
 
 func newNotesCreateOutput(result notesvc.CreateResult) notesCreateOutput {

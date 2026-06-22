@@ -46,8 +46,18 @@ func TestProjectInitCommandLocalCreatesLocalProject(t *testing.T) {
 	))
 	t.Cleanup(restore)
 
-	result := executeCommand("project", "init", "backend", "--local")
+	result := executeCommand("project", "init", "backend", "--local", "--json")
 	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
+	require.Contains(t, result.Stdout, `"index_status": "ok"`)
+	require.NotContains(t, result.Stdout, `"index_error"`)
+
+	var got struct {
+		IndexStatus string `json:"index_status"`
+		IndexError  string `json:"index_error"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(result.Stdout), &got), "stdout: %s", result.Stdout)
+	require.Equal(t, "ok", got.IndexStatus)
+	require.Empty(t, got.IndexError)
 
 	projectPath := filepath.Join(cwd, ".mnemonic")
 	_, err = os.Stat(projectPath)

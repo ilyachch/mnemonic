@@ -138,7 +138,7 @@ type InitResult struct {
 	StateDir     string `json:"state_dir"`
 	IndexPath    string `json:"index_path"`
 	IndexStatus  string `json:"index_status"`
-	IndexError   string `json:"index_error"`
+	IndexError   string `json:"index_error,omitempty"`
 }
 
 // Resolve returns the selected knowledge base for a project selector.
