@@ -43,6 +43,6 @@ var notesDeleteCmd = &cobra.Command{
 		if !jsonOutputEnabled(cmd) {
 			printIndexWarning(cmd, deleted.IndexStatus, deleted.IndexError)
 		}
-		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), fmt.Sprintf("%s deleted\n", args[0]), deleted)
+		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), fmt.Sprintf("%s deleted\n", args[0]), newNotesDeleteOutput(deleted))
 	},
 }

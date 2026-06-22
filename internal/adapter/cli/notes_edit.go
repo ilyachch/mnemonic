@@ -74,7 +74,7 @@ var notesEditCmd = &cobra.Command{
 		if !jsonOutputEnabled(cmd) {
 			printIndexWarning(cmd, edited.IndexStatus, edited.IndexError)
 		}
-		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), fmt.Sprintf("%s updated\n", edited.Path), edited)
+		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), fmt.Sprintf("%s updated\n", edited.Path), newNotesEditOutput(edited))
 	},
 }
 

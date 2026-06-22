@@ -68,6 +68,6 @@ var notesCreateCmd = &cobra.Command{
 		if !jsonOutputEnabled(cmd) {
 			printIndexWarning(cmd, created.IndexStatus, created.IndexError)
 		}
-		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), fmt.Sprintf("%s created\n", created.Path), created)
+		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), fmt.Sprintf("%s created\n", created.Path), newNotesCreateOutput(created))
 	},
 }
