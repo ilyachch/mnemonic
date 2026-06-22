@@ -1,4 +1,4 @@
-package project
+package slug
 
 import (
 	"errors"
@@ -12,7 +12,7 @@ var (
 	ErrUnsupportedSlugInput = errors.New("slugify supports ASCII input only")
 )
 
-// Slugify converts an ASCII project name into a deterministic slug.
+// Slugify converts an ASCII name into a deterministic slug.
 func Slugify(input string) (string, error) {
 	if input == "" {
 		return "", ErrEmptySlug

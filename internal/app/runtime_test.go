@@ -10,7 +10,7 @@ import (
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
-	"github.com/ilyachch/mnemonic/internal/project"
+	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -63,7 +63,7 @@ func TestBootstrapRuntimeResolvesSelector(t *testing.T) {
 	projectDir := filepath.Join(memoriesHome, slug)
 	require.NoError(t, os.MkdirAll(projectDir, 0o755))
 
-	manifest := project.NewMnemonicManifest()
+	manifest := registry.NewMnemonicManifest()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440001"
 	manifest.Name = "Demo"
 	manifest.Slug = slug
@@ -71,7 +71,7 @@ func TestBootstrapRuntimeResolvesSelector(t *testing.T) {
 	manifest.CreatedAt = time.Now().UTC()
 	manifest.UpdatedAt = manifest.CreatedAt
 	manifest.Generator.App = "mnemonic"
-	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))
+	require.NoError(t, registry.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))
 
 	bootstrap, err := New(Input{})
 	require.NoError(t, err)

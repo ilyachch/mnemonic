@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 
-	"github.com/ilyachch/mnemonic/internal/graph"
 	"github.com/ilyachch/mnemonic/internal/service/searchsvc"
 	"github.com/spf13/cobra"
 )
@@ -31,7 +30,7 @@ var notesBacklinksCmd = &cobra.Command{
 
 		output := notesBacklinksOutput{Links: links}
 		if output.Links == nil {
-			output.Links = []graph.Backlink{}
+			output.Links = []searchsvc.Backlink{}
 		}
 		human := fmt.Sprintf("%d links\n", len(output.Links))
 		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, output)
@@ -39,5 +38,5 @@ var notesBacklinksCmd = &cobra.Command{
 }
 
 type notesBacklinksOutput struct {
-	Links []graph.Backlink `json:"links"`
+	Links []searchsvc.Backlink `json:"links"`
 }

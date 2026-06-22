@@ -11,7 +11,6 @@ import (
 
 	"github.com/gofrs/flock"
 	"github.com/ilyachch/mnemonic/internal/apperr"
-	"github.com/ilyachch/mnemonic/internal/index"
 	_ "modernc.org/sqlite"
 )
 
@@ -23,6 +22,16 @@ type Store struct {
 	RootDir   string
 	KBID      string
 }
+
+// SchemaStatus describes whether an existing index can be reused.
+type SchemaStatus string
+
+const (
+	// SchemaStatusOK indicates that the database schema is compatible.
+	SchemaStatusOK SchemaStatus = "ok"
+	// SchemaStatusNeedsRebuild indicates that the index must be rebuilt.
+	SchemaStatusNeedsRebuild SchemaStatus = "needs_rebuild"
+)
 
 // SearchHit is a single FTS search result from the index database.
 type SearchHit struct {
@@ -116,12 +125,29 @@ func (s Store) QuickCheck() error {
 	if err := s.validateIndexPath(); err != nil {
 		return err
 	}
-	return index.QuickCheck(s.IndexPath)
+	db, err := sql.Open(sqliteDriverName, "file:"+filepath.ToSlash(s.IndexPath)+"?mode=ro")
+	if err != nil {
+		return apperr.Corrupted("index database is corrupted", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	if err := db.Ping(); err != nil {
+		return classifyCorruption(err)
+	}
+
+	var result string
+	if err := db.QueryRow(`PRAGMA quick_check`).Scan(&result); err != nil {
+		return classifyCorruption(err)
+	}
+	if result != "ok" {
+		return apperr.Corrupted("index database is corrupted", fmt.Errorf("quick_check = %s", result))
+	}
+	return nil
 }
 
 // CheckSchemaStatus reports whether the current DB schema is compatible.
-func (s Store) CheckSchemaStatus(db *sql.DB) (index.SchemaStatus, error) {
-	return index.CheckSchemaStatus(db)
+func (s Store) CheckSchemaStatus(db *sql.DB) (SchemaStatus, error) {
+	return CheckSchemaStatus(db)
 }
 
 // Search runs an FTS query against the index database.
@@ -361,4 +387,14 @@ func removeIndexFiles(path string) error {
 		}
 	}
 	return nil
+}
+
+func classifyCorruption(err error) error {
+	if err == nil {
+		return nil
+	}
+	if os.IsNotExist(err) {
+		return apperr.NotFound("index database not found", err)
+	}
+	return apperr.Corrupted("index database is corrupted", err)
 }

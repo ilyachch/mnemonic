@@ -2,12 +2,10 @@ package cli
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -43,20 +41,8 @@ func TestProjectListCommandReturnsSeededProject(t *testing.T) {
 	testutil.CleanEnvForTest(t)
 	t.Setenv("MNEMONIC_MEMORIES_HOME", memoriesHome)
 
-	// Create a central project in memories home
-	projectDir := filepath.Join(memoriesHome, "backend")
-	require.NoError(t, os.MkdirAll(projectDir, 0o755))
-
 	now := time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
-	manifest := project.NewMnemonicManifest()
-	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
-	manifest.Name = "backend"
-	manifest.Slug = "backend"
-	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = now
-	manifest.UpdatedAt = now
-	manifest.Generator.App = "mnemonic"
-	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))
+	writeCentralProjectFixture(t, memoriesHome, "backend", "550e8400-e29b-41d4-a716-446655440000", now)
 
 	result := executeCommand("project", "list", "--json")
 	require.NoError(t, result.Err, "project list returned error\nstderr: %s", result.Stderr)
@@ -81,19 +67,8 @@ func TestProjectListCommandHumanOutputIncludesProjectDetails(t *testing.T) {
 	testutil.CleanEnvForTest(t)
 	t.Setenv("MNEMONIC_MEMORIES_HOME", memoriesHome)
 
-	projectDir := filepath.Join(memoriesHome, "backend")
-	require.NoError(t, os.MkdirAll(projectDir, 0o755))
-
 	now := time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
-	manifest := project.NewMnemonicManifest()
-	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
-	manifest.Name = "backend"
-	manifest.Slug = "backend"
-	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = now
-	manifest.UpdatedAt = now
-	manifest.Generator.App = "mnemonic"
-	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))
+	writeCentralProjectFixture(t, memoriesHome, "backend", "550e8400-e29b-41d4-a716-446655440000", now)
 
 	result := executeCommand("project", "list")
 	require.NoError(t, result.Err, "project list returned error\nstderr: %s", result.Stderr)

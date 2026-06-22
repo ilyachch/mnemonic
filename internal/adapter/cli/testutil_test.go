@@ -6,9 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/platform/paths"
+	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -73,4 +75,92 @@ func setLocalProjectMemoriesHome(t *testing.T, projectRoot string) {
 	t.Helper()
 
 	t.Setenv("MNEMONIC_MEMORIES_HOME", filepath.Join(projectRoot, ".mnemonic-memories"))
+}
+
+func testIndexPath(root, projectID string) string {
+	stateHome, err := resolveStateHome()
+	if err != nil {
+		return filepath.Join(root, "state", "mnemonic", "projects", projectID, "index.sqlite")
+	}
+	return filepath.Join(stateHome, "mnemonic", "projects", projectID, "index.sqlite")
+}
+
+func resolveStateHome() (string, error) {
+	boot, err := newTestBootstrap()
+	if err != nil {
+		return "", err
+	}
+	return boot.Paths.StateHome, nil
+}
+
+func writeCentralProjectFixture(t *testing.T, memoriesHome, slug, projectID string, createdAt time.Time) string {
+	t.Helper()
+
+	projectDir := filepath.Join(memoriesHome, slug)
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest := registry.NewMnemonicManifest()
+	manifest.ProjectID = projectID
+	manifest.Name = slug
+	manifest.Slug = slug
+	manifest.MarkdownFormatVersion = 1
+	manifest.CreatedAt = createdAt
+	manifest.UpdatedAt = createdAt
+	manifest.Generator.App = "mnemonic"
+
+	if err := registry.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest); err != nil {
+		t.Fatal(err)
+	}
+
+	return projectDir
+}
+
+func writeLocalProjectFixture(t *testing.T, cwd, slug string) error {
+	t.Helper()
+
+	now := time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
+
+	memoriesDir := filepath.Join(cwd, ".mnemonic-memories", slug)
+	if err := os.MkdirAll(memoriesDir, 0o755); err != nil {
+		return err
+	}
+
+	projectID := "550e8400-e29b-41d4-a716-446655440000"
+
+	manifest := registry.NewMnemonicManifest()
+	manifest.ProjectID = projectID
+	manifest.Name = slug
+	manifest.Slug = slug
+	manifest.Type = registry.ManifestTypeLocal
+	manifest.MarkdownFormatVersion = 1
+	manifest.CreatedAt = now
+	manifest.UpdatedAt = now
+	manifest.Generator.App = "mnemonic"
+
+	if err := registry.WriteMnemonicManifest(filepath.Join(memoriesDir, "mnemonic.toml"), manifest); err != nil {
+		return err
+	}
+
+	memHome, err := resolveMemoriesHome()
+	if err != nil {
+		return err
+	}
+
+	pointerPath := filepath.Join(memHome, slug+".toml")
+	if err := os.MkdirAll(filepath.Dir(pointerPath), 0o755); err != nil {
+		return err
+	}
+	return registry.WritePointerFile(pointerPath, &registry.PointerFile{
+		ManifestPath: filepath.Join(memoriesDir, "mnemonic.toml"),
+	})
+}
+
+func resolveMemoriesHome() (string, error) {
+	boot, err := newTestBootstrap()
+	if err != nil {
+		return "", err
+	}
+	return boot.Paths.MemoriesHome, nil
 }

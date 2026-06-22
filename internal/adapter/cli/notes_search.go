@@ -3,7 +3,6 @@ package cli
 import (
 	"strconv"
 
-	"github.com/ilyachch/mnemonic/internal/search"
 	"github.com/ilyachch/mnemonic/internal/service/searchsvc"
 	"github.com/spf13/cobra"
 )
@@ -47,10 +46,10 @@ var notesSearchCmd = &cobra.Command{
 }
 
 type notesSearchOutput struct {
-	Hits []search.Result `json:"hits"`
+	Hits []searchsvc.SearchResult `json:"hits"`
 }
 
-func formatNotesSearchHuman(hits []search.Result) string {
+func formatNotesSearchHuman(hits []searchsvc.SearchResult) string {
 	if len(hits) == 0 {
 		return "0 hits\n"
 	}

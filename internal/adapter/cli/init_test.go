@@ -6,8 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/index"
-	"github.com/ilyachch/mnemonic/internal/project"
+	clockpkg "github.com/ilyachch/mnemonic/internal/platform/clock"
 	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
@@ -40,7 +39,10 @@ func TestProjectInitCommandLocalCreatesLocalProject(t *testing.T) {
 		_ = os.Chdir(originalWD)
 	})
 
-	restore := project.SetClock(projectClockForCLI("550e8400-e29b-41d4-a716-446655440000"))
+	restore := clockpkg.SetClock(testutil.NewClock(
+		time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
+		"550e8400-e29b-41d4-a716-446655440000",
+	))
 	t.Cleanup(restore)
 
 	result := executeCommand("project", "init", "backend", "--local")
@@ -58,14 +60,7 @@ func TestProjectInitCommandLocalCreatesLocalProject(t *testing.T) {
 	_, err = os.Stat(manifestPath)
 	require.True(t, os.IsNotExist(err), "unexpected central manifest")
 
-	// Init also creates an index; resolve the project UUID by re-listing the registry.
-	projects := listRegistryProjects(t)
-	require.NotEmpty(t, projects)
-	projectID := projects[0].projectID
-	require.Equal(t, "backend", projects[0].slug)
-
-	indexPath, err := index.Path(projectID)
-	require.NoError(t, err)
+	indexPath := testIndexPath(cwd, "550e8400-e29b-41d4-a716-446655440000")
 	_, err = os.Stat(indexPath)
 	require.NoError(t, err, "index file missing")
 }
@@ -85,7 +80,10 @@ func TestProjectInitCommandCentralCreatesCentralProject(t *testing.T) {
 		_ = os.Chdir(originalWD)
 	})
 
-	restore := project.SetClock(projectClockForCLI("550e8400-e29b-41d4-a716-446655440000"))
+	restore := clockpkg.SetClock(testutil.NewClock(
+		time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
+		"550e8400-e29b-41d4-a716-446655440000",
+	))
 	t.Cleanup(restore)
 
 	result := executeCommand("project", "init", "personal")
@@ -102,12 +100,11 @@ func TestProjectInitCommandCentralCreatesCentralProject(t *testing.T) {
 
 	manifestData, err := os.ReadFile(manifestPath)
 	require.NoError(t, err)
-	parsedManifest, err := project.ParseMnemonicManifest(manifestData)
+	parsedManifest, err := registry.ParseMnemonicManifest(manifestData)
 	require.NoError(t, err)
-	require.Equal(t, project.ManifestType(""), parsedManifest.Type)
+	require.Equal(t, registry.ManifestType(""), parsedManifest.Type)
 
-	indexPath, err := index.Path(parsedManifest.ProjectID)
-	require.NoError(t, err)
+	indexPath := testIndexPath(cwd, parsedManifest.ProjectID)
 	_, err = os.Stat(indexPath)
 	require.NoError(t, err, "index file missing")
 }
@@ -126,14 +123,20 @@ func TestProjectInitCommandRejectsDuplicateSlug(t *testing.T) {
 		_ = os.Chdir(originalWD)
 	})
 
-	restore := project.SetClock(projectClockForCLI("550e8400-e29b-41d4-a716-446655440000"))
+	restore := clockpkg.SetClock(testutil.NewClock(
+		time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
+		"550e8400-e29b-41d4-a716-446655440000",
+	))
 	t.Cleanup(restore)
 
 	first := executeCommand("project", "init", "backend", "--local")
 	require.NoError(t, first.Err, "stderr: %s", first.Stderr)
 
 	restore()
-	restore = project.SetClock(projectClockForCLI("7f0a6d73-c3ba-4f0e-85b8-27bccf4370f1"))
+	restore = clockpkg.SetClock(testutil.NewClock(
+		time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
+		"7f0a6d73-c3ba-4f0e-85b8-27bccf4370f1",
+	))
 	t.Cleanup(restore)
 
 	result := executeCommand("project", "init", "Backend", "--local")
@@ -157,7 +160,10 @@ func TestProjectInitCommandCentralWithDescription(t *testing.T) {
 		_ = os.Chdir(originalWD)
 	})
 
-	restore := project.SetClock(projectClockForCLI("550e8400-e29b-41d4-a716-446655440000"))
+	restore := clockpkg.SetClock(testutil.NewClock(
+		time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
+		"550e8400-e29b-41d4-a716-446655440000",
+	))
 	t.Cleanup(restore)
 
 	desc := "Backend architecture decisions, API contracts, and database schemas."
@@ -167,78 +173,7 @@ func TestProjectInitCommandCentralWithDescription(t *testing.T) {
 	manifestPath := filepath.Join(memoriesHome, "backend", "mnemonic.toml")
 	manifestData, err := os.ReadFile(manifestPath)
 	require.NoError(t, err)
-	parsedManifest, err := project.ParseMnemonicManifest(manifestData)
+	parsedManifest, err := registry.ParseMnemonicManifest(manifestData)
 	require.NoError(t, err)
 	require.Equal(t, desc, parsedManifest.Description)
-}
-
-func projectClockForCLI(uuids ...string) project.Clock {
-	return projectClock{
-		now:   time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
-		uuids: uuids,
-	}
-}
-
-type projectClock struct {
-	now   time.Time
-	uuids []string
-}
-
-func (c projectClock) Now() time.Time {
-	return c.now
-}
-
-func (c projectClock) UUID() string {
-	if len(c.uuids) == 0 {
-		return ""
-	}
-	return c.uuids[0]
-}
-
-type registryProjectRow struct {
-	projectID string
-	slug      string
-}
-
-func listRegistryProjects(t *testing.T) []registryProjectRow {
-	t.Helper()
-
-	boot, err := newTestBootstrap()
-	require.NoError(t, err)
-
-	store := registry.New(boot.Paths.MemoriesHome, func(path string) (registry.ManifestData, error) {
-		manifest, err := project.ParseMnemonicManifestFromFile(path)
-		if err != nil {
-			return registry.ManifestData{}, err
-		}
-		kind := "central"
-		if manifest.IsLocal() {
-			kind = "local"
-		}
-		return registry.ManifestData{
-			ProjectID: manifest.ProjectID,
-			Name:      manifest.Name,
-			Slug:      manifest.Slug,
-			Type:      kind,
-		}, nil
-	}, func(data []byte) (string, error) {
-		pointer, err := project.ParsePointerFile(data)
-		if err != nil {
-			return "", err
-		}
-		return pointer.ManifestPath, nil
-	})
-
-	entries, _, err := store.Scan()
-	require.NoError(t, err)
-
-	var out []registryProjectRow
-	for _, e := range entries {
-		out = append(out, registryProjectRow{
-			projectID: e.ProjectID,
-			slug:      e.Slug,
-		})
-	}
-
-	return out
 }

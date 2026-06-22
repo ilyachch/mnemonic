@@ -6,8 +6,6 @@ import (
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
-	"github.com/ilyachch/mnemonic/internal/graph"
-	"github.com/ilyachch/mnemonic/internal/search"
 	"github.com/ilyachch/mnemonic/internal/store/sqliteindex"
 )
 
@@ -21,6 +19,17 @@ type SearchInput struct {
 	Query string
 	Limit int
 	Tag   string
+}
+
+// SearchResult mirrors the legacy search payload.
+type SearchResult struct {
+	NoteID      string  `json:"note_id"`
+	Slug        string  `json:"slug"`
+	Title       string  `json:"title"`
+	Path        string  `json:"path"`
+	Score       float64 `json:"score"`
+	Snippet     string  `json:"snippet"`
+	ContentHash string  `json:"content_hash"`
 }
 
 // ListTagsOutput mirrors the legacy tag listing payload.
@@ -40,6 +49,17 @@ type BacklinksInput struct {
 	Limit      int
 }
 
+// Backlink mirrors the legacy backlink payload.
+type Backlink struct {
+	LinkID       string `json:"link_id"`
+	NoteID       string `json:"note_id"`
+	Slug         string `json:"slug"`
+	Title        string `json:"title"`
+	Path         string `json:"path"`
+	RelationType string `json:"relation_type"`
+	SourceLine   int    `json:"source_line"`
+}
+
 // New constructs the runtime search service for one knowledge base.
 func New(k kb.KnowledgeBase) *Service {
 	return &Service{
@@ -52,7 +72,7 @@ func New(k kb.KnowledgeBase) *Service {
 }
 
 // Search runs a full-text query against the bound index.
-func (s Service) Search(ctx context.Context, input SearchInput) ([]search.Result, error) {
+func (s Service) Search(ctx context.Context, input SearchInput) ([]SearchResult, error) {
 	_ = ctx
 	db, err := s.Index.OpenReadonly()
 	if err != nil {
@@ -65,9 +85,9 @@ func (s Service) Search(ctx context.Context, input SearchInput) ([]search.Result
 		return nil, err
 	}
 
-	out := make([]search.Result, 0, len(hits))
+	out := make([]SearchResult, 0, len(hits))
 	for _, hit := range hits {
-		out = append(out, search.Result{
+		out = append(out, SearchResult{
 			NoteID:      hit.NoteID,
 			Slug:        hit.Slug,
 			Title:       hit.Title,
@@ -102,7 +122,7 @@ func (s Service) ListTags(ctx context.Context) (ListTagsOutput, error) {
 }
 
 // Backlinks resolves a note identifier and returns inbound links.
-func (s Service) Backlinks(ctx context.Context, input BacklinksInput) ([]graph.Backlink, error) {
+func (s Service) Backlinks(ctx context.Context, input BacklinksInput) ([]Backlink, error) {
 	_ = ctx
 	db, err := s.Index.OpenReadonly()
 	if err != nil {
@@ -123,9 +143,9 @@ func (s Service) Backlinks(ctx context.Context, input BacklinksInput) ([]graph.B
 		return nil, err
 	}
 
-	out := make([]graph.Backlink, 0, len(links))
+	out := make([]Backlink, 0, len(links))
 	for _, link := range links {
-		out = append(out, graph.Backlink{
+		out = append(out, Backlink{
 			LinkID:       link.LinkID,
 			NoteID:       link.NoteID,
 			Slug:         link.Slug,

@@ -10,7 +10,6 @@ import (
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/format/markdown"
-	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,7 +47,7 @@ func TestOpenReadonlyUsesReadOnlyMode(t *testing.T) {
 
 	db, err := store.Open()
 	require.NoError(t, err)
-	require.NoError(t, index.ApplySchema(db))
+	require.NoError(t, ApplySchema(db))
 	require.NoError(t, db.Close())
 
 	ro, err := store.OpenReadonly()
@@ -146,5 +145,5 @@ func TestCheckSchemaStatus(t *testing.T) {
 
 	status, err := (Store{}).CheckSchemaStatus(db)
 	require.NoError(t, err)
-	require.Equal(t, index.SchemaStatusNeedsRebuild, status)
+	require.Equal(t, SchemaStatusNeedsRebuild, status)
 }

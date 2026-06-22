@@ -9,10 +9,8 @@ import (
 
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
 	"github.com/ilyachch/mnemonic/internal/format/markdown"
-	"github.com/ilyachch/mnemonic/internal/index"
-	"github.com/ilyachch/mnemonic/internal/notes"
-	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/store/markdownstore"
+	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 	"github.com/ilyachch/mnemonic/internal/store/sqliteindex"
 )
 
@@ -113,7 +111,7 @@ func (s Service) Doctor(ctx context.Context) (DoctorOutput, error) {
 	if err != nil {
 		return DoctorOutput{}, err
 	}
-	if schemaStatus != index.SchemaStatusOK {
+	if schemaStatus != sqliteindex.SchemaStatusOK {
 		result.Status = "needs_reindex"
 		result.addCheck(DoctorCheck{Name: "index schema", Status: "needs_reindex"})
 		return result, nil
@@ -159,14 +157,14 @@ func doctorParseCheck(name, path string) DoctorCheck {
 	if err != nil {
 		return DoctorCheck{Name: name, Status: "missing", Detail: err.Error()}
 	}
-	if _, err := project.ParseMnemonicManifest(data); err != nil {
+	if _, err := registry.ParseMnemonicManifest(data); err != nil {
 		return DoctorCheck{Name: name, Status: "error", Detail: err.Error()}
 	}
 	return DoctorCheck{Name: name, Status: "ok"}
 }
 
 func doctorNoteChecks(root string, db *sql.DB) (dupUUIDs int, dupSlugs int, unresolved int, trashIgnored int, err error) {
-	paths, err := notes.Walk(root)
+	paths, err := (markdownstore.Store{RootDir: root}).Walk()
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}

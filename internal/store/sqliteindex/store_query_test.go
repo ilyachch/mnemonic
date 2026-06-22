@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/stretchr/testify/require"
 )
 
@@ -65,7 +64,7 @@ func seedQueryStore(t *testing.T) (Store, *sql.DB) {
 
 	db, err := store.Open()
 	require.NoError(t, err)
-	require.NoError(t, index.ApplySchema(db))
+	require.NoError(t, ApplySchema(db))
 
 	now := time.Date(2026, time.June, 21, 12, 0, 0, 0, time.UTC)
 	insertQueryNote(t, db, "alpha-id", "alpha", "Alpha", "alpha.md", "queryterm in alpha body", now, []string{"frontmatter:django", "frontmatter:go"})

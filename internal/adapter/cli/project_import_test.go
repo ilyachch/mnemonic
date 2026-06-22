@@ -7,8 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/index"
-	"github.com/ilyachch/mnemonic/internal/project"
+	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -34,8 +33,7 @@ func TestProjectImportCommandDefaultsToDot(t *testing.T) {
 	require.Equal(t, 1, got.Imported)
 	require.Equal(t, 0, got.CopiedFiles)
 	require.Equal(t, 1, got.Indexed)
-	indexPath, err := index.Path("550e8400-e29b-41d4-a716-446655440000")
-	require.NoError(t, err)
+	indexPath := testIndexPath(importRoot, "550e8400-e29b-41d4-a716-446655440000")
 	_, err = os.Stat(indexPath)
 	require.NoError(t, err, "index file missing")
 }
@@ -121,16 +119,15 @@ func seedImportProject(t *testing.T) (string, string) {
 	importRoot := filepath.Join(cwd, "repo")
 	require.NoError(t, os.MkdirAll(importRoot, 0o755))
 
-	manifest := project.NewMnemonicManifest()
+	manifest := registry.NewMnemonicManifest()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
-	manifest.Name = "backend"
+	manifest.Name = "Backend"
 	manifest.Slug = "backend"
 	manifest.MarkdownFormatVersion = 1
 	manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
-	manifest.UpdatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
+	manifest.UpdatedAt = manifest.CreatedAt
 	manifest.Generator.App = "mnemonic"
-
-	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(importRoot, "mnemonic.toml"), manifest))
+	require.NoError(t, registry.WriteMnemonicManifest(filepath.Join(importRoot, "mnemonic.toml"), manifest))
 
 	return cwd, importRoot
 }

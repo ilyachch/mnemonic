@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
-	"github.com/ilyachch/mnemonic/internal/project"
+	"github.com/ilyachch/mnemonic/internal/platform/clock"
 	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
@@ -34,7 +34,7 @@ func TestResolveBuildsKnowledgeBase(t *testing.T) {
 	projectDir := filepath.Join(memoriesHome, slug)
 	require.NoError(t, os.MkdirAll(projectDir, 0o755))
 
-	manifest := project.NewMnemonicManifest()
+	manifest := registry.NewMnemonicManifest()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
 	manifest.Name = "Demo"
 	manifest.Slug = slug
@@ -42,7 +42,7 @@ func TestResolveBuildsKnowledgeBase(t *testing.T) {
 	manifest.CreatedAt = time.Now().UTC()
 	manifest.UpdatedAt = manifest.CreatedAt
 	manifest.Generator.App = "mnemonic"
-	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))
+	require.NoError(t, registry.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))
 
 	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
 	resolved, err := svc.Resolve("  " + slug + "  ")
@@ -66,7 +66,7 @@ func TestInitCreatesCentralProjectAndIndex(t *testing.T) {
 	cwd := t.TempDir()
 	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
 
-	restore := project.SetClock(&testClock{
+	restore := clock.SetClock(&testClock{
 		now:   time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
 		uuids: []string{"550e8400-e29b-41d4-a716-446655440010"},
 	})
@@ -77,7 +77,7 @@ func TestInitCreatesCentralProjectAndIndex(t *testing.T) {
 		WorkingDir:  cwd,
 		Name:        "Backend",
 		Description: desc,
-		Mode:        project.InitModeCentral,
+		Mode:        InitModeCentral,
 	})
 	require.NoError(t, err)
 	require.Equal(t, "550e8400-e29b-41d4-a716-446655440010", result.ID)
@@ -95,7 +95,7 @@ func TestInitCreatesCentralProjectAndIndex(t *testing.T) {
 
 	manifestData, err := os.ReadFile(result.ManifestPath)
 	require.NoError(t, err)
-	manifest, err := project.ParseMnemonicManifest(manifestData)
+	manifest, err := registry.ParseMnemonicManifest(manifestData)
 	require.NoError(t, err)
 	require.Equal(t, desc, manifest.Description)
 }
@@ -108,7 +108,7 @@ func TestInitCreatesLocalProjectAndIndex(t *testing.T) {
 	cwd := t.TempDir()
 	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
 
-	restore := project.SetClock(&testClock{
+	restore := clock.SetClock(&testClock{
 		now:   time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
 		uuids: []string{"550e8400-e29b-41d4-a716-446655440011"},
 	})
@@ -118,7 +118,7 @@ func TestInitCreatesLocalProjectAndIndex(t *testing.T) {
 		WorkingDir:  cwd,
 		Name:        "Personal",
 		Description: "Local knowledge base",
-		Mode:        project.InitModeLocal,
+		Mode:        InitModeLocal,
 	})
 	require.NoError(t, err)
 	require.Equal(t, "550e8400-e29b-41d4-a716-446655440011", result.ID)
@@ -144,7 +144,7 @@ func TestInitRejectsDuplicateSlug(t *testing.T) {
 	cwd := t.TempDir()
 	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
 
-	restore := project.SetClock(&testClock{
+	restore := clock.SetClock(&testClock{
 		now:   time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
 		uuids: []string{"550e8400-e29b-41d4-a716-446655440012", "550e8400-e29b-41d4-a716-446655440013"},
 	})
@@ -153,14 +153,14 @@ func TestInitRejectsDuplicateSlug(t *testing.T) {
 	_, err := svc.Init(context.Background(), InitInput{
 		WorkingDir: cwd,
 		Name:       "Backend",
-		Mode:       project.InitModeLocal,
+		Mode:       InitModeLocal,
 	})
 	require.NoError(t, err)
 
 	_, err = svc.Init(context.Background(), InitInput{
 		WorkingDir: cwd,
 		Name:       "backend",
-		Mode:       project.InitModeLocal,
+		Mode:       InitModeLocal,
 	})
 	require.Error(t, err)
 
@@ -179,29 +179,29 @@ func TestListAndShowShapeRegistryData(t *testing.T) {
 	centralSlug := "backend"
 	centralDir := filepath.Join(memoriesHome, centralSlug)
 	require.NoError(t, os.MkdirAll(centralDir, 0o755))
-	centralManifest := project.NewMnemonicManifest()
+	centralManifest := registry.NewMnemonicManifest()
 	centralManifest.ProjectID = "550e8400-e29b-41d4-a716-446655440001"
 	centralManifest.Name = "Backend"
 	centralManifest.Slug = centralSlug
 	centralManifest.MarkdownFormatVersion = 1
 	centralManifest.CreatedAt = time.Now().UTC()
 	centralManifest.UpdatedAt = centralManifest.CreatedAt
-	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(centralDir, "mnemonic.toml"), centralManifest))
+	require.NoError(t, registry.WriteMnemonicManifest(filepath.Join(centralDir, "mnemonic.toml"), centralManifest))
 
 	repoRoot := t.TempDir()
 	localSlug := "personal"
 	localManifestDir := filepath.Join(repoRoot, ".mnemonic-memories", localSlug)
 	require.NoError(t, os.MkdirAll(localManifestDir, 0o755))
-	localManifest := project.NewMnemonicManifest()
+	localManifest := registry.NewMnemonicManifest()
 	localManifest.ProjectID = "550e8400-e29b-41d4-a716-446655440002"
 	localManifest.Name = "Personal"
 	localManifest.Slug = localSlug
-	localManifest.Type = project.ManifestTypeLocal
+	localManifest.Type = registry.ManifestTypeLocal
 	localManifest.MarkdownFormatVersion = 1
 	localManifest.CreatedAt = time.Now().UTC()
 	localManifest.UpdatedAt = localManifest.CreatedAt
-	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(localManifestDir, "mnemonic.toml"), localManifest))
-	require.NoError(t, project.WritePointerFile(filepath.Join(memoriesHome, localSlug+".toml"), &project.PointerFile{ManifestPath: filepath.Join(localManifestDir, "mnemonic.toml")}))
+	require.NoError(t, registry.WriteMnemonicManifest(filepath.Join(localManifestDir, "mnemonic.toml"), localManifest))
+	require.NoError(t, registry.WritePointerFile(filepath.Join(memoriesHome, localSlug+".toml"), &registry.PointerFile{ManifestPath: filepath.Join(localManifestDir, "mnemonic.toml")}))
 
 	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
 	list, err := svc.List()
@@ -241,12 +241,12 @@ func TestListAndShowShapeRegistryData(t *testing.T) {
 
 func testRegistryStore(memoriesHome string) registry.Store {
 	return registry.New(memoriesHome, func(path string) (registry.ManifestData, error) {
-		manifest, err := project.ParseMnemonicManifestFromFile(path)
+		manifest, err := registry.ParseMnemonicManifestFromFile(path)
 		if err != nil {
 			return registry.ManifestData{}, err
 		}
 		kind := "central"
-		if manifest.IsLocal() {
+		if manifest.Type == string(registry.ManifestTypeLocal) {
 			kind = "local"
 		}
 		return registry.ManifestData{
@@ -256,7 +256,7 @@ func testRegistryStore(memoriesHome string) registry.Store {
 			Type:      kind,
 		}, nil
 	}, func(data []byte) (string, error) {
-		pointer, err := project.ParsePointerFile(data)
+		pointer, err := registry.ParsePointerFile(data)
 		if err != nil {
 			return "", err
 		}
@@ -290,14 +290,14 @@ func TestImportRemoveAndSlugs(t *testing.T) {
 	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
 
 	repoRoot := t.TempDir()
-	manifest := project.NewMnemonicManifest()
+	manifest := registry.NewMnemonicManifest()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440003"
 	manifest.Name = "Import Demo"
 	manifest.Slug = "import-demo"
 	manifest.MarkdownFormatVersion = 1
 	manifest.CreatedAt = time.Now().UTC()
 	manifest.UpdatedAt = manifest.CreatedAt
-	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(repoRoot, "mnemonic.toml"), manifest))
+	require.NoError(t, registry.WriteMnemonicManifest(filepath.Join(repoRoot, "mnemonic.toml"), manifest))
 
 	imported, err := svc.Import(ImportInput{Path: repoRoot})
 	require.NoError(t, err)
@@ -313,7 +313,7 @@ func TestImportRemoveAndSlugs(t *testing.T) {
 
 	projectDir := filepath.Join(memoriesHome, manifest.Slug)
 	require.NoError(t, os.MkdirAll(projectDir, 0o755))
-	removedManifest := project.NewMnemonicManifest()
+	removedManifest := registry.NewMnemonicManifest()
 	removedManifest.ProjectID = manifest.ProjectID
 	removedManifest.Name = manifest.Name
 	removedManifest.Slug = manifest.Slug
@@ -321,7 +321,7 @@ func TestImportRemoveAndSlugs(t *testing.T) {
 	removedManifest.CreatedAt = time.Now().UTC()
 	removedManifest.UpdatedAt = removedManifest.CreatedAt
 	removedManifest.Generator.App = "mnemonic"
-	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), removedManifest))
+	require.NoError(t, registry.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), removedManifest))
 
 	stateDir := filepath.Join(stateHome, "mnemonic", "projects", manifest.ProjectID)
 	require.NoError(t, os.MkdirAll(stateDir, 0o755))

@@ -7,8 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/notes"
-	"github.com/ilyachch/mnemonic/internal/project"
+	"github.com/ilyachch/mnemonic/internal/store/markdownstore"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -80,7 +79,7 @@ updated_at: 2026-06-02T10:00:00Z
 	require.NoError(t, err)
 	require.True(t, note.UpdatedAt.Equal(wantUpdatedAt))
 	require.NotEmpty(t, note.ContentHash)
-	require.Equal(t, notes.HashBytes(noteBody), note.ContentHash)
+	require.Equal(t, markdownstore.HashBytes(noteBody), note.ContentHash)
 }
 
 func chdirForTest(t *testing.T, dir string) func() {
@@ -92,52 +91,4 @@ func chdirForTest(t *testing.T, dir string) func() {
 	return func() {
 		_ = os.Chdir(prev)
 	}
-}
-
-func writeLocalProjectFixture(t *testing.T, cwd, slug string) error {
-	t.Helper()
-
-	now := time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
-
-	memoriesDir := filepath.Join(cwd, ".mnemonic-memories", slug)
-	if err := os.MkdirAll(memoriesDir, 0o755); err != nil {
-		return err
-	}
-
-	projectID := "550e8400-e29b-41d4-a716-446655440000"
-
-	manifest := project.NewMnemonicManifest()
-	manifest.ProjectID = projectID
-	manifest.Name = slug
-	manifest.Slug = slug
-	manifest.Type = project.ManifestTypeLocal
-	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = now
-	manifest.UpdatedAt = now
-	manifest.Generator.App = "mnemonic"
-
-	if err := project.WriteMnemonicManifest(filepath.Join(memoriesDir, "mnemonic.toml"), manifest); err != nil {
-		return err
-	}
-
-	memHome, err := resolveMemoriesHome()
-	if err != nil {
-		return err
-	}
-
-	pointerPath := filepath.Join(memHome, slug+".toml")
-	if err := os.MkdirAll(filepath.Dir(pointerPath), 0o755); err != nil {
-		return err
-	}
-	return project.WritePointerFile(pointerPath, &project.PointerFile{
-		ManifestPath: filepath.Join(memoriesDir, "mnemonic.toml"),
-	})
-}
-
-func resolveMemoriesHome() (string, error) {
-	boot, err := newTestBootstrap()
-	if err != nil {
-		return "", err
-	}
-	return boot.Paths.MemoriesHome, nil
 }

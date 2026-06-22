@@ -7,17 +7,17 @@ import (
 	"testing"
 	"time"
 
+	clockpkg "github.com/ilyachch/mnemonic/internal/platform/clock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ilyachch/mnemonic/internal/format/markdown"
-	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 )
 
 func TestNotesDeleteCommandDryRunShowsTrashPath(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	restoreClock := project.SetClock(testutil.NewClock(
+	restoreClock := clockpkg.SetClock(testutil.NewClock(
 		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		"550e8400-e29b-41d4-a716-446655440000",
 	))
@@ -59,7 +59,7 @@ func TestNotesDeleteCommandDryRunShowsTrashPath(t *testing.T) {
 func TestNotesDeleteCommandMovesNoteToTrash(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	restoreClock := project.SetClock(testutil.NewClock(
+	restoreClock := clockpkg.SetClock(testutil.NewClock(
 		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		"550e8400-e29b-41d4-a716-446655440000",
 	))
@@ -111,7 +111,7 @@ func TestNotesDeleteCommandMovesNoteToTrash(t *testing.T) {
 func TestNotesDeleteCommandHardRequiresYes(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	restoreClock := project.SetClock(testutil.NewClock(
+	restoreClock := clockpkg.SetClock(testutil.NewClock(
 		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		"550e8400-e29b-41d4-a716-446655440000",
 	))
@@ -145,7 +145,7 @@ func TestNotesDeleteCommandHardRequiresYes(t *testing.T) {
 func TestNotesDeleteCommandHardDeletesWhenConfirmed(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	restoreClock := project.SetClock(testutil.NewClock(
+	restoreClock := clockpkg.SetClock(testutil.NewClock(
 		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		"550e8400-e29b-41d4-a716-446655440000",
 	))

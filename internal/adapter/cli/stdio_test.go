@@ -4,9 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
-	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/stretchr/testify/require"
 )
 
@@ -88,28 +86,7 @@ func TestHiddenMCPAliasStillResolves(t *testing.T) {
 func registerRegistryProject(t *testing.T, cwd, slug string) {
 	t.Helper()
 
-	memoriesDir := filepath.Join(cwd, ".mnemonic-memories", slug)
-	require.NoError(t, os.MkdirAll(memoriesDir, 0o755))
-
-	manifest := project.NewMnemonicManifest()
-	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
-	manifest.Name = slug
-	manifest.Slug = slug
-	manifest.Type = project.ManifestTypeLocal
-	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
-	manifest.UpdatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
-	manifest.Generator.App = "mnemonic"
-
-	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(memoriesDir, "mnemonic.toml"), manifest))
-
-	// Write pointer file for file-based registry
-	memHome, err := resolveMemoriesHome()
-	require.NoError(t, err)
-	require.NoError(t, os.MkdirAll(memHome, 0o755))
-	require.NoError(t, project.WritePointerFile(filepath.Join(memHome, slug+".toml"), &project.PointerFile{
-		ManifestPath: filepath.Join(memoriesDir, "mnemonic.toml"),
-	}))
+	require.NoError(t, writeLocalProjectFixture(t, cwd, slug))
 }
 
 func setWritableStdioEnv(t *testing.T) {

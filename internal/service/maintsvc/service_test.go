@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
-	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/service/catalogsvc"
 	"github.com/ilyachch/mnemonic/internal/service/indexsvc"
 	registry "github.com/ilyachch/mnemonic/internal/store/registry"
@@ -201,12 +200,12 @@ func testCatalogParsers(t *testing.T) {
 
 func testCatalogStore(memoriesHome string) registry.Store {
 	return registry.New(memoriesHome, func(path string) (registry.ManifestData, error) {
-		manifest, err := project.ParseMnemonicManifestFromFile(path)
+		manifest, err := registry.ParseMnemonicManifestFromFile(path)
 		if err != nil {
 			return registry.ManifestData{}, err
 		}
 		kind := "central"
-		if manifest.IsLocal() {
+		if manifest.Type == string(registry.ManifestTypeLocal) {
 			kind = "local"
 		}
 		return registry.ManifestData{
@@ -216,7 +215,7 @@ func testCatalogStore(memoriesHome string) registry.Store {
 			Type:      kind,
 		}, nil
 	}, func(data []byte) (string, error) {
-		pointer, err := project.ParsePointerFile(data)
+		pointer, err := registry.ParsePointerFile(data)
 		if err != nil {
 			return "", err
 		}
@@ -230,7 +229,7 @@ func createMaintProject(t *testing.T, memoriesHome, slug, projectID string) proj
 	projectDir := filepath.Join(memoriesHome, slug)
 	require.NoError(t, os.MkdirAll(projectDir, 0o755))
 
-	manifest := project.NewMnemonicManifest()
+	manifest := registry.NewMnemonicManifest()
 	manifest.ProjectID = projectID
 	manifest.Name = slug
 	manifest.Slug = slug
@@ -238,7 +237,7 @@ func createMaintProject(t *testing.T, memoriesHome, slug, projectID string) proj
 	manifest.CreatedAt = time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC)
 	manifest.UpdatedAt = manifest.CreatedAt
 	manifest.Generator.App = "mnemonic"
-	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))
+	require.NoError(t, registry.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))
 
 	return projectSpec{id: projectID, slug: slug}
 }

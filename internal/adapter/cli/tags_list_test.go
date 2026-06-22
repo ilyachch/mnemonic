@@ -4,30 +4,17 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 )
 
 func TestTagsListCommandReturnsCountsAndSorts(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	restoreClock := project.SetClock(testutil.NewClock(
-		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		"550e8400-e29b-41d4-a716-446655440000",
-	))
-	defer restoreClock()
-
-	require.NoError(t, project.InitProject(project.InitInput{
-		CWD:          projectRoot,
-		MemoriesHome: filepath.Join(projectRoot, ".mnemonic-memories"),
-		Name:         "personal",
-		Mode:         project.InitModeLocal,
-	}))
 	setLocalProjectMemoriesHome(t, projectRoot)
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
@@ -59,19 +46,8 @@ func TestTagsListCommandReturnsCountsAndSorts(t *testing.T) {
 func TestTagsListCommandMissingIndexSuggestsReindex(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	restoreClock := project.SetClock(testutil.NewClock(
-		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		"550e8400-e29b-41d4-a716-446655440000",
-	))
-	defer restoreClock()
-
-	require.NoError(t, project.InitProject(project.InitInput{
-		CWD:          projectRoot,
-		MemoriesHome: filepath.Join(projectRoot, ".mnemonic-memories"),
-		Name:         "personal",
-		Mode:         project.InitModeLocal,
-	}))
 	setLocalProjectMemoriesHome(t, projectRoot)
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()

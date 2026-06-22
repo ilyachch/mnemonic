@@ -10,7 +10,7 @@ import (
 	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
-	"github.com/ilyachch/mnemonic/internal/project"
+	"github.com/ilyachch/mnemonic/internal/platform/idgen"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -134,7 +134,7 @@ func (h *projectSessionHandler) ServeGET(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	sessionID := project.NewUUID()
+	sessionID := idgen.NewUUID()
 	messagesURL := *r.URL
 	messagesURL.Path = messagesEndpoint
 	q := messagesURL.Query()

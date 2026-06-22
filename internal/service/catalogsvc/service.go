@@ -10,9 +10,22 @@ import (
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
-	"github.com/ilyachch/mnemonic/internal/project"
+	"github.com/ilyachch/mnemonic/internal/domain/slug"
+	"github.com/ilyachch/mnemonic/internal/platform/clock"
+	"github.com/ilyachch/mnemonic/internal/platform/idgen"
+	"github.com/ilyachch/mnemonic/internal/platform/paths"
 	"github.com/ilyachch/mnemonic/internal/service/indexsvc"
 	registry "github.com/ilyachch/mnemonic/internal/store/registry"
+)
+
+// InitMode identifies the supported init flows.
+type InitMode string
+
+const (
+	// InitModeCentral creates a central project with a mnemonic.toml under memories home.
+	InitModeCentral InitMode = "central"
+	// InitModeLocal creates a local project backed by .mnemonic-memories.
+	InitModeLocal InitMode = "local"
 )
 
 // Service owns catalog-level project operations.
@@ -67,20 +80,39 @@ type RemoveResult struct {
 }
 
 // ImportInput mirrors the project import input.
-type ImportInput = project.ImportInput
+type ImportInput struct {
+	Path   string
+	DryRun bool
+}
 
 // ImportResult mirrors the project import result.
-type ImportResult = project.ImportResult
+type ImportResult struct {
+	Path        string
+	Imported    int
+	CopiedFiles int
+	Indexed     int
+	Candidates  []ImportCandidate
+	DryRun      bool
+}
 
 // ImportCandidate mirrors the project import candidate.
-type ImportCandidate = project.ImportCandidate
+type ImportCandidate struct {
+	ProjectID       string `json:"project_id"`
+	Name            string `json:"name"`
+	Slug            string `json:"slug"`
+	Kind            string `json:"kind"`
+	MemoriesPath    string `json:"memories_path"`
+	MnemonicFileAbs string `json:"mnemonic_file_abs,omitempty"`
+	RepoRootAbs     string `json:"repo_root_abs"`
+	ManifestAbs     string `json:"manifest_abs"`
+}
 
 // InitInput mirrors the project init input.
 type InitInput struct {
 	WorkingDir  string
 	Name        string
 	Description string
-	Mode        project.InitMode
+	Mode        InitMode
 }
 
 // InitResult mirrors the project init payload.
@@ -184,7 +216,7 @@ func (s Service) Show(selector string) (ShowResult, error) {
 
 // Import imports a project into the registry.
 func (s Service) Import(input ImportInput) (ImportResult, error) {
-	result, err := project.ImportProject(input, s.MemoriesHome)
+	result, err := importProject(input, s.MemoriesHome)
 	if err != nil {
 		return ImportResult{}, err
 	}
@@ -208,12 +240,12 @@ func (s Service) Import(input ImportInput) (ImportResult, error) {
 
 // Init creates a project, resolves it, and builds the initial index.
 func (s Service) Init(ctx context.Context, input InitInput) (InitResult, error) {
-	slug, err := project.Slugify(input.Name)
+	slugValue, err := slug.Slugify(input.Name)
 	if err != nil {
 		return InitResult{}, err
 	}
 
-	if err := project.InitProject(project.InitInput{
+	if err := InitProject(InitProjectInput{
 		CWD:          input.WorkingDir,
 		MemoriesHome: s.MemoriesHome,
 		Name:         input.Name,
@@ -223,7 +255,7 @@ func (s Service) Init(ctx context.Context, input InitInput) (InitResult, error) 
 		return InitResult{}, wrapInitError(err)
 	}
 
-	resolved, err := s.Resolve(slug)
+	resolved, err := s.Resolve(slugValue)
 	if err != nil {
 		return InitResult{}, err
 	}
@@ -322,7 +354,7 @@ func (s Service) knowledgeBaseFromEntry(entry registry.Entry) (kb.KnowledgeBase,
 			if err != nil {
 				return kb.KnowledgeBase{}, fmt.Errorf("read pointer file: %w", err)
 			}
-			manifestPath, err := project.ParsePointerFile(data)
+			manifestPath, err := registry.ParsePointerFile(data)
 			if err != nil {
 				return kb.KnowledgeBase{}, err
 			}
@@ -347,7 +379,7 @@ func (s Service) knowledgeBaseFromEntry(entry registry.Entry) (kb.KnowledgeBase,
 	}
 
 	if resolved.ManifestPath != "" && (resolved.ProjectID == "" || resolved.Name == "" || resolved.Slug == "") {
-		manifest, err := project.ParseMnemonicManifestFromFile(resolved.ManifestPath)
+		manifest, err := registry.ParseMnemonicManifestFromFile(resolved.ManifestPath)
 		if err != nil {
 			return kb.KnowledgeBase{}, err
 		}
@@ -430,4 +462,176 @@ func wrapInitError(err error) error {
 	}
 
 	return err
+}
+
+// InitProjectInput configures the direct project init helper.
+type InitProjectInput struct {
+	CWD          string
+	MemoriesHome string
+	Name         string
+	Description  string
+	Mode         InitMode
+}
+
+// InitProject creates a project on disk for the requested init mode.
+func InitProject(input InitProjectInput) error {
+	slugValue, err := slug.Slugify(input.Name)
+	if err != nil {
+		return err
+	}
+
+	now := clock.NowUTC()
+	projectID := idgen.NewUUID()
+
+	switch input.Mode {
+	case InitModeCentral:
+		exists, err := registry.Exists(input.MemoriesHome, slugValue)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return fmt.Errorf("project slug %q already exists", slugValue)
+		}
+
+		if err := os.MkdirAll(filepath.Join(input.MemoriesHome, slugValue), 0o755); err != nil {
+			return fmt.Errorf("create central memories directory: %w", err)
+		}
+
+		manifestPath := filepath.Join(input.MemoriesHome, slugValue, "mnemonic.toml")
+		if _, err := os.Stat(manifestPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("stat central manifest: %w", err)
+		}
+
+		manifest := registry.NewMnemonicManifest()
+		manifest.ProjectID = projectID
+		manifest.Name = input.Name
+		manifest.Slug = slugValue
+		manifest.MarkdownFormatVersion = 1
+		manifest.Description = input.Description
+		manifest.CreatedAt = now
+		manifest.UpdatedAt = now
+		manifest.Generator.App = "mnemonic"
+
+		return registry.WriteMnemonicManifest(manifestPath, manifest)
+	case InitModeLocal:
+		exists, err := registry.Exists(input.MemoriesHome, slugValue)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return fmt.Errorf("project slug %q already exists", slugValue)
+		}
+
+		memoriesPath := filepath.Join(input.CWD, ".mnemonic-memories", slugValue)
+		if err := os.MkdirAll(memoriesPath, 0o755); err != nil {
+			return fmt.Errorf("create local memories directory: %w", err)
+		}
+
+		localManifestPath := filepath.Join(memoriesPath, "mnemonic.toml")
+		manifest := registry.NewMnemonicManifest()
+		manifest.ProjectID = projectID
+		manifest.Name = input.Name
+		manifest.Slug = slugValue
+		manifest.Type = registry.ManifestTypeLocal
+		manifest.MarkdownFormatVersion = 1
+		manifest.Description = input.Description
+		manifest.CreatedAt = now
+		manifest.UpdatedAt = now
+		manifest.Generator.App = "mnemonic"
+
+		if err := registry.WriteMnemonicManifest(localManifestPath, manifest); err != nil {
+			return err
+		}
+
+		pointerPath := filepath.Join(input.MemoriesHome, slugValue+".toml")
+		return registry.WritePointerFile(pointerPath, &registry.PointerFile{ManifestPath: localManifestPath})
+	default:
+		return fmt.Errorf("unknown init mode %q", input.Mode)
+	}
+}
+
+func importProject(input ImportInput, memoriesHome string) (ImportResult, error) {
+	resolvedPath, err := resolveImportPath(input)
+	if err != nil {
+		return ImportResult{}, err
+	}
+
+	manifestPath := filepath.Join(resolvedPath, "mnemonic.toml")
+	if _, err := os.Stat(manifestPath); err != nil {
+		if os.IsNotExist(err) {
+			return ImportResult{}, fmt.Errorf("mnemonic.toml not found at %s", resolvedPath)
+		}
+		return ImportResult{}, fmt.Errorf("stat mnemonic.toml: %w", err)
+	}
+
+	manifest, err := registry.ParseMnemonicManifestFile(manifestPath)
+	if err != nil {
+		return ImportResult{}, err
+	}
+
+	candidate := ImportCandidate{
+		ProjectID:       manifest.ProjectID,
+		Name:            manifest.Name,
+		Slug:            manifest.Slug,
+		Kind:            kindFromManifest(manifest),
+		MemoriesPath:    resolvedPath,
+		MnemonicFileAbs: manifestPath,
+		RepoRootAbs:     resolvedPath,
+		ManifestAbs:     manifestPath,
+	}
+
+	result := ImportResult{
+		Path:        resolvedPath,
+		Imported:    1,
+		CopiedFiles: 0,
+		Indexed:     0,
+		Candidates:  []ImportCandidate{candidate},
+		DryRun:      input.DryRun,
+	}
+	if input.DryRun {
+		return result, nil
+	}
+
+	pointerPath := filepath.Join(memoriesHome, manifest.Slug+".toml")
+	if _, err := os.Stat(pointerPath); err == nil {
+		return ImportResult{}, fmt.Errorf("project slug %q already exists", manifest.Slug)
+	} else if !os.IsNotExist(err) {
+		return ImportResult{}, fmt.Errorf("stat pointer file: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(pointerPath), 0o755); err != nil {
+		return ImportResult{}, fmt.Errorf("create pointer directory: %w", err)
+	}
+
+	if err := registry.WritePointerFile(pointerPath, &registry.PointerFile{ManifestPath: manifestPath}); err != nil {
+		return ImportResult{}, err
+	}
+
+	return result, nil
+}
+
+func resolveImportPath(input ImportInput) (string, error) {
+	path := input.Path
+	if path == "" {
+		path = "."
+	}
+
+	absPath, err := paths.NormalizeAbsolutePath(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve import path: %w", err)
+	}
+	if _, err := os.Stat(absPath); err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("import path %q not found", path)
+		}
+		return "", fmt.Errorf("stat import path %s: %w", absPath, err)
+	}
+	return absPath, nil
+}
+
+func kindFromManifest(manifest *registry.MnemonicManifest) string {
+	if manifest != nil && manifest.IsLocal() {
+		return "local"
+	}
+	return "central"
 }

@@ -13,10 +13,12 @@ import (
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
+	"github.com/ilyachch/mnemonic/internal/domain/slug"
 	"github.com/ilyachch/mnemonic/internal/format/markdown"
+	"github.com/ilyachch/mnemonic/internal/platform/clock"
 	mnemonicfs "github.com/ilyachch/mnemonic/internal/platform/fs"
+	"github.com/ilyachch/mnemonic/internal/platform/idgen"
 	"github.com/ilyachch/mnemonic/internal/platform/lock"
-	"github.com/ilyachch/mnemonic/internal/project"
 )
 
 const writeLockName = "write"
@@ -120,25 +122,25 @@ func (s Store) Create(input CreateInput) (CreateResult, error) {
 	}
 	defer func() { _ = guard.Release() }()
 
-	slug, err := project.Slugify(input.Title)
+	slugValue, err := slug.Slugify(input.Title)
 	if err != nil {
 		return CreateResult{}, err
 	}
 
 	now := input.Now
 	if now == nil {
-		now = project.NowUTC
+		now = clock.NowUTC
 	}
 	uuidFn := input.UUID
 	if uuidFn == nil {
-		uuidFn = project.NewUUID
+		uuidFn = idgen.NewUUID
 	}
 
 	timestamp := now().UTC()
 	note := markdown.Note{
 		MnemonicNoteID: uuidFn(),
 		Title:          input.Title,
-		Slug:           slug,
+		Slug:           slugValue,
 		Tags:           dedupeTags(input.Tags),
 		CreatedAt:      timestamp,
 		UpdatedAt:      timestamp,
@@ -150,10 +152,10 @@ func (s Store) Create(input CreateInput) (CreateResult, error) {
 		return CreateResult{}, err
 	}
 
-	relPath := slug + ".md"
+	relPath := slugValue + ".md"
 	absPath := filepath.Join(root, relPath)
 	if _, err := os.Stat(absPath); err == nil {
-		return CreateResult{}, apperr.Ambiguous(fmt.Sprintf("note slug %q already exists", slug), nil)
+		return CreateResult{}, apperr.Ambiguous(fmt.Sprintf("note slug %q already exists", slugValue), nil)
 	} else if !os.IsNotExist(err) {
 		return CreateResult{}, fmt.Errorf("check note path %q: %w", absPath, err)
 	}
@@ -164,7 +166,7 @@ func (s Store) Create(input CreateInput) (CreateResult, error) {
 
 	return CreateResult{
 		NoteID:      note.MnemonicNoteID,
-		Slug:        slug,
+		Slug:        slugValue,
 		Path:        filepath.ToSlash(relPath),
 		ContentHash: HashBytes(rendered),
 	}, nil
@@ -208,7 +210,7 @@ func (s Store) Edit(input EditInput) (EditResult, error) {
 
 	now := input.Now
 	if now == nil {
-		now = project.NowUTC
+		now = clock.NowUTC
 	}
 
 	edited := resolved.Note
@@ -686,11 +688,11 @@ func loadResolvedNotes(root string) (resolvedNotes, error) {
 }
 
 func normalizedTitleSlug(title string) string {
-	slug, err := project.Slugify(title)
+	slugValue, err := slug.Slugify(title)
 	if err != nil {
 		return ""
 	}
-	return slug
+	return slugValue
 }
 
 func (n resolvedNotes) matchUUID(selector string) []ResolvedNote {

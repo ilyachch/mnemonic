@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ilyachch/mnemonic/internal/index"
+	"github.com/ilyachch/mnemonic/internal/apperr"
 )
 
 // RebuildResult summarizes a rebuild.
@@ -36,7 +36,7 @@ func (s Store) Rebuild() (RebuildResult, error) {
 	defer func() { _ = guard.Unlock() }()
 	defer func() { _ = guard.Close() }()
 
-	docs, errs, err := index.ScanNotes(s.RootDir)
+	docs, errs, err := ScanNotes(s.RootDir)
 	if err != nil {
 		return RebuildResult{}, err
 	}
@@ -54,7 +54,7 @@ func (s Store) Rebuild() (RebuildResult, error) {
 	if err != nil {
 		return RebuildResult{}, err
 	}
-	if err := index.ApplySchema(db); err != nil {
+	if err := ApplySchema(db); err != nil {
 		_ = db.Close()
 		_ = os.Remove(tempPath)
 		return RebuildResult{}, err
@@ -64,7 +64,7 @@ func (s Store) Rebuild() (RebuildResult, error) {
 		_ = os.Remove(tempPath)
 		return RebuildResult{}, err
 	}
-	if err := index.QuickCheck(tempPath); err != nil {
+	if err := quickCheckFile(tempPath); err != nil {
 		_ = db.Close()
 		_ = os.Remove(tempPath)
 		return RebuildResult{}, err
@@ -92,7 +92,7 @@ func tempIndexPath(path string) string {
 	return strings.TrimSuffix(path, ".sqlite") + ".new.sqlite"
 }
 
-func insertDocs(db *sql.DB, docs []index.NoteDoc, kbid string) error {
+func insertDocs(db *sql.DB, docs []NoteDoc, kbid string) error {
 	seenNoteIDs := make(map[string]struct{})
 	seenSlugs := make(map[string]struct{})
 	seenNorm := make(map[string]int)
@@ -105,7 +105,7 @@ func insertDocs(db *sql.DB, docs []index.NoteDoc, kbid string) error {
 			return fmt.Errorf("duplicate slug %s", doc.Slug)
 		}
 		seenSlugs[doc.Slug] = struct{}{}
-		norm, _ := normalizeTitleSlug(doc.Title)
+		norm := normalizeTitleSlug(doc.Title)
 		seenNorm[norm]++
 	}
 	for _, doc := range docs {
@@ -126,6 +126,9 @@ func insertDocs(db *sql.DB, docs []index.NoteDoc, kbid string) error {
 			_, _ = db.Exec(`INSERT INTO observations(observation_id, note_id, kind, value) VALUES (?, ?, ?, ?)`,
 				hashString(doc.NoteID+ob.Content), doc.NoteID, ob.Category, ob.Content)
 		}
+	}
+
+	for _, doc := range docs {
 		for _, link := range doc.Links {
 			toID := sql.NullString{}
 			if resolved, ok := resolveLinkTarget(docs, seenNorm, link.RawTarget); ok {
@@ -139,43 +142,50 @@ func insertDocs(db *sql.DB, docs []index.NoteDoc, kbid string) error {
 	return nil
 }
 
-func resolveLinkTarget(docs []index.NoteDoc, norms map[string]int, target string) (string, bool) {
+func resolveLinkTarget(docs []NoteDoc, norms map[string]int, target string) (string, bool) {
 	for _, doc := range docs {
 		if doc.NoteID == target || doc.Slug == target || doc.RelPath == target || doc.Title == target {
 			return doc.NoteID, true
 		}
 	}
-	norm, _ := normalizeTitleSlug(target)
+	norm := normalizeTitleSlug(target)
 	if norms[norm] != 1 {
 		return "", false
 	}
 	for _, doc := range docs {
-		if n, _ := normalizeTitleSlug(doc.Title); n == norm {
+		if n := normalizeTitleSlug(doc.Title); n == norm {
 			return doc.NoteID, true
 		}
 	}
 	return "", false
 }
 
-func normalizeTitleSlug(s string) (string, error) {
-	var b strings.Builder
-	lastDash := false
-	for _, r := range strings.ToLower(s) {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-			b.WriteRune(r)
-			lastDash = false
-		case r == ' ', r == '-', r == '_':
-			if !lastDash && b.Len() > 0 {
-				b.WriteByte('-')
-				lastDash = true
-			}
-		}
-	}
-	return strings.Trim(b.String(), "-"), nil
-}
-
 func hashString(s string) string {
 	sum := sha256.Sum256([]byte(s))
 	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+func quickCheckFile(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return fmt.Errorf("path is required")
+	}
+
+	db, err := sql.Open(sqliteDriverName, path)
+	if err != nil {
+		return apperr.Corrupted("index database is corrupted", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	if err := db.Ping(); err != nil {
+		return classifyCorruption(err)
+	}
+
+	var result string
+	if err := db.QueryRow(`PRAGMA quick_check`).Scan(&result); err != nil {
+		return classifyCorruption(err)
+	}
+	if result != "ok" {
+		return apperr.Corrupted("index database is corrupted", fmt.Errorf("quick_check = %s", result))
+	}
+	return nil
 }

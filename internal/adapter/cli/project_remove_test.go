@@ -7,8 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/index"
-	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -79,25 +77,13 @@ func seedRemovableCentralProject(t *testing.T) (cwd, stateHome, projectID, memor
 	projectID = "550e8400-e29b-41d4-a716-446655440000"
 
 	slug := "backend"
-	projectDir := filepath.Join(memoriesHome, slug)
-	require.NoError(t, os.MkdirAll(projectDir, 0o755))
-
-	manifest := project.NewMnemonicManifest()
-	manifest.ProjectID = projectID
-	manifest.Name = slug
-	manifest.Slug = slug
-	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
-	manifest.UpdatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
-	manifest.Generator.App = "mnemonic"
-	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))
+	projectDir := writeCentralProjectFixture(t, memoriesHome, slug, projectID, time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC))
 
 	// Create a note for wipe test
 	require.NoError(t, os.WriteFile(filepath.Join(projectDir, "note.md"), []byte("# test\n"), 0o644))
 
 	// Create an index for cleanup verification
-	idxPath, err := index.Path(projectID)
-	require.NoError(t, err)
+	idxPath := testIndexPath(cwd, projectID)
 	require.NoError(t, os.MkdirAll(filepath.Dir(idxPath), 0o755))
 	require.NoError(t, os.WriteFile(idxPath, []byte("fake-index"), 0o644))
 

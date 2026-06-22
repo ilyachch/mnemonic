@@ -7,21 +7,21 @@ import (
 	"testing"
 	"time"
 
+	clockpkg "github.com/ilyachch/mnemonic/internal/platform/clock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ilyachch/mnemonic/internal/format/markdown"
-	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 )
 
 func TestNotesEditCommandAppendsBodyAndUpdatesTimestamp(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	clock := testutil.NewClock(
+	testClock := testutil.NewClock(
 		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		"550e8400-e29b-41d4-a716-446655440000",
 	)
-	restoreClock := project.SetClock(clock)
+	restoreClock := clockpkg.SetClock(testClock)
 	defer restoreClock()
 
 	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
@@ -42,7 +42,7 @@ func TestNotesEditCommandAppendsBodyAndUpdatesTimestamp(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(notePath), 0o755))
 	require.NoError(t, os.WriteFile(notePath, rendered, 0o644))
 
-	restoreEditClock := project.SetClock(testutil.NewClock(time.Date(2026, time.June, 2, 12, 35, 56, 0, time.UTC)))
+	restoreEditClock := clockpkg.SetClock(testutil.NewClock(time.Date(2026, time.June, 2, 12, 35, 56, 0, time.UTC)))
 	defer restoreEditClock()
 
 	editResult := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--append", "Next step", "--json")
@@ -73,11 +73,11 @@ func TestNotesEditCommandAppendsBodyAndUpdatesTimestamp(t *testing.T) {
 func TestNotesEditCommandReplacesBodyFromFile(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	clock := testutil.NewClock(
+	testClock := testutil.NewClock(
 		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		"550e8400-e29b-41d4-a716-446655440000",
 	)
-	restoreClock := project.SetClock(clock)
+	restoreClock := clockpkg.SetClock(testClock)
 	defer restoreClock()
 
 	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
@@ -100,7 +100,7 @@ func TestNotesEditCommandReplacesBodyFromFile(t *testing.T) {
 	bodyFile := filepath.Join(projectRoot, "body.md")
 	require.NoError(t, os.WriteFile(bodyFile, []byte("Replacement body\n"), 0o644))
 
-	restoreEditClock := project.SetClock(testutil.NewClock(time.Date(2026, time.June, 2, 12, 35, 56, 0, time.UTC)))
+	restoreEditClock := clockpkg.SetClock(testutil.NewClock(time.Date(2026, time.June, 2, 12, 35, 56, 0, time.UTC)))
 	defer restoreEditClock()
 
 	result := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--body-file", bodyFile, "--json")
@@ -116,11 +116,11 @@ func TestNotesEditCommandReplacesBodyFromFile(t *testing.T) {
 func TestNotesEditCommandAllowsEmptyBodyFile(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	clock := testutil.NewClock(
+	testClock := testutil.NewClock(
 		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		"550e8400-e29b-41d4-a716-446655440000",
 	)
-	restoreClock := project.SetClock(clock)
+	restoreClock := clockpkg.SetClock(testClock)
 	defer restoreClock()
 
 	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
@@ -143,7 +143,7 @@ func TestNotesEditCommandAllowsEmptyBodyFile(t *testing.T) {
 	bodyFile := filepath.Join(projectRoot, "body.md")
 	require.NoError(t, os.WriteFile(bodyFile, nil, 0o644))
 
-	restoreEditClock := project.SetClock(testutil.NewClock(time.Date(2026, time.June, 2, 12, 35, 56, 0, time.UTC)))
+	restoreEditClock := clockpkg.SetClock(testutil.NewClock(time.Date(2026, time.June, 2, 12, 35, 56, 0, time.UTC)))
 	defer restoreEditClock()
 
 	result := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--body-file", bodyFile, "--json")
@@ -159,11 +159,11 @@ func TestNotesEditCommandAllowsEmptyBodyFile(t *testing.T) {
 func TestNotesEditCommandSetsFrontmatterField(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	clock := testutil.NewClock(
+	testClock := testutil.NewClock(
 		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		"550e8400-e29b-41d4-a716-446655440000",
 	)
-	restoreClock := project.SetClock(clock)
+	restoreClock := clockpkg.SetClock(testClock)
 	defer restoreClock()
 
 	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
@@ -184,7 +184,7 @@ func TestNotesEditCommandSetsFrontmatterField(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(notePath), 0o755))
 	require.NoError(t, os.WriteFile(notePath, rendered, 0o644))
 
-	restoreEditClock := project.SetClock(testutil.NewClock(time.Date(2026, time.June, 2, 12, 35, 56, 0, time.UTC)))
+	restoreEditClock := clockpkg.SetClock(testutil.NewClock(time.Date(2026, time.June, 2, 12, 35, 56, 0, time.UTC)))
 	defer restoreEditClock()
 
 	result := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--set", "type=decision", "--json")
@@ -233,7 +233,7 @@ func TestNotesEditCommandRejectsProtectedFrontmatterField(t *testing.T) {
 func TestNotesEditCommandEnforcesIfMatch(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	restoreClock := project.SetClock(testutil.NewClock(
+	restoreClock := clockpkg.SetClock(testutil.NewClock(
 		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		"550e8400-e29b-41d4-a716-446655440000",
 	))

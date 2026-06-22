@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
-	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/service/catalogsvc"
 	"github.com/spf13/cobra"
 )
@@ -66,9 +65,9 @@ func wrapImportError(err error) error {
 }
 
 type projectImportOutput struct {
-	Path        string                    `json:"path"`
-	Imported    int                       `json:"imported"`
-	CopiedFiles int                       `json:"copied_files"`
-	Indexed     int                       `json:"indexed"`
-	Candidates  []project.ImportCandidate `json:"candidates,omitempty"`
+	Path        string                       `json:"path"`
+	Imported    int                          `json:"imported"`
+	CopiedFiles int                          `json:"copied_files"`
+	Indexed     int                          `json:"indexed"`
+	Candidates  []catalogsvc.ImportCandidate `json:"candidates,omitempty"`
 }

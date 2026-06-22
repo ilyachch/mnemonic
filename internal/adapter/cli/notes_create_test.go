@@ -9,20 +9,20 @@ import (
 	"testing"
 	"time"
 
+	clockpkg "github.com/ilyachch/mnemonic/internal/platform/clock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ilyachch/mnemonic/internal/format/markdown"
-	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 )
 
 func TestNotesCreateCommandCreatesMarkdownNote(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
-	clock := testutil.NewClock(
+	testClock := testutil.NewClock(
 		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		"550e8400-e29b-41d4-a716-446655440000",
 	)
-	restoreClock := project.SetClock(clock)
+	restoreClock := clockpkg.SetClock(testClock)
 	defer restoreClock()
 
 	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
@@ -56,11 +56,11 @@ func TestNotesCreateCommandCreatesMarkdownNote(t *testing.T) {
 func TestNotesCreateCommandReadsBodyFromStdin(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	clock := testutil.NewClock(
+	testClock := testutil.NewClock(
 		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		"550e8400-e29b-41d4-a716-446655440000",
 	)
-	restoreClock := project.SetClock(clock)
+	restoreClock := clockpkg.SetClock(testClock)
 	defer restoreClock()
 
 	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
@@ -99,11 +99,11 @@ func TestNotesCreateCommandRejectsStdinAndBodyFile(t *testing.T) {
 func TestNotesCreateCommandWritesDeduplicatedTags(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	clock := testutil.NewClock(
+	testClock := testutil.NewClock(
 		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		"550e8400-e29b-41d4-a716-446655440000",
 	)
-	restoreClock := project.SetClock(clock)
+	restoreClock := clockpkg.SetClock(testClock)
 	defer restoreClock()
 
 	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))

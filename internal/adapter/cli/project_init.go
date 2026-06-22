@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
-	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/service/catalogsvc"
 	"github.com/spf13/cobra"
 )
@@ -44,9 +43,9 @@ var projectInitCmd = &cobra.Command{
 			return err
 		}
 
-		mode := project.InitModeCentral
+		mode := catalogsvc.InitModeCentral
 		if local {
-			mode = project.InitModeLocal
+			mode = catalogsvc.InitModeLocal
 		}
 
 		result, err := container.Services.Catalog.Init(commandContext(cmd), catalogsvc.InitInput{

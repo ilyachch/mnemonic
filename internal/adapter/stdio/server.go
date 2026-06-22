@@ -9,10 +9,10 @@ import (
 
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
 	"github.com/ilyachch/mnemonic/internal/platform/buildinfo"
-	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/service/indexsvc"
 	"github.com/ilyachch/mnemonic/internal/service/notesvc"
 	"github.com/ilyachch/mnemonic/internal/service/searchsvc"
+	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -85,7 +85,7 @@ func (s *Server) readManifestDescription() string {
 	if err != nil {
 		return ""
 	}
-	manifest, err := project.ParseMnemonicManifest(data)
+	manifest, err := registry.ParseMnemonicManifest(data)
 	if err != nil {
 		return ""
 	}

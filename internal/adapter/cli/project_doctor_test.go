@@ -7,9 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/index"
-	"github.com/ilyachch/mnemonic/internal/notes"
-	"github.com/ilyachch/mnemonic/internal/project"
+	clockpkg "github.com/ilyachch/mnemonic/internal/platform/clock"
+	"github.com/ilyachch/mnemonic/internal/store/markdownstore"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -17,20 +16,15 @@ import (
 func TestProjectDoctorReturnsOkForHealthyProject(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	restoreClock := project.SetClock(testutil.NewClock(
+	restoreClock := clockpkg.SetClock(testutil.NewClock(
 		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		"550e8400-e29b-41d4-a716-446655440000",
 	))
 	defer restoreClock()
 
-	err := project.InitProject(project.InitInput{
-		CWD:          projectRoot,
-		MemoriesHome: filepath.Join(projectRoot, ".mnemonic-memories"),
-		Name:         "personal",
-		Mode:         project.InitModeLocal,
-	})
-	require.NoError(t, err)
 	setLocalProjectMemoriesHome(t, projectRoot)
+	err := writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, err)
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
@@ -53,20 +47,15 @@ func TestProjectDoctorUsesEnvironmentSelector(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 	t.Setenv("MNEMONIC_PROJECT", "personal")
 
-	restoreClock := project.SetClock(testutil.NewClock(
+	restoreClock := clockpkg.SetClock(testutil.NewClock(
 		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		"550e8400-e29b-41d4-a716-446655440000",
 	))
 	defer restoreClock()
 
-	err := project.InitProject(project.InitInput{
-		CWD:          projectRoot,
-		MemoriesHome: filepath.Join(projectRoot, ".mnemonic-memories"),
-		Name:         "personal",
-		Mode:         project.InitModeLocal,
-	})
-	require.NoError(t, err)
 	setLocalProjectMemoriesHome(t, projectRoot)
+	err := writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, err)
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
@@ -84,20 +73,15 @@ func TestProjectDoctorUsesEnvironmentSelector(t *testing.T) {
 func TestProjectDoctorPositionalProjectWinsOverFlag(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	restoreClock := project.SetClock(testutil.NewClock(
+	restoreClock := clockpkg.SetClock(testutil.NewClock(
 		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		"550e8400-e29b-41d4-a716-446655440000",
 	))
 	defer restoreClock()
 
-	err := project.InitProject(project.InitInput{
-		CWD:          projectRoot,
-		MemoriesHome: filepath.Join(projectRoot, ".mnemonic-memories"),
-		Name:         "personal",
-		Mode:         project.InitModeLocal,
-	})
-	require.NoError(t, err)
 	setLocalProjectMemoriesHome(t, projectRoot)
+	err := writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, err)
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
@@ -115,20 +99,15 @@ func TestProjectDoctorPositionalProjectWinsOverFlag(t *testing.T) {
 func TestProjectDoctorMissingIndexReturnsNeedsReindex(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	restoreClock := project.SetClock(testutil.NewClock(
+	restoreClock := clockpkg.SetClock(testutil.NewClock(
 		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		"550e8400-e29b-41d4-a716-446655440000",
 	))
 	defer restoreClock()
 
-	err := project.InitProject(project.InitInput{
-		CWD:          projectRoot,
-		MemoriesHome: filepath.Join(projectRoot, ".mnemonic-memories"),
-		Name:         "personal",
-		Mode:         project.InitModeLocal,
-	})
-	require.NoError(t, err)
 	setLocalProjectMemoriesHome(t, projectRoot)
+	err := writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, err)
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
@@ -151,26 +130,20 @@ func TestProjectDoctorRequiresSelector(t *testing.T) {
 func TestProjectDoctorCorruptedIndexReturnsExitSix(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	restoreClock := project.SetClock(testutil.NewClock(
+	restoreClock := clockpkg.SetClock(testutil.NewClock(
 		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		"550e8400-e29b-41d4-a716-446655440000",
 	))
 	defer restoreClock()
 
-	err := project.InitProject(project.InitInput{
-		CWD:          projectRoot,
-		MemoriesHome: filepath.Join(projectRoot, ".mnemonic-memories"),
-		Name:         "personal",
-		Mode:         project.InitModeLocal,
-	})
-	require.NoError(t, err)
 	setLocalProjectMemoriesHome(t, projectRoot)
+	err := writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, err)
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
-	indexPath, err := index.Path("550e8400-e29b-41d4-a716-446655440000")
-	require.NoError(t, err)
+	indexPath := testIndexPath(projectRoot, "550e8400-e29b-41d4-a716-446655440000")
 	err = os.MkdirAll(filepath.Dir(indexPath), 0o755)
 	require.NoError(t, err)
 	err = os.WriteFile(indexPath, []byte("broken"), 0o644)
@@ -204,20 +177,15 @@ func TestProjectDoctorAllRejectsPositionalSelector(t *testing.T) {
 func TestProjectDoctorReportsStaleTempFileWithoutDeletingIt(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
-	restoreClock := project.SetClock(testutil.NewClock(
+	restoreClock := clockpkg.SetClock(testutil.NewClock(
 		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		"550e8400-e29b-41d4-a716-446655440000",
 	))
 	defer restoreClock()
 
-	err := project.InitProject(project.InitInput{
-		CWD:          projectRoot,
-		MemoriesHome: filepath.Join(projectRoot, ".mnemonic-memories"),
-		Name:         "personal",
-		Mode:         project.InitModeLocal,
-	})
-	require.NoError(t, err)
 	setLocalProjectMemoriesHome(t, projectRoot)
+	err := writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, err)
 
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
@@ -243,7 +211,7 @@ func TestProjectDoctorReportsStaleTempFileWithoutDeletingIt(t *testing.T) {
 
 func mustNoteSnapshot(t *testing.T, root string) string {
 	t.Helper()
-	paths, err := notes.Walk(root)
+	paths, err := markdownstore.Store{RootDir: root}.Walk()
 	require.NoError(t, err)
 	var b strings.Builder
 	for _, rel := range paths {

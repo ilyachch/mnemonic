@@ -1,11 +1,9 @@
 package cli
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
+	"time"
 
-	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
@@ -16,20 +14,8 @@ func TestCompleteProjectNamesReturnsActiveSlugMatches(t *testing.T) {
 	memoriesHome := t.TempDir()
 	t.Setenv("MNEMONIC_MEMORIES_HOME", memoriesHome)
 
-	// Create central projects for "backend" and "personal"
 	for _, slug := range []string{"backend", "personal"} {
-		projectDir := filepath.Join(memoriesHome, slug)
-		require.NoError(t, os.MkdirAll(projectDir, 0o755))
-
-		manifest := project.NewMnemonicManifest()
-		manifest.ProjectID = "550e8400-e29b-41d4-a716-4466554400" + slug[:1]
-		manifest.Name = slug
-		manifest.Slug = slug
-		manifest.MarkdownFormatVersion = 1
-		manifest.CreatedAt = project.NowUTC()
-		manifest.UpdatedAt = project.NowUTC()
-		manifest.Generator.App = "mnemonic"
-		require.NoError(t, project.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))
+		writeCentralProjectFixture(t, memoriesHome, slug, "550e8400-e29b-41d4-a716-4466554400"+slug[:1], time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC))
 	}
 
 	root := newTestRoot(t)

@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
-	"github.com/ilyachch/mnemonic/internal/graph"
-	"github.com/ilyachch/mnemonic/internal/search"
 	"github.com/ilyachch/mnemonic/internal/service/notesvc"
 	"github.com/ilyachch/mnemonic/internal/service/searchsvc"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -64,7 +62,7 @@ type SearchNotesInput struct {
 }
 
 type SearchNotesOutput struct {
-	Hits []search.Result `json:"hits"`
+	Hits []searchsvc.SearchResult `json:"hits"`
 }
 
 type ListTagsInput struct {
@@ -81,7 +79,7 @@ type ListBacklinksInput struct {
 }
 
 type ListBacklinksOutput struct {
-	Links []graph.Backlink `json:"links"`
+	Links []searchsvc.Backlink `json:"links"`
 }
 
 type CreateNoteInput struct {

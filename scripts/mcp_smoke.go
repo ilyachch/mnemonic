@@ -11,7 +11,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/project"
+	"github.com/ilyachch/mnemonic/internal/platform/idgen"
+	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -268,19 +269,19 @@ func prepareSmokeProject() (string, []string, error) {
 	}
 
 	now := time.Now().UTC()
-	manifest := project.NewMnemonicManifest()
-	manifest.ProjectID = project.NewUUID()
+	manifest := registry.NewMnemonicManifest()
+	manifest.ProjectID = idgen.NewUUID()
 	manifest.Name = "personal"
 	manifest.Slug = "personal"
-	manifest.Type = project.ManifestTypeLocal
+	manifest.Type = registry.ManifestTypeLocal
 	manifest.MarkdownFormatVersion = 1
 	manifest.CreatedAt = now
 	manifest.UpdatedAt = now
 	manifest.Generator.App = "mnemonic"
-	if err := project.WriteMnemonicManifest(filepath.Join(memoriesDir, "mnemonic.toml"), manifest); err != nil {
+	if err := registry.WriteMnemonicManifest(filepath.Join(memoriesDir, "mnemonic.toml"), manifest); err != nil {
 		return "", nil, err
 	}
-	if err := project.WritePointerFile(filepath.Join(memoriesHome, "personal.toml"), &project.PointerFile{
+	if err := registry.WritePointerFile(filepath.Join(memoriesHome, "personal.toml"), &registry.PointerFile{
 		ManifestPath: filepath.Join(memoriesDir, "mnemonic.toml"),
 	}); err != nil {
 		return "", nil, err

@@ -1,4 +1,4 @@
-package index
+package sqliteindex
 
 import "database/sql"
 
@@ -62,4 +62,16 @@ func ApplySchema(db *sql.DB) error {
 	}
 
 	return nil
+}
+
+// CheckSchemaStatus reports whether the current DB schema is compatible.
+func CheckSchemaStatus(db *sql.DB) (SchemaStatus, error) {
+	var version int
+	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		return "", err
+	}
+	if version != 1 {
+		return SchemaStatusNeedsRebuild, nil
+	}
+	return SchemaStatusOK, nil
 }

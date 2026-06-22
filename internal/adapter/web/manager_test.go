@@ -14,7 +14,7 @@ import (
 
 	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
-	"github.com/ilyachch/mnemonic/internal/project"
+	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
@@ -36,7 +36,7 @@ func newWebFixture(t *testing.T, readOnly bool) *webFixture {
 	projectRoot := filepath.Join(memoriesHome, slug)
 	require.NoError(t, os.MkdirAll(projectRoot, 0o755))
 
-	manifest := project.NewMnemonicManifest()
+	manifest := registry.NewMnemonicManifest()
 	manifest.ProjectID = projectID
 	manifest.Name = "Demo"
 	manifest.Slug = slug
@@ -44,7 +44,7 @@ func newWebFixture(t *testing.T, readOnly bool) *webFixture {
 	manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
 	manifest.UpdatedAt = manifest.CreatedAt
 	manifest.Generator.App = "mnemonic"
-	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(projectRoot, "mnemonic.toml"), manifest))
+	require.NoError(t, registry.WriteMnemonicManifest(filepath.Join(projectRoot, "mnemonic.toml"), manifest))
 	require.NoError(t, os.WriteFile(filepath.Join(projectRoot, "demo.md"), []byte("# Demo\n\nBody"), 0o644))
 
 	runtime, err := app.NewRuntimeApp(app.RuntimeInput{
