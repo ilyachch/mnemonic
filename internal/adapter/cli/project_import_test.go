@@ -139,6 +139,30 @@ func TestProjectImportCommandWarnsWhenIndexStaysStaleInHumanMode(t *testing.T) {
 	require.Contains(t, result.Stdout, "1 project(s) imported")
 }
 
+func TestProjectImportCommandOmitsStderrWarningsInJSONMode(t *testing.T) {
+	_, importRoot := seedImportProject(t)
+
+	blockingIndexDir := filepath.Dir(testIndexPath(importRoot, "550e8400-e29b-41d4-a716-446655440000"))
+	require.NoError(t, os.MkdirAll(filepath.Dir(blockingIndexDir), 0o755))
+	require.NoError(t, os.WriteFile(blockingIndexDir, []byte("block rebuild"), 0o644))
+
+	originalWD, err := os.Getwd()
+	require.NoError(t, err)
+	err = os.Chdir(importRoot)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWD)
+	})
+
+	result := executeCommand("project", "import", ".", "--json")
+	require.NoError(t, result.Err, "project import returned error\nstderr: %s", result.Stderr)
+	require.Empty(t, result.Stderr)
+	require.Contains(t, result.Stdout, `"index_status": "stale"`)
+	require.Contains(t, result.Stdout, `"index_errors": [`)
+	require.Contains(t, result.Stdout, `"slug": "backend"`)
+	require.Contains(t, result.Stdout, `"error": "`)
+}
+
 func seedImportProject(t *testing.T) (string, string) {
 	t.Helper()
 

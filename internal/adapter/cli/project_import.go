@@ -34,7 +34,7 @@ var projectImportCmd = &cobra.Command{
 		}
 
 		if !jsonOutputEnabled(cmd) {
-			printProjectImportIndexWarnings(cmd, result.IndexStatus, result.IndexErrors)
+			printIndexWarnings(cmd, result.IndexErrors)
 		}
 		output := projectImportOutput{
 			Path:        result.Path,
