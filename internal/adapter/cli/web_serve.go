@@ -6,12 +6,13 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ilyachch/mnemonic/internal/web"
+	webadapter "github.com/ilyachch/mnemonic/internal/adapter/web"
 	"github.com/spf13/cobra"
 )
 
 var (
-	newWebServer           = web.NewServer
+	resolveRuntimeApp      = runtimeAppForSelectedProject
+	newWebServer           = webadapter.NewServer
 	webServeListenAndServe = webServeListenAndServeReal
 )
 
@@ -20,12 +21,17 @@ var webServeCmd = &cobra.Command{
 	Short:        "Serve MCP over HTTP/SSE",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		runtime, err := runtimeAppForSelectedProject(cmd)
+		runtime, err := resolveRuntimeApp(cmd)
 		if err != nil {
 			return err
 		}
 
-		manager, err := newWebServer(runtime, os.Getenv("MNEMONIC_PROJECT_TOKEN"), stdioReadOnlyEnabled(cmd))
+		manager, err := newWebServer(webadapter.ServerInput{
+			KB:           runtime.KB,
+			Services:     runtime.Services,
+			ProjectToken: os.Getenv("MNEMONIC_PROJECT_TOKEN"),
+			ReadOnly:     stdioReadOnlyEnabled(cmd),
+		})
 		if err != nil {
 			return err
 		}
@@ -39,7 +45,7 @@ var webServeCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		addr := web.ServeAddr(addrFlag)
+		addr := webadapter.ServeAddr(addrFlag)
 		if strings.TrimSpace(portFlag) != "" {
 			addr = normalizeWebListenAddr(portFlag)
 		}

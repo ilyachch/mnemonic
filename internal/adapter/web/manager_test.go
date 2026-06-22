@@ -62,7 +62,12 @@ func newWebFixture(t *testing.T, readOnly bool) *webFixture {
 	})
 	require.NoError(t, err)
 
-	server, err := NewServer(runtime, "", readOnly)
+	server, err := NewServer(ServerInput{
+		KB:           runtime.KB,
+		Services:     runtime.Services,
+		ProjectToken: "",
+		ReadOnly:     readOnly,
+	})
 	require.NoError(t, err)
 
 	return &webFixture{server: server}

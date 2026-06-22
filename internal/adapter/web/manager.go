@@ -9,6 +9,7 @@ import (
 	"github.com/ilyachch/mnemonic/internal/adapter/stdio"
 	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/apperr"
+	"github.com/ilyachch/mnemonic/internal/domain/kb"
 	"github.com/ilyachch/mnemonic/internal/project"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -17,6 +18,14 @@ const (
 	sseEndpoint      = "/sse"
 	messagesEndpoint = "/messages"
 )
+
+// ServerInput configures the HTTP/SSE adapter for one resolved knowledge base.
+type ServerInput struct {
+	KB           kb.KnowledgeBase
+	Services     app.RuntimeServices
+	ProjectToken string
+	ReadOnly     bool
+}
 
 // Server serves one resolved project over HTTP/SSE.
 type Server struct {
@@ -28,15 +37,25 @@ type Server struct {
 }
 
 // NewServer prepares an eager MCP HTTP server for a single resolved project.
-func NewServer(runtime *app.RuntimeApp, projectToken string, readOnly bool) (*Server, error) {
-	if runtime == nil {
-		return nil, apperr.CLIUsage("runtime is required", nil)
+func NewServer(input ServerInput) (*Server, error) {
+	if strings.TrimSpace(input.KB.ID) == "" {
+		return nil, apperr.CLIUsage("knowledge base is required", nil)
 	}
-	stdioServer, err := stdio.NewServer(runtime.KB, stdio.Dependencies{
-		Notes:  runtime.Services.Notes,
-		Search: runtime.Services.Search,
-		Index:  runtime.Services.Index,
-	}, readOnly)
+	if input.Services.Notes == nil {
+		return nil, apperr.CLIUsage("notes service is required", nil)
+	}
+	if input.Services.Search == nil {
+		return nil, apperr.CLIUsage("search service is required", nil)
+	}
+	if input.Services.Index == nil {
+		return nil, apperr.CLIUsage("index service is required", nil)
+	}
+
+	stdioServer, err := stdio.NewServer(input.KB, stdio.Dependencies{
+		Notes:  input.Services.Notes,
+		Search: input.Services.Search,
+		Index:  input.Services.Index,
+	}, input.ReadOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -44,8 +63,8 @@ func NewServer(runtime *app.RuntimeApp, projectToken string, readOnly bool) (*Se
 
 	return &Server{
 		sdkServer:    sdkServer,
-		projectToken: strings.TrimSpace(projectToken),
-		readOnly:     readOnly,
+		projectToken: strings.TrimSpace(input.ProjectToken),
+		readOnly:     input.ReadOnly,
 		sessions:     newProjectSessionHandler(sdkServer),
 	}, nil
 }

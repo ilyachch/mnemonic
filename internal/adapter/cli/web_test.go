@@ -2,17 +2,16 @@ package cli
 
 import (
 	"net/http"
-	"os"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
-	"time"
 
+	webadapter "github.com/ilyachch/mnemonic/internal/adapter/web"
 	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/apperr"
-	"github.com/ilyachch/mnemonic/internal/project"
+	"github.com/ilyachch/mnemonic/internal/domain/kb"
 	"github.com/ilyachch/mnemonic/internal/testutil"
-	"github.com/ilyachch/mnemonic/internal/web"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
 
@@ -27,23 +26,7 @@ func TestWebHelpShowsOnlyServe(t *testing.T) {
 }
 
 func TestWebServeBuildsRuntimeOnceBeforeListen(t *testing.T) {
-	root := testutil.CleanEnvForTest(t)
-	memoriesHome := filepath.Join(root, ".mnemonic")
-	require.NoError(t, os.MkdirAll(filepath.Join(memoriesHome, "demo"), 0o755))
-
-	manifest := project.NewMnemonicManifest()
-	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
-	manifest.Name = "Demo"
-	manifest.Slug = "demo"
-	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = time.Date(2026, 6, 20, 10, 11, 12, 0, time.UTC)
-	manifest.UpdatedAt = manifest.CreatedAt
-	manifest.Generator.App = "mnemonic"
-	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(memoriesHome, "demo", "mnemonic.toml"), manifest))
-	require.NoError(t, os.WriteFile(filepath.Join(memoriesHome, "demo", "demo.md"), []byte("# Demo\n"), 0o644))
-
-	t.Setenv("MNEMONIC_MEMORIES_HOME", memoriesHome)
-	t.Setenv("MNEMONIC_PROJECT", "demo")
+	testutil.CleanEnvForTest(t)
 	t.Setenv("MNEMONIC_WEB_ADDR", ":9090")
 
 	var capturedRuntime struct {
@@ -53,15 +36,32 @@ func TestWebServeBuildsRuntimeOnceBeforeListen(t *testing.T) {
 	}
 	var calls atomic.Int32
 	var sequence []string
+	runtimeKB := kb.KnowledgeBase{
+		ID:      "550e8400-e29b-41d4-a716-446655440000",
+		Name:    "Demo",
+		Slug:    "demo",
+		Kind:    "central",
+		RootDir: filepath.Join(t.TempDir(), "demo"),
+	}
 	origNew := newWebServer
 	origListen := webServeListenAndServe
-	newWebServer = func(runtime *app.RuntimeApp, projectToken string, readOnly bool) (*web.Server, error) {
+	origResolve := resolveRuntimeApp
+	resolveRuntimeApp = func(_ *cobra.Command) (*app.RuntimeApp, error) {
+		sequence = append(sequence, "resolve")
+		runtime, err := app.NewRuntimeApp(app.RuntimeInput{KB: runtimeKB})
+		if err != nil {
+			return nil, err
+		}
+		sequence = append(sequence, "runtime")
+		return runtime, nil
+	}
+	newWebServer = func(input webadapter.ServerInput) (*webadapter.Server, error) {
 		sequence = append(sequence, "build")
 		calls.Add(1)
-		capturedRuntime.ProjectID = runtime.KB.ID
-		capturedRuntime.ProjectToken = projectToken
-		capturedRuntime.ReadOnly = readOnly
-		return &web.Server{}, nil
+		capturedRuntime.ProjectID = input.KB.ID
+		capturedRuntime.ProjectToken = input.ProjectToken
+		capturedRuntime.ReadOnly = input.ReadOnly
+		return &webadapter.Server{}, nil
 	}
 	webServeListenAndServe = func(server *http.Server) error {
 		require.EqualValues(t, 1, calls.Load())
@@ -73,13 +73,14 @@ func TestWebServeBuildsRuntimeOnceBeforeListen(t *testing.T) {
 	t.Cleanup(func() {
 		newWebServer = origNew
 		webServeListenAndServe = origListen
+		resolveRuntimeApp = origResolve
 	})
 
 	result := executeCommand("web", "serve")
 	require.NoError(t, result.Err)
 	require.EqualValues(t, 1, calls.Load())
-	require.Equal(t, []string{"build", "listen"}, sequence)
-	require.Equal(t, manifest.ProjectID, capturedRuntime.ProjectID)
+	require.Equal(t, []string{"resolve", "runtime", "build", "listen"}, sequence)
+	require.Equal(t, runtimeKB.ID, capturedRuntime.ProjectID)
 	require.False(t, capturedRuntime.ReadOnly)
 }
 
