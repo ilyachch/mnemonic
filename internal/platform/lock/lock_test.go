@@ -7,24 +7,23 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
 
 func TestPathUsesStateDir(t *testing.T) {
-	testutil.CleanEnvForTest(t)
+	stateDir := t.TempDir()
 
-	got, err := Path("550e8400-e29b-41d4-a716-446655440000", "write")
+	got, err := Path(stateDir, "write")
 	require.NoError(t, err)
 
-	want := filepath.Join(os.Getenv("XDG_STATE_HOME"), "mnemonic", "projects", "550e8400-e29b-41d4-a716-446655440000", "locks", "write.lock")
+	want := filepath.Join(stateDir, "locks", "write.lock")
 	require.Equal(t, want, got)
 }
 
 func TestAcquireBlocksUntilBusyTimeout(t *testing.T) {
-	testutil.CleanEnvForTest(t)
+	stateDir := t.TempDir()
 
-	first, err := Acquire(AcquireInput{ProjectID: "project-1", Name: "write"})
+	first, err := Acquire(AcquireInput{StateDir: stateDir, Name: "write"})
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, first.Release())
@@ -32,7 +31,7 @@ func TestAcquireBlocksUntilBusyTimeout(t *testing.T) {
 
 	start := time.Now()
 	_, err = Acquire(AcquireInput{
-		ProjectID:    "project-1",
+		StateDir:     stateDir,
 		Name:         "write",
 		Timeout:      50 * time.Millisecond,
 		PollInterval: 10 * time.Millisecond,
@@ -42,12 +41,12 @@ func TestAcquireBlocksUntilBusyTimeout(t *testing.T) {
 }
 
 func TestReleaseFreesLock(t *testing.T) {
-	testutil.CleanEnvForTest(t)
+	stateDir := t.TempDir()
 
-	first, err := Acquire(AcquireInput{ProjectID: "project-1", Name: "write"})
+	first, err := Acquire(AcquireInput{StateDir: stateDir, Name: "write"})
 	require.NoError(t, err)
 
-	lockPath, err := Path("project-1", "write")
+	lockPath, err := Path(stateDir, "write")
 	require.NoError(t, err)
 	_, err = os.Stat(lockPath)
 	require.NoError(t, err)
@@ -57,20 +56,20 @@ func TestReleaseFreesLock(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, info.IsDir())
 
-	second, err := Acquire(AcquireInput{ProjectID: "project-1", Name: "write"})
+	second, err := Acquire(AcquireInput{StateDir: stateDir, Name: "write"})
 	require.NoError(t, err)
 	require.NoError(t, second.Release())
 }
 
 func TestAcquireIgnoresPreexistingLockFile(t *testing.T) {
-	testutil.CleanEnvForTest(t)
+	stateDir := t.TempDir()
 
-	lockPath, err := Path("project-1", "write")
+	lockPath, err := Path(stateDir, "write")
 	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(filepath.Dir(lockPath), 0o755))
 	require.NoError(t, os.WriteFile(lockPath, []byte("stale"), 0o644))
 
-	guard, err := Acquire(AcquireInput{ProjectID: "project-1", Name: "write"})
+	guard, err := Acquire(AcquireInput{StateDir: stateDir, Name: "write"})
 	require.NoError(t, err)
 	require.NoError(t, guard.Release())
 }

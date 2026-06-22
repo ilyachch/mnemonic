@@ -16,7 +16,8 @@ import (
 func TestStoreCreateEditAndDelete(t *testing.T) {
 	testutil.CleanEnvForTest(t)
 	root := t.TempDir()
-	store := Store{RootDir: root}
+	stateDir := t.TempDir()
+	store := Store{RootDir: root, StateDir: stateDir}
 
 	created, err := store.Create(CreateInput{
 		Title: "Auth migration",
@@ -69,7 +70,7 @@ func TestStoreCreateEditAndDelete(t *testing.T) {
 func TestStoreResolveAndShowSelectorPrecedence(t *testing.T) {
 	testutil.CleanEnvForTest(t)
 	root := t.TempDir()
-	store := Store{RootDir: root}
+	store := Store{RootDir: root, StateDir: t.TempDir()}
 
 	writeNote(t, root, "uuid.md", markdown.Note{
 		MnemonicNoteID: "11111111-1111-1111-1111-111111111111",
@@ -135,7 +136,7 @@ func TestStoreResolveAndShowSelectorPrecedence(t *testing.T) {
 func TestStoreListAndWalkIgnoreTrash(t *testing.T) {
 	testutil.CleanEnvForTest(t)
 	root := t.TempDir()
-	store := Store{RootDir: root}
+	store := Store{RootDir: root, StateDir: t.TempDir()}
 
 	note := markdown.Note{
 		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440000",

@@ -66,6 +66,7 @@ func New(k kb.KnowledgeBase) *Service {
 		Index: sqliteindex.Store{
 			IndexPath: k.IndexPath,
 			RootDir:   k.RootDir,
+			StateDir:  k.StateDir,
 			KBID:      k.ID,
 		},
 	}

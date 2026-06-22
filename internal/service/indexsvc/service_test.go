@@ -29,7 +29,9 @@ func TestNewBindsKnowledgeBase(t *testing.T) {
 	svc := New(resolved)
 	require.Equal(t, resolved, svc.KB)
 	require.Equal(t, resolved.RootDir, svc.Notes.RootDir)
+	require.Equal(t, resolved.StateDir, svc.Notes.StateDir)
 	require.Equal(t, resolved.RootDir, svc.Index.RootDir)
+	require.Equal(t, resolved.StateDir, svc.Index.StateDir)
 	require.Equal(t, resolved.IndexPath, svc.Index.IndexPath)
 	require.Equal(t, resolved.ID, svc.Index.KBID)
 }

@@ -9,16 +9,15 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
-	"github.com/ilyachch/mnemonic/internal/platform/paths"
 )
 
 var ErrBusy = errors.New("lock busy")
 
 const defaultPollInterval = 10 * time.Millisecond
 
-// AcquireInput configures project-scoped file lock acquisition.
+// AcquireInput configures state-scoped file lock acquisition.
 type AcquireInput struct {
-	ProjectID    string
+	StateDir     string
 	Name         string
 	Timeout      time.Duration
 	PollInterval time.Duration
@@ -30,42 +29,31 @@ type Guard struct {
 	lock *flock.Flock
 }
 
-// Path returns the absolute path for a project-scoped lock file.
-func Path(projectID string, name string) (string, error) {
-	projectID = strings.TrimSpace(projectID)
-	if projectID == "" {
-		return "", fmt.Errorf("project id is required")
+// Path returns the absolute path for a state-scoped lock file.
+func Path(stateDir string, name string) (string, error) {
+	stateDir = strings.TrimSpace(stateDir)
+	if stateDir == "" {
+		return "", fmt.Errorf("state directory is required")
 	}
 
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return "", fmt.Errorf("lock name is required")
 	}
-	if strings.ContainsAny(projectID, `/\`) {
-		return "", fmt.Errorf("project id must not contain path separators")
-	}
 	if strings.ContainsAny(name, `/\`) {
 		return "", fmt.Errorf("lock name must not contain path separators")
 	}
 
-	mnemonicPaths, err := paths.GetMnemonicPaths()
-	if err != nil {
-		return "", err
-	}
-
 	return filepath.Join(
-		mnemonicPaths.StateHome,
-		"mnemonic",
-		"projects",
-		projectID,
+		stateDir,
 		"locks",
 		name+".lock",
 	), nil
 }
 
-// Acquire creates a project-scoped lock file and waits until timeout on conflict.
+// Acquire creates a state-scoped lock file and waits until timeout on conflict.
 func Acquire(input AcquireInput) (*Guard, error) {
-	lockPath, err := Path(input.ProjectID, input.Name)
+	lockPath, err := Path(input.StateDir, input.Name)
 	if err != nil {
 		return nil, err
 	}

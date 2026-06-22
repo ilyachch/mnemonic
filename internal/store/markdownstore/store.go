@@ -26,7 +26,8 @@ const trashTimestampLayout = "20060102T150405Z"
 
 // Store provides root-scoped markdown note persistence and lookup.
 type Store struct {
-	RootDir string
+	RootDir  string
+	StateDir string
 }
 
 // CreateInput configures note creation.
@@ -117,7 +118,7 @@ func (s Store) Create(input CreateInput) (CreateResult, error) {
 		return CreateResult{}, apperr.CLIUsage("note title is required", nil)
 	}
 
-	guard, err := acquireWriteLock(root)
+	guard, err := acquireWriteLock(root, s.StateDir)
 	if err != nil {
 		return CreateResult{}, err
 	}
@@ -183,7 +184,7 @@ func (s Store) Edit(input EditInput) (EditResult, error) {
 		return EditResult{}, apperr.NotFound("note selector is required", nil)
 	}
 
-	guard, err := acquireWriteLock(root)
+	guard, err := acquireWriteLock(root, s.StateDir)
 	if err != nil {
 		return EditResult{}, err
 	}
@@ -251,7 +252,7 @@ func (s Store) Delete(input DeleteInput) (DeleteResult, error) {
 		return DeleteResult{}, apperr.NotFound("note selector is required", nil)
 	}
 
-	guard, err := acquireWriteLock(root)
+	guard, err := acquireWriteLock(root, s.StateDir)
 	if err != nil {
 		return DeleteResult{}, err
 	}
@@ -559,14 +560,16 @@ func cleanRelativePath(path string) (string, error) {
 	return cleaned, nil
 }
 
-func acquireWriteLock(root string) (*lock.Guard, error) {
-	projectKey, err := projectLockKey(root)
-	if err != nil {
-		return nil, err
+func acquireWriteLock(root string, stateDir string) (*lock.Guard, error) {
+	if strings.TrimSpace(root) == "" {
+		return nil, apperr.CLIUsage("root directory is required", nil)
+	}
+	if strings.TrimSpace(stateDir) == "" {
+		return nil, apperr.CLIUsage("state directory is required", nil)
 	}
 
 	guard, err := lock.Acquire(lock.AcquireInput{
-		ProjectID:    projectKey,
+		StateDir:     stateDir,
 		Name:         writeLockName,
 		Timeout:      150 * time.Millisecond,
 		PollInterval: 10 * time.Millisecond,
@@ -578,19 +581,6 @@ func acquireWriteLock(root string) (*lock.Guard, error) {
 		return nil, apperr.Unsafe("project write lock is busy", err)
 	}
 	return nil, err
-}
-
-func projectLockKey(root string) (string, error) {
-	cleaned := strings.TrimSpace(root)
-	if cleaned == "" {
-		return "", apperr.CLIUsage("root directory is required", nil)
-	}
-	absRoot, err := filepath.Abs(cleaned)
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256([]byte(filepath.Clean(absRoot)))
-	return hex.EncodeToString(sum[:]), nil
 }
 
 func applyEditSet(note *markdown.Note, set map[string]string) error {

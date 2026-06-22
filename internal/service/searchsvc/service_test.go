@@ -49,9 +49,11 @@ func newSearchService(t *testing.T) Service {
 	t.Helper()
 
 	dir := t.TempDir()
+	stateDir := t.TempDir()
 	store := sqliteindex.Store{
 		IndexPath: filepath.Join(dir, "index.sqlite"),
 		RootDir:   dir,
+		StateDir:  stateDir,
 		KBID:      "kb-1",
 	}
 
@@ -69,7 +71,9 @@ func newSearchService(t *testing.T) Service {
 
 	require.NoError(t, db.Close())
 
-	return *New(kb.KnowledgeBase{ID: "kb-1", RootDir: dir, IndexPath: filepath.Join(dir, "index.sqlite")})
+	svc := New(kb.KnowledgeBase{ID: "kb-1", RootDir: dir, StateDir: stateDir, IndexPath: filepath.Join(dir, "index.sqlite")})
+	require.Equal(t, stateDir, svc.Index.StateDir)
+	return *svc
 }
 
 func insertSearchNote(t *testing.T, db *sql.DB, noteID, slug, title, relPath, body string, now time.Time, tags []string) {

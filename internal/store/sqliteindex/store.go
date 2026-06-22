@@ -20,6 +20,7 @@ const sqliteDriverName = "sqlite"
 type Store struct {
 	IndexPath string
 	RootDir   string
+	StateDir  string
 	KBID      string
 }
 

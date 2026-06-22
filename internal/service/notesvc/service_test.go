@@ -21,8 +21,12 @@ func TestServiceRebuildsIndexForCreateEditDelete(t *testing.T) {
 	svc := New(kb.KnowledgeBase{
 		ID:        "kb-1",
 		RootDir:   root,
+		StateDir:  stateDir,
 		IndexPath: filepath.Join(stateDir, "index.sqlite"),
 	})
+	require.Equal(t, root, svc.Notes.RootDir)
+	require.Equal(t, stateDir, svc.Notes.StateDir)
+	require.Equal(t, stateDir, svc.Index.StateDir)
 
 	created, err := svc.Create(CreateInput{
 		Title: "Auth migration",
@@ -93,10 +97,11 @@ func TestServiceReturnsPartialSuccessWhenIndexRebuildFails(t *testing.T) {
 	testutil.CleanEnvForTest(t)
 
 	root := t.TempDir()
-	indexPath := filepath.Join(t.TempDir(), "state", "kb", "index.sqlite")
+	stateDir := t.TempDir()
+	indexPath := filepath.Join(stateDir, "index.sqlite")
 	svc := &Service{
-		Notes: markdownstore.Store{RootDir: root},
-		Index: sqliteindex.Store{IndexPath: indexPath, KBID: "kb-1"},
+		Notes: markdownstore.Store{RootDir: root, StateDir: stateDir},
+		Index: sqliteindex.Store{IndexPath: indexPath, StateDir: stateDir, KBID: "kb-1"},
 	}
 	svc.Index.RootDir = ""
 
