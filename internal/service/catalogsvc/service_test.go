@@ -123,6 +123,47 @@ func TestInitCreatesCentralProjectAndIndex(t *testing.T) {
 	require.Equal(t, desc, manifest.Description)
 }
 
+func TestInitReturnsStaleIndexWhenRebuildFails(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+
+	memoriesHome := t.TempDir()
+	stateHome := t.TempDir()
+	cwd := t.TempDir()
+	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
+
+	blockingDir := filepath.Join(stateHome, "mnemonic")
+	require.NoError(t, os.MkdirAll(blockingDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(blockingDir, "projects"), []byte("block rebuild"), 0o644))
+
+	restore := clock.SetClock(&testClock{
+		now:   time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
+		uuids: []string{"550e8400-e29b-41d4-a716-446655440012"},
+	})
+	t.Cleanup(restore)
+
+	result, err := svc.Init(context.Background(), InitInput{
+		WorkingDir:  cwd,
+		Name:        "Backend",
+		Description: "Central knowledge base",
+		Mode:        InitModeCentral,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "550e8400-e29b-41d4-a716-446655440012", result.ID)
+	require.Equal(t, "Backend", result.Name)
+	require.Equal(t, "backend", result.Slug)
+	require.Equal(t, "central", result.Kind)
+	require.Equal(t, filepath.Join(memoriesHome, "backend"), result.RootDir)
+	require.Equal(t, filepath.Join(memoriesHome, "backend"), result.RepoRootDir)
+	require.Equal(t, filepath.Join(memoriesHome, "backend", "mnemonic.toml"), result.ManifestPath)
+	require.Equal(t, filepath.Join(stateHome, "mnemonic", "projects", result.ID), result.StateDir)
+	require.Equal(t, filepath.Join(stateHome, "mnemonic", "projects", result.ID, "index.sqlite"), result.IndexPath)
+	require.Equal(t, "stale", result.IndexStatus)
+	require.NotEmpty(t, result.IndexError)
+	require.FileExists(t, result.ManifestPath)
+	_, statErr := os.Stat(result.IndexPath)
+	require.Error(t, statErr)
+}
+
 func TestInitCreatesLocalProjectAndIndex(t *testing.T) {
 	testutil.CleanEnvForTest(t)
 

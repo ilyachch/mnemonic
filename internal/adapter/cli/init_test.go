@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -176,4 +177,75 @@ func TestProjectInitCommandCentralWithDescription(t *testing.T) {
 	parsedManifest, err := manifestfmt.ParseMnemonicManifest(manifestData)
 	require.NoError(t, err)
 	require.Equal(t, desc, parsedManifest.Description)
+}
+
+func TestProjectInitCommandHumanWarnsOnStaleIndex(t *testing.T) {
+	cwd := t.TempDir()
+	memoriesHome := t.TempDir()
+	stateHome := t.TempDir()
+
+	testutil.CleanEnvForTest(t)
+	t.Setenv("MNEMONIC_MEMORIES_HOME", memoriesHome)
+	require.NoError(t, os.MkdirAll(filepath.Join(stateHome, "mnemonic"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(stateHome, "mnemonic", "projects"), []byte("block rebuild"), 0o644))
+	t.Setenv("MNEMONIC_STATE_HOME", stateHome)
+
+	originalWD, err := os.Getwd()
+	require.NoError(t, err)
+	err = os.Chdir(cwd)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWD)
+	})
+
+	restore := clockpkg.SetClock(testutil.NewClock(
+		time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
+		"550e8400-e29b-41d4-a716-446655440000",
+	))
+	t.Cleanup(restore)
+
+	result := executeCommand("project", "init", "backend")
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
+	require.Contains(t, result.Stdout, "backend initialized")
+	require.Contains(t, result.Stderr, "warning: index is stale:")
+}
+
+func TestProjectInitCommandJsonReportsStaleIndex(t *testing.T) {
+	cwd := t.TempDir()
+	memoriesHome := t.TempDir()
+	stateHome := t.TempDir()
+
+	testutil.CleanEnvForTest(t)
+	t.Setenv("MNEMONIC_MEMORIES_HOME", memoriesHome)
+	require.NoError(t, os.MkdirAll(filepath.Join(stateHome, "mnemonic"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(stateHome, "mnemonic", "projects"), []byte("block rebuild"), 0o644))
+	t.Setenv("MNEMONIC_STATE_HOME", stateHome)
+
+	originalWD, err := os.Getwd()
+	require.NoError(t, err)
+	err = os.Chdir(cwd)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWD)
+	})
+
+	restore := clockpkg.SetClock(testutil.NewClock(
+		time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
+		"550e8400-e29b-41d4-a716-446655440000",
+	))
+	t.Cleanup(restore)
+
+	result := executeCommand("project", "init", "backend", "--json")
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
+	require.Empty(t, result.Stderr)
+	require.Contains(t, result.Stdout, `"index_status": "stale"`)
+	require.Contains(t, result.Stdout, `"index_error":`)
+
+	var got struct {
+		IndexStatus string `json:"index_status"`
+		IndexError  string `json:"index_error"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(result.Stdout), &got), "stdout: %s", result.Stdout)
+	require.Equal(t, "stale", got.IndexStatus)
+	require.NotEmpty(t, got.IndexError)
 }

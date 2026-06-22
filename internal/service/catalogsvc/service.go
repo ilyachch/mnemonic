@@ -118,9 +118,18 @@ type InitInput struct {
 
 // InitResult mirrors the project init payload.
 type InitResult struct {
-	kb.KnowledgeBase
-	IndexStatus string `json:"index_status"`
-	IndexError  string `json:"index_error,omitempty"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Slug         string `json:"slug"`
+	Kind         string `json:"kind"`
+	Description  string `json:"description,omitempty"`
+	RootDir      string `json:"root_dir"`
+	RepoRootDir  string `json:"repo_root_dir,omitempty"`
+	ManifestPath string `json:"manifest_path,omitempty"`
+	StateDir     string `json:"state_dir"`
+	IndexPath    string `json:"index_path"`
+	IndexStatus  string `json:"index_status"`
+	IndexError   string `json:"index_error"`
 }
 
 // Resolve returns the selected knowledge base for a project selector.
@@ -262,15 +271,24 @@ func (s Service) Init(ctx context.Context, input InitInput) (InitResult, error) 
 	}
 
 	result := InitResult{
-		KnowledgeBase: resolved,
-		IndexStatus:   "stale",
+		ID:           resolved.ID,
+		Name:         resolved.Name,
+		Slug:         resolved.Slug,
+		Kind:         resolved.Kind,
+		Description:  resolved.Description,
+		RootDir:      resolved.RootDir,
+		RepoRootDir:  resolved.RepoRootDir,
+		ManifestPath: resolved.ManifestPath,
+		StateDir:     resolved.StateDir,
+		IndexPath:    resolved.IndexPath,
+		IndexStatus:  "stale",
 	}
-	rebuild, err := indexsvc.New(resolved).Rebuild(ctx)
+	_, err = indexsvc.New(resolved).Rebuild(ctx)
 	if err != nil {
 		result.IndexError = err.Error()
-		return result, err
+		return result, nil
 	}
-	result.IndexStatus = rebuild.Status
+	result.IndexStatus = "ok"
 	return result, nil
 }
 

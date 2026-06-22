@@ -58,6 +58,9 @@ var projectInitCmd = &cobra.Command{
 			return err
 		}
 
+		if !jsonOutputEnabled(cmd) {
+			printIndexWarning(cmd, result.IndexStatus, result.IndexError)
+		}
 		human := fmt.Sprintf("%s initialized\n", result.Slug)
 		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, result)
 	},
