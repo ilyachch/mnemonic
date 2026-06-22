@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	manifest "github.com/ilyachch/mnemonic/internal/format/manifest"
 )
 
 // Entry describes a resolved project from the file-based registry.
@@ -28,19 +30,11 @@ func (e ErrNotFound) Error() string {
 	return fmt.Sprintf("project %q not found", e.Slug)
 }
 
-// ManifestData holds the parsed fields needed from a manifest file.
-type ManifestData struct {
-	ProjectID string
-	Name      string
-	Slug      string
-	Type      string // "local" or empty for central
-}
-
 // ManifestParser parses a mnemonic.toml file from disk.
-type ManifestParser func(path string) (ManifestData, error)
+type ManifestParser func(path string) (*manifest.Manifest, error)
 
 // PointerParser parses a pointer file from raw data.
-type PointerParser func(data []byte) (string, error) // returns manifest_path
+type PointerParser func(data []byte) (*manifest.PointerFile, error)
 
 // Store owns file-based registry access for one memories home.
 type Store struct {
@@ -98,7 +92,7 @@ func (s Store) Scan() ([]Entry, []Issue, error) {
 				continue
 			}
 
-			manifest, err := s.ManifestParser(manifestPath)
+			manifestData, err := s.ManifestParser(manifestPath)
 			if err != nil {
 				issues = append(issues, Issue{
 					Slug:    slug,
@@ -116,18 +110,18 @@ func (s Store) Scan() ([]Entry, []Issue, error) {
 				continue
 			}
 
-			if slug != manifest.Slug {
+			if slug != manifestData.Slug {
 				issues = append(issues, Issue{
 					Slug:    slug,
 					Path:    memoriesAbs,
-					Error:   fmt.Sprintf("Project name mismatch in registry (%s) and manifest (%s). Please align these values.", slug, manifest.Slug),
+					Error:   fmt.Sprintf("Project name mismatch in registry (%s) and manifest (%s). Please align these values.", slug, manifestData.Slug),
 					Corrupt: true,
 				})
 			}
 
 			results = append(results, Entry{
-				ProjectID:    manifest.ProjectID,
-				Name:         manifest.Name,
+				ProjectID:    manifestData.ProjectID,
+				Name:         manifestData.Name,
 				Slug:         slug,
 				Type:         "central",
 				ManifestPath: manifestPath,
@@ -160,7 +154,7 @@ func (s Store) Scan() ([]Entry, []Issue, error) {
 				continue
 			}
 
-			manifestPath, err := s.PointerParser(data)
+			pointerFile, err := s.PointerParser(data)
 			if err != nil {
 				issues = append(issues, Issue{
 					Slug:    slug,
@@ -175,44 +169,44 @@ func (s Store) Scan() ([]Entry, []Issue, error) {
 				results = append(results, Entry{
 					Slug:         slug,
 					Type:         "local",
-					ManifestPath: manifestPath,
+					ManifestPath: pointerFile.ManifestPath,
 				})
 				continue
 			}
 
-			manifest, err := s.ManifestParser(manifestPath)
+			manifestData, err := s.ManifestParser(pointerFile.ManifestPath)
 			if err != nil {
 				issues = append(issues, Issue{
 					Slug:   slug,
 					Path:   pointerPath,
-					Error:  fmt.Sprintf("[ORPHANED/MISSING] Local manifest not found at %s. The project might have been moved. Please update the path in %s or re-import the project.", manifestPath, pointerPath),
+					Error:  fmt.Sprintf("[ORPHANED/MISSING] Local manifest not found at %s. The project might have been moved. Please update the path in %s or re-import the project.", pointerFile.ManifestPath, pointerPath),
 					Orphan: true,
 				})
 				results = append(results, Entry{
 					Slug:         slug,
 					Type:         "local",
-					ManifestPath: manifestPath,
+					ManifestPath: pointerFile.ManifestPath,
 				})
 				continue
 			}
 
-			if slug != manifest.Slug {
+			if slug != manifestData.Slug {
 				issues = append(issues, Issue{
 					Slug:    slug,
 					Path:    pointerPath,
-					Error:   fmt.Sprintf("Project name mismatch in registry (%s) and manifest (%s). Please align these values.", slug, manifest.Slug),
+					Error:   fmt.Sprintf("Project name mismatch in registry (%s) and manifest (%s). Please align these values.", slug, manifestData.Slug),
 					Corrupt: true,
 				})
 			}
 
-			memoriesAbs := filepath.Dir(manifestPath)
-			repoRootAbs := filepath.Dir(filepath.Dir(manifestPath))
+			memoriesAbs := filepath.Dir(pointerFile.ManifestPath)
+			repoRootAbs := filepath.Dir(filepath.Dir(pointerFile.ManifestPath))
 			results = append(results, Entry{
-				ProjectID:    manifest.ProjectID,
-				Name:         manifest.Name,
+				ProjectID:    manifestData.ProjectID,
+				Name:         manifestData.Name,
 				Slug:         slug,
 				Type:         "local",
-				ManifestPath: manifestPath,
+				ManifestPath: pointerFile.ManifestPath,
 				MemoriesAbs:  memoriesAbs,
 				RepoRootAbs:  repoRootAbs,
 			})

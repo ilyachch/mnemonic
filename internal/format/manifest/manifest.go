@@ -1,4 +1,4 @@
-package registry
+package manifest
 
 import (
 	"bytes"
@@ -17,57 +17,67 @@ const (
 	ManifestTypeLocal ManifestType = "local"
 )
 
-// MnemonicManifest is the TOML schema stored in mnemonic.toml.
-type MnemonicManifest struct {
-	Version               int                    `toml:"version"`
-	ProjectID             string                 `toml:"project_id"`
-	Name                  string                 `toml:"name"`
-	Slug                  string                 `toml:"slug"`
-	Type                  ManifestType           `toml:"type"`
-	MarkdownFormatVersion int                    `toml:"markdown_format_version"`
-	Description           string                 `toml:"description,omitempty"`
-	CreatedAt             time.Time              `toml:"created_at"`
-	UpdatedAt             time.Time              `toml:"updated_at"`
-	Layout                MnemonicManifestLayout `toml:"layout"`
-	Generator             MnemonicGenerator      `toml:"generator"`
+// Manifest is the TOML schema stored in mnemonic.toml.
+type Manifest struct {
+	Version               int            `toml:"version"`
+	ProjectID             string         `toml:"project_id"`
+	Name                  string         `toml:"name"`
+	Slug                  string         `toml:"slug"`
+	Type                  ManifestType   `toml:"type"`
+	MarkdownFormatVersion int            `toml:"markdown_format_version"`
+	Description           string         `toml:"description,omitempty"`
+	CreatedAt             time.Time      `toml:"created_at"`
+	UpdatedAt             time.Time      `toml:"updated_at"`
+	Layout                ManifestLayout `toml:"layout"`
+	Generator             Generator      `toml:"generator"`
 }
 
-// MnemonicManifestLayout holds layout-related manifest settings.
-type MnemonicManifestLayout struct {
+// ManifestLayout holds layout-related manifest settings.
+type ManifestLayout struct {
 	NotesGlob []string `toml:"notes_glob"`
 	Ignore    []string `toml:"ignore"`
 }
 
-// MnemonicGenerator holds metadata about the generator that wrote the manifest.
-type MnemonicGenerator struct {
+// Generator holds metadata about the generator that wrote the manifest.
+type Generator struct {
 	App        string `toml:"app"`
 	AppVersion string `toml:"app_version"`
 }
 
-type mnemonicManifestTOML struct {
-	Version               int                    `toml:"version"`
-	ProjectID             string                 `toml:"project_id"`
-	Name                  string                 `toml:"name"`
-	Slug                  string                 `toml:"slug"`
-	Type                  ManifestType           `toml:"type"`
-	MarkdownFormatVersion int                    `toml:"markdown_format_version"`
-	Description           string                 `toml:"description,omitempty"`
-	CreatedAt             tomlTime               `toml:"created_at"`
-	UpdatedAt             tomlTime               `toml:"updated_at"`
-	Layout                MnemonicManifestLayout `toml:"layout"`
-	Generator             MnemonicGenerator      `toml:"generator"`
+// PointerFile is the TOML schema for a local project pointer file.
+type PointerFile struct {
+	ManifestPath string `toml:"manifest_path"`
+}
+
+// Backward-compatible aliases for existing callsites during the migration.
+type MnemonicManifest = Manifest
+type MnemonicManifestLayout = ManifestLayout
+type MnemonicGenerator = Generator
+
+type manifestTOML struct {
+	Version               int            `toml:"version"`
+	ProjectID             string         `toml:"project_id"`
+	Name                  string         `toml:"name"`
+	Slug                  string         `toml:"slug"`
+	Type                  ManifestType   `toml:"type"`
+	MarkdownFormatVersion int            `toml:"markdown_format_version"`
+	Description           string         `toml:"description,omitempty"`
+	CreatedAt             tomlTime       `toml:"created_at"`
+	UpdatedAt             tomlTime       `toml:"updated_at"`
+	Layout                ManifestLayout `toml:"layout"`
+	Generator             Generator      `toml:"generator"`
 }
 
 // IsLocal returns true when the manifest explicitly declares itself as local.
-func (m *MnemonicManifest) IsLocal() bool {
+func (m *Manifest) IsLocal() bool {
 	return m != nil && m.Type == ManifestTypeLocal
 }
 
-// NewMnemonicManifest returns a schema-populated manifest with layout defaults.
-func NewMnemonicManifest() *MnemonicManifest {
-	m := &MnemonicManifest{
+// New returns a schema-populated manifest with layout defaults.
+func New() *Manifest {
+	m := &Manifest{
 		Version: 1,
-		Layout: MnemonicManifestLayout{
+		Layout: ManifestLayout{
 			NotesGlob: []string{"**/*.md"},
 			Ignore:    []string{"mnemonic.toml", ".trash/**"},
 		},
@@ -76,8 +86,11 @@ func NewMnemonicManifest() *MnemonicManifest {
 	return m
 }
 
+// NewMnemonicManifest returns a schema-populated manifest with layout defaults.
+func NewMnemonicManifest() *Manifest { return New() }
+
 // ApplyDefaults populates the manifest defaults for unset optional fields.
-func (m *MnemonicManifest) ApplyDefaults() {
+func (m *Manifest) ApplyDefaults() {
 	if m == nil {
 		return
 	}
@@ -94,7 +107,7 @@ func (m *MnemonicManifest) ApplyDefaults() {
 }
 
 // Validate checks the schema invariants expected for mnemonic.toml files.
-func (m *MnemonicManifest) Validate() error {
+func (m *Manifest) Validate() error {
 	if m == nil {
 		return fmt.Errorf("mnemonic manifest is nil")
 	}
@@ -138,14 +151,14 @@ func (m *MnemonicManifest) Validate() error {
 }
 
 // MarshalTOML serializes mnemonic.toml.
-func (m *MnemonicManifest) MarshalTOML() ([]byte, error) {
+func (m *Manifest) MarshalTOML() ([]byte, error) {
 	copy := *m
 	copy.ApplyDefaults()
 	if err := copy.Validate(); err != nil {
 		return nil, err
 	}
 
-	raw := mnemonicManifestTOML{
+	raw := manifestTOML{
 		Version:               copy.Version,
 		ProjectID:             copy.ProjectID,
 		Name:                  copy.Name,
@@ -162,21 +175,7 @@ func (m *MnemonicManifest) MarshalTOML() ([]byte, error) {
 }
 
 // ParseMnemonicManifestFromFile reads and parses a mnemonic.toml file from disk.
-func ParseMnemonicManifestFromFile(path string) (ManifestData, error) {
-	manifest, err := ParseMnemonicManifestFile(path)
-	if err != nil {
-		return ManifestData{}, err
-	}
-	return ManifestData{
-		ProjectID: manifest.ProjectID,
-		Name:      manifest.Name,
-		Slug:      manifest.Slug,
-		Type:      string(manifest.Type),
-	}, nil
-}
-
-// ParseMnemonicManifestFile reads and parses a mnemonic.toml file from disk.
-func ParseMnemonicManifestFile(path string) (*MnemonicManifest, error) {
+func ParseMnemonicManifestFromFile(path string) (*Manifest, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read mnemonic.toml: %w", err)
@@ -184,12 +183,17 @@ func ParseMnemonicManifestFile(path string) (*MnemonicManifest, error) {
 	return ParseMnemonicManifest(data)
 }
 
+// ParseMnemonicManifestFile reads and parses a mnemonic.toml file from disk.
+func ParseMnemonicManifestFile(path string) (*Manifest, error) {
+	return ParseMnemonicManifestFromFile(path)
+}
+
 // ParseMnemonicManifest parses mnemonic.toml.
-func ParseMnemonicManifest(data []byte) (*MnemonicManifest, error) {
-	raw := mnemonicManifestTOML{
+func ParseMnemonicManifest(data []byte) (*Manifest, error) {
+	raw := manifestTOML{
 		Version:   1,
-		Layout:    MnemonicManifestLayout{NotesGlob: []string{"**/*.md"}, Ignore: []string{"mnemonic.toml", ".trash/**"}},
-		Generator: MnemonicGenerator{},
+		Layout:    ManifestLayout{NotesGlob: []string{"**/*.md"}, Ignore: []string{"mnemonic.toml", ".trash/**"}},
+		Generator: Generator{},
 	}
 
 	dec := toml.NewDecoder(bytes.NewReader(data))
@@ -198,7 +202,7 @@ func ParseMnemonicManifest(data []byte) (*MnemonicManifest, error) {
 		return nil, fmt.Errorf("mnemonic.toml syntax error: %w", err)
 	}
 
-	result := &MnemonicManifest{
+	result := &Manifest{
 		Version:               raw.Version,
 		ProjectID:             raw.ProjectID,
 		Name:                  raw.Name,
@@ -221,17 +225,12 @@ func ParseMnemonicManifest(data []byte) (*MnemonicManifest, error) {
 }
 
 // WriteMnemonicManifest writes a mnemonic.toml file.
-func WriteMnemonicManifest(path string, manifest *MnemonicManifest) error {
+func WriteMnemonicManifest(path string, manifest *Manifest) error {
 	data, err := manifest.MarshalTOML()
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)
-}
-
-// PointerFile is the TOML schema for a local project pointer file.
-type PointerFile struct {
-	ManifestPath string `toml:"manifest_path"`
 }
 
 // ParsePointerFile reads a pointer file from raw TOML data.

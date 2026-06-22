@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
+	manifestfmt "github.com/ilyachch/mnemonic/internal/format/manifest"
 	"github.com/ilyachch/mnemonic/internal/format/markdown"
-	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 	"github.com/stretchr/testify/require"
 )
 
@@ -106,7 +106,7 @@ func newTestService(t *testing.T) (*Service, kb.KnowledgeBase) {
 		IndexPath:    filepath.Join(state, "index.sqlite"),
 	}
 
-	manifest := registry.NewMnemonicManifest()
+	manifest := manifestfmt.NewMnemonicManifest()
 	manifest.ProjectID = k.ID
 	manifest.Name = k.Name
 	manifest.Slug = k.Slug
@@ -114,7 +114,7 @@ func newTestService(t *testing.T) (*Service, kb.KnowledgeBase) {
 	manifest.CreatedAt = time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC)
 	manifest.UpdatedAt = manifest.CreatedAt
 	manifest.Generator.App = "mnemonic"
-	require.NoError(t, registry.WriteMnemonicManifest(k.ManifestPath, manifest))
+	require.NoError(t, manifestfmt.WriteMnemonicManifest(k.ManifestPath, manifest))
 
 	require.NoError(t, writeNote(root, markdown.Note{
 		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440001",

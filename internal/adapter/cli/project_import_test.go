@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	registry "github.com/ilyachch/mnemonic/internal/store/registry"
+	manifestfmt "github.com/ilyachch/mnemonic/internal/format/manifest"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -119,7 +119,7 @@ func seedImportProject(t *testing.T) (string, string) {
 	importRoot := filepath.Join(cwd, "repo")
 	require.NoError(t, os.MkdirAll(importRoot, 0o755))
 
-	manifest := registry.NewMnemonicManifest()
+	manifest := manifestfmt.NewMnemonicManifest()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
 	manifest.Name = "Backend"
 	manifest.Slug = "backend"
@@ -127,7 +127,7 @@ func seedImportProject(t *testing.T) (string, string) {
 	manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
 	manifest.UpdatedAt = manifest.CreatedAt
 	manifest.Generator.App = "mnemonic"
-	require.NoError(t, registry.WriteMnemonicManifest(filepath.Join(importRoot, "mnemonic.toml"), manifest))
+	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(importRoot, "mnemonic.toml"), manifest))
 
 	return cwd, importRoot
 }

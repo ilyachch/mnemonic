@@ -11,6 +11,7 @@ import (
 	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
 	"github.com/ilyachch/mnemonic/internal/domain/slug"
+	manifestfmt "github.com/ilyachch/mnemonic/internal/format/manifest"
 	"github.com/ilyachch/mnemonic/internal/platform/clock"
 	"github.com/ilyachch/mnemonic/internal/platform/idgen"
 	"github.com/ilyachch/mnemonic/internal/platform/paths"
@@ -354,7 +355,7 @@ func (s Service) knowledgeBaseFromEntry(entry registry.Entry) (kb.KnowledgeBase,
 			if err != nil {
 				return kb.KnowledgeBase{}, fmt.Errorf("read pointer file: %w", err)
 			}
-			manifestPath, err := registry.ParsePointerFile(data)
+			manifestPath, err := manifestfmt.ParsePointerFile(data)
 			if err != nil {
 				return kb.KnowledgeBase{}, err
 			}
@@ -379,7 +380,7 @@ func (s Service) knowledgeBaseFromEntry(entry registry.Entry) (kb.KnowledgeBase,
 	}
 
 	if resolved.ManifestPath != "" && (resolved.ProjectID == "" || resolved.Name == "" || resolved.Slug == "") {
-		manifest, err := registry.ParseMnemonicManifestFromFile(resolved.ManifestPath)
+		manifest, err := manifestfmt.ParseMnemonicManifestFromFile(resolved.ManifestPath)
 		if err != nil {
 			return kb.KnowledgeBase{}, err
 		}
@@ -502,7 +503,7 @@ func InitProject(input InitProjectInput) error {
 			return fmt.Errorf("stat central manifest: %w", err)
 		}
 
-		manifest := registry.NewMnemonicManifest()
+		manifest := manifestfmt.NewMnemonicManifest()
 		manifest.ProjectID = projectID
 		manifest.Name = input.Name
 		manifest.Slug = slugValue
@@ -512,7 +513,7 @@ func InitProject(input InitProjectInput) error {
 		manifest.UpdatedAt = now
 		manifest.Generator.App = "mnemonic"
 
-		return registry.WriteMnemonicManifest(manifestPath, manifest)
+		return manifestfmt.WriteMnemonicManifest(manifestPath, manifest)
 	case InitModeLocal:
 		exists, err := registry.Exists(input.MemoriesHome, slugValue)
 		if err != nil {
@@ -528,23 +529,23 @@ func InitProject(input InitProjectInput) error {
 		}
 
 		localManifestPath := filepath.Join(memoriesPath, "mnemonic.toml")
-		manifest := registry.NewMnemonicManifest()
+		manifest := manifestfmt.NewMnemonicManifest()
 		manifest.ProjectID = projectID
 		manifest.Name = input.Name
 		manifest.Slug = slugValue
-		manifest.Type = registry.ManifestTypeLocal
+		manifest.Type = manifestfmt.ManifestTypeLocal
 		manifest.MarkdownFormatVersion = 1
 		manifest.Description = input.Description
 		manifest.CreatedAt = now
 		manifest.UpdatedAt = now
 		manifest.Generator.App = "mnemonic"
 
-		if err := registry.WriteMnemonicManifest(localManifestPath, manifest); err != nil {
+		if err := manifestfmt.WriteMnemonicManifest(localManifestPath, manifest); err != nil {
 			return err
 		}
 
 		pointerPath := filepath.Join(input.MemoriesHome, slugValue+".toml")
-		return registry.WritePointerFile(pointerPath, &registry.PointerFile{ManifestPath: localManifestPath})
+		return manifestfmt.WritePointerFile(pointerPath, &manifestfmt.PointerFile{ManifestPath: localManifestPath})
 	default:
 		return fmt.Errorf("unknown init mode %q", input.Mode)
 	}
@@ -564,7 +565,7 @@ func importProject(input ImportInput, memoriesHome string) (ImportResult, error)
 		return ImportResult{}, fmt.Errorf("stat mnemonic.toml: %w", err)
 	}
 
-	manifest, err := registry.ParseMnemonicManifestFile(manifestPath)
+	manifest, err := manifestfmt.ParseMnemonicManifestFile(manifestPath)
 	if err != nil {
 		return ImportResult{}, err
 	}
@@ -603,7 +604,7 @@ func importProject(input ImportInput, memoriesHome string) (ImportResult, error)
 		return ImportResult{}, fmt.Errorf("create pointer directory: %w", err)
 	}
 
-	if err := registry.WritePointerFile(pointerPath, &registry.PointerFile{ManifestPath: manifestPath}); err != nil {
+	if err := manifestfmt.WritePointerFile(pointerPath, &manifestfmt.PointerFile{ManifestPath: manifestPath}); err != nil {
 		return ImportResult{}, err
 	}
 
@@ -629,7 +630,7 @@ func resolveImportPath(input ImportInput) (string, error) {
 	return absPath, nil
 }
 
-func kindFromManifest(manifest *registry.MnemonicManifest) string {
+func kindFromManifest(manifest *manifestfmt.Manifest) string {
 	if manifest != nil && manifest.IsLocal() {
 		return "local"
 	}

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	manifestfmt "github.com/ilyachch/mnemonic/internal/format/manifest"
 	clockpkg "github.com/ilyachch/mnemonic/internal/platform/clock"
-	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -100,9 +100,9 @@ func TestProjectInitCommandCentralCreatesCentralProject(t *testing.T) {
 
 	manifestData, err := os.ReadFile(manifestPath)
 	require.NoError(t, err)
-	parsedManifest, err := registry.ParseMnemonicManifest(manifestData)
+	parsedManifest, err := manifestfmt.ParseMnemonicManifest(manifestData)
 	require.NoError(t, err)
-	require.Equal(t, registry.ManifestType(""), parsedManifest.Type)
+	require.Equal(t, manifestfmt.ManifestType(""), parsedManifest.Type)
 
 	indexPath := testIndexPath(cwd, parsedManifest.ProjectID)
 	_, err = os.Stat(indexPath)
@@ -173,7 +173,7 @@ func TestProjectInitCommandCentralWithDescription(t *testing.T) {
 	manifestPath := filepath.Join(memoriesHome, "backend", "mnemonic.toml")
 	manifestData, err := os.ReadFile(manifestPath)
 	require.NoError(t, err)
-	parsedManifest, err := registry.ParseMnemonicManifest(manifestData)
+	parsedManifest, err := manifestfmt.ParseMnemonicManifest(manifestData)
 	require.NoError(t, err)
 	require.Equal(t, desc, parsedManifest.Description)
 }

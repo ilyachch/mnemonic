@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
+	manifest "github.com/ilyachch/mnemonic/internal/format/manifest"
 	"github.com/ilyachch/mnemonic/internal/format/markdown"
 	"github.com/ilyachch/mnemonic/internal/store/markdownstore"
-	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 	"github.com/ilyachch/mnemonic/internal/store/sqliteindex"
 )
 
@@ -157,7 +157,7 @@ func doctorParseCheck(name, path string) DoctorCheck {
 	if err != nil {
 		return DoctorCheck{Name: name, Status: "missing", Detail: err.Error()}
 	}
-	if _, err := registry.ParseMnemonicManifest(data); err != nil {
+	if _, err := manifest.ParseMnemonicManifest(data); err != nil {
 		return DoctorCheck{Name: name, Status: "error", Detail: err.Error()}
 	}
 	return DoctorCheck{Name: name, Status: "ok"}

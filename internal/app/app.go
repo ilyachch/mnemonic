@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
+	manifest "github.com/ilyachch/mnemonic/internal/format/manifest"
 	"github.com/ilyachch/mnemonic/internal/platform/config"
 	"github.com/ilyachch/mnemonic/internal/platform/paths"
 	"github.com/ilyachch/mnemonic/internal/service/catalogsvc"
@@ -50,18 +51,10 @@ func New(input Input) (*Bootstrap, error) {
 		return nil, err
 	}
 
-	registryStore := registry.New(effective.MemoriesHome, func(path string) (registry.ManifestData, error) {
-		m, err := registry.ParseMnemonicManifestFromFile(path)
-		if err != nil {
-			return registry.ManifestData{}, err
-		}
-		return m, nil
-	}, func(data []byte) (string, error) {
-		pf, err := registry.ParsePointerFile(data)
-		if err != nil {
-			return "", err
-		}
-		return pf.ManifestPath, nil
+	registryStore := registry.New(effective.MemoriesHome, func(path string) (*manifest.Manifest, error) {
+		return manifest.ParseMnemonicManifestFromFile(path)
+	}, func(data []byte) (*manifest.PointerFile, error) {
+		return manifest.ParsePointerFile(data)
 	})
 
 	catalog := &catalogsvc.Service{

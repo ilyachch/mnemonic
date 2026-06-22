@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
+	manifestfmt "github.com/ilyachch/mnemonic/internal/format/manifest"
 	"github.com/ilyachch/mnemonic/internal/service/catalogsvc"
 	"github.com/ilyachch/mnemonic/internal/service/indexsvc"
 	registry "github.com/ilyachch/mnemonic/internal/store/registry"
@@ -199,27 +200,10 @@ func testCatalogParsers(t *testing.T) {
 }
 
 func testCatalogStore(memoriesHome string) registry.Store {
-	return registry.New(memoriesHome, func(path string) (registry.ManifestData, error) {
-		manifest, err := registry.ParseMnemonicManifestFromFile(path)
-		if err != nil {
-			return registry.ManifestData{}, err
-		}
-		kind := "central"
-		if manifest.Type == string(registry.ManifestTypeLocal) {
-			kind = "local"
-		}
-		return registry.ManifestData{
-			ProjectID: manifest.ProjectID,
-			Name:      manifest.Name,
-			Slug:      manifest.Slug,
-			Type:      kind,
-		}, nil
-	}, func(data []byte) (string, error) {
-		pointer, err := registry.ParsePointerFile(data)
-		if err != nil {
-			return "", err
-		}
-		return pointer.ManifestPath, nil
+	return registry.New(memoriesHome, func(path string) (*manifestfmt.Manifest, error) {
+		return manifestfmt.ParseMnemonicManifestFromFile(path)
+	}, func(data []byte) (*manifestfmt.PointerFile, error) {
+		return manifestfmt.ParsePointerFile(data)
 	})
 }
 
@@ -229,7 +213,7 @@ func createMaintProject(t *testing.T, memoriesHome, slug, projectID string) proj
 	projectDir := filepath.Join(memoriesHome, slug)
 	require.NoError(t, os.MkdirAll(projectDir, 0o755))
 
-	manifest := registry.NewMnemonicManifest()
+	manifest := manifestfmt.NewMnemonicManifest()
 	manifest.ProjectID = projectID
 	manifest.Name = slug
 	manifest.Slug = slug
@@ -237,7 +221,7 @@ func createMaintProject(t *testing.T, memoriesHome, slug, projectID string) proj
 	manifest.CreatedAt = time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC)
 	manifest.UpdatedAt = manifest.CreatedAt
 	manifest.Generator.App = "mnemonic"
-	require.NoError(t, registry.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))
+	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))
 
 	return projectSpec{id: projectID, slug: slug}
 }

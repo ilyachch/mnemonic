@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/app"
+	manifestfmt "github.com/ilyachch/mnemonic/internal/format/manifest"
 	"github.com/ilyachch/mnemonic/internal/platform/paths"
-	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -101,7 +101,7 @@ func writeCentralProjectFixture(t *testing.T, memoriesHome, slug, projectID stri
 		t.Fatal(err)
 	}
 
-	manifest := registry.NewMnemonicManifest()
+	manifest := manifestfmt.NewMnemonicManifest()
 	manifest.ProjectID = projectID
 	manifest.Name = slug
 	manifest.Slug = slug
@@ -110,7 +110,7 @@ func writeCentralProjectFixture(t *testing.T, memoriesHome, slug, projectID stri
 	manifest.UpdatedAt = createdAt
 	manifest.Generator.App = "mnemonic"
 
-	if err := registry.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest); err != nil {
+	if err := manifestfmt.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest); err != nil {
 		t.Fatal(err)
 	}
 
@@ -129,17 +129,17 @@ func writeLocalProjectFixture(t *testing.T, cwd, slug string) error {
 
 	projectID := "550e8400-e29b-41d4-a716-446655440000"
 
-	manifest := registry.NewMnemonicManifest()
+	manifest := manifestfmt.NewMnemonicManifest()
 	manifest.ProjectID = projectID
 	manifest.Name = slug
 	manifest.Slug = slug
-	manifest.Type = registry.ManifestTypeLocal
+	manifest.Type = manifestfmt.ManifestTypeLocal
 	manifest.MarkdownFormatVersion = 1
 	manifest.CreatedAt = now
 	manifest.UpdatedAt = now
 	manifest.Generator.App = "mnemonic"
 
-	if err := registry.WriteMnemonicManifest(filepath.Join(memoriesDir, "mnemonic.toml"), manifest); err != nil {
+	if err := manifestfmt.WriteMnemonicManifest(filepath.Join(memoriesDir, "mnemonic.toml"), manifest); err != nil {
 		return err
 	}
 
@@ -152,7 +152,7 @@ func writeLocalProjectFixture(t *testing.T, cwd, slug string) error {
 	if err := os.MkdirAll(filepath.Dir(pointerPath), 0o755); err != nil {
 		return err
 	}
-	return registry.WritePointerFile(pointerPath, &registry.PointerFile{
+	return manifestfmt.WritePointerFile(pointerPath, &manifestfmt.PointerFile{
 		ManifestPath: filepath.Join(memoriesDir, "mnemonic.toml"),
 	})
 }
