@@ -11,7 +11,7 @@ import (
 	"github.com/ilyachch/mnemonic/internal/markdown"
 	"github.com/ilyachch/mnemonic/internal/paths"
 	"github.com/ilyachch/mnemonic/internal/project"
-	"github.com/ilyachch/mnemonic/internal/registry"
+	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 )
 
 // ResolvedNote contains the matched note and its relative path.

@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ilyachch/mnemonic/internal/registry"
+	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 )
 
 // InitMode identifies the supported init flows.

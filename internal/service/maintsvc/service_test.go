@@ -10,9 +10,9 @@ import (
 
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
 	"github.com/ilyachch/mnemonic/internal/project"
-	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/ilyachch/mnemonic/internal/service/catalogsvc"
 	"github.com/ilyachch/mnemonic/internal/service/indexsvc"
+	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,6 +31,7 @@ func TestReindexAllVisitsEveryProject(t *testing.T) {
 		Catalog: &catalogsvc.Service{
 			MemoriesHome: memoriesHome,
 			StateHome:    stateHome,
+			Registry:     testCatalogStore(memoriesHome),
 		},
 		RuntimeFactory: func(ctx context.Context, resolved kb.KnowledgeBase) (Runtime, error) {
 			switch resolved.Slug {
@@ -91,6 +92,7 @@ func TestDoctorAllVisitsEveryProject(t *testing.T) {
 		Catalog: &catalogsvc.Service{
 			MemoriesHome: memoriesHome,
 			StateHome:    stateHome,
+			Registry:     testCatalogStore(memoriesHome),
 		},
 		RuntimeFactory: func(ctx context.Context, resolved kb.KnowledgeBase) (Runtime, error) {
 			switch resolved.Slug {
@@ -154,6 +156,7 @@ func TestCatalogEnumerationFailureReturnsImmediately(t *testing.T) {
 		Catalog: &catalogsvc.Service{
 			MemoriesHome: memoriesHome,
 			StateHome:    t.TempDir(),
+			Registry:     testCatalogStore(memoriesHome),
 		},
 		RuntimeFactory: func(context.Context, kb.KnowledgeBase) (Runtime, error) {
 			t.Fatal("runtime factory should not be called")
@@ -194,9 +197,10 @@ func (s fakeMaintIndexService) Doctor(ctx context.Context) (indexsvc.DoctorOutpu
 func testCatalogParsers(t *testing.T) {
 	t.Helper()
 
-	origManifestParser := registry.DefaultManifestParser
-	origPointerParser := registry.DefaultPointerParser
-	registry.DefaultManifestParser = func(path string) (registry.ManifestData, error) {
+}
+
+func testCatalogStore(memoriesHome string) registry.Store {
+	return registry.New(memoriesHome, func(path string) (registry.ManifestData, error) {
 		manifest, err := project.ParseMnemonicManifestFromFile(path)
 		if err != nil {
 			return registry.ManifestData{}, err
@@ -211,17 +215,12 @@ func testCatalogParsers(t *testing.T) {
 			Slug:      manifest.Slug,
 			Type:      kind,
 		}, nil
-	}
-	registry.DefaultPointerParser = func(data []byte) (string, error) {
+	}, func(data []byte) (string, error) {
 		pointer, err := project.ParsePointerFile(data)
 		if err != nil {
 			return "", err
 		}
 		return pointer.ManifestPath, nil
-	}
-	t.Cleanup(func() {
-		registry.DefaultManifestParser = origManifestParser
-		registry.DefaultPointerParser = origPointerParser
 	})
 }
 

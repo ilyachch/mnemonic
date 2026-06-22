@@ -9,7 +9,7 @@ import (
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
-	"github.com/ilyachch/mnemonic/internal/registry"
+	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -75,7 +75,7 @@ func TestFileResolverResolve(t *testing.T) {
 	testutil.CleanEnvForTest(t)
 
 	t.Run("missing selector", func(t *testing.T) {
-		resolver := &FileResolver{MemoriesHome: t.TempDir()}
+		resolver := &FileResolver{Registry: registry.New(t.TempDir(), nil, nil)}
 
 		resolution, err := resolver.Resolve(ProjectResolveInput{})
 		require.Error(t, err)
@@ -84,7 +84,7 @@ func TestFileResolverResolve(t *testing.T) {
 	})
 
 	t.Run("not found", func(t *testing.T) {
-		resolver := &FileResolver{MemoriesHome: t.TempDir()}
+		resolver := &FileResolver{Registry: registry.New(t.TempDir(), nil, nil)}
 
 		_, err := resolver.Resolve(ProjectResolveInput{ProjectSelector: "missing"})
 		require.Error(t, err)
@@ -99,16 +99,7 @@ func TestFileResolverResolve(t *testing.T) {
 		require.NoError(t, os.MkdirAll(projectDir, 0o755))
 		require.NoError(t, os.WriteFile(filepath.Join(projectDir, "mnemonic.toml"), []byte("project_id = \"550e8400-e29b-41d4-a716-446655440000\"\nname = \"demo\"\nslug = \"demo\"\n"), 0o644))
 
-		origManifestParser := registry.DefaultManifestParser
-		origPointerParser := registry.DefaultPointerParser
-		registry.DefaultManifestParser = nil
-		registry.DefaultPointerParser = nil
-		t.Cleanup(func() {
-			registry.DefaultManifestParser = origManifestParser
-			registry.DefaultPointerParser = origPointerParser
-		})
-
-		resolver := &FileResolver{MemoriesHome: memoriesHome}
+		resolver := &FileResolver{Registry: registry.New(memoriesHome, nil, nil)}
 		resolution, err := resolver.Resolve(ProjectResolveInput{ProjectSelector: slug})
 		require.NoError(t, err)
 		require.Equal(t, projectDir, resolution.RepoRootAbs)

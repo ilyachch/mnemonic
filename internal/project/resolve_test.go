@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -65,15 +64,6 @@ func TestResolveProjectCentralManifestFallback(t *testing.T) {
 	manifest.UpdatedAt = NowUTC()
 	require.NoError(t, WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))
 
-	origManifestParser := registry.DefaultManifestParser
-	origPointerParser := registry.DefaultPointerParser
-	registry.DefaultManifestParser = nil
-	registry.DefaultPointerParser = nil
-	t.Cleanup(func() {
-		registry.DefaultManifestParser = origManifestParser
-		registry.DefaultPointerParser = origPointerParser
-	})
-
 	projectID, err := ResolveProject(memoriesHome, slug)
 	require.NoError(t, err)
 	require.Equal(t, manifest.ProjectID, projectID)
@@ -97,15 +87,6 @@ func TestResolveProjectLocalPointerFallback(t *testing.T) {
 	manifest.UpdatedAt = NowUTC()
 	require.NoError(t, WriteMnemonicManifest(manifestPath, manifest))
 	require.NoError(t, WritePointerFile(filepath.Join(memoriesHome, slug+".toml"), &PointerFile{ManifestPath: manifestPath}))
-
-	origManifestParser := registry.DefaultManifestParser
-	origPointerParser := registry.DefaultPointerParser
-	registry.DefaultManifestParser = nil
-	registry.DefaultPointerParser = nil
-	t.Cleanup(func() {
-		registry.DefaultManifestParser = origManifestParser
-		registry.DefaultPointerParser = origPointerParser
-	})
 
 	projectID, err := ResolveProject(memoriesHome, slug)
 	require.NoError(t, err)

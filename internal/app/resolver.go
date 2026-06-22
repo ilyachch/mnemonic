@@ -6,12 +6,12 @@ import (
 	"strings"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
-	"github.com/ilyachch/mnemonic/internal/registry"
+	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 )
 
 // FileResolver implements ProjectResolver by scanning the file-based registry.
 type FileResolver struct {
-	MemoriesHome string
+	Registry registry.Store
 }
 
 // Resolve finds a project by slug using the file-based registry.
@@ -25,7 +25,7 @@ func (r *FileResolver) Resolve(input ProjectResolveInput) (ProjectResolution, er
 		return ProjectResolution{}, NewNoProjectSelectedError()
 	}
 
-	entry, err := registry.Resolve(r.MemoriesHome, selector)
+	entry, err := r.Registry.Resolve(selector)
 	if err != nil {
 		return ProjectResolution{}, wrapRegistryError(err)
 	}

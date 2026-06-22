@@ -7,9 +7,9 @@ import (
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
 	"github.com/ilyachch/mnemonic/internal/paths"
 	"github.com/ilyachch/mnemonic/internal/project"
-	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/ilyachch/mnemonic/internal/service/catalogsvc"
 	"github.com/ilyachch/mnemonic/internal/service/maintsvc"
+	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 )
 
 // Input configures app container creation.
@@ -51,12 +51,33 @@ func New(input Input) (*Bootstrap, error) {
 		return nil, err
 	}
 
-	// Wire the registry parsers using the project package.
-	wireRegistryParsers()
+	registryStore := registry.New(effective.MemoriesHome, func(path string) (registry.ManifestData, error) {
+		m, err := project.ParseMnemonicManifestFromFile(path)
+		if err != nil {
+			return registry.ManifestData{}, err
+		}
+		typ := "central"
+		if m.IsLocal() {
+			typ = "local"
+		}
+		return registry.ManifestData{
+			ProjectID: m.ProjectID,
+			Name:      m.Name,
+			Slug:      m.Slug,
+			Type:      typ,
+		}, nil
+	}, func(data []byte) (string, error) {
+		pf, err := project.ParsePointerFile(data)
+		if err != nil {
+			return "", err
+		}
+		return pf.ManifestPath, nil
+	})
 
 	catalog := &catalogsvc.Service{
 		MemoriesHome: effective.MemoriesHome,
 		StateHome:    effective.StateHome,
+		Registry:     registryStore,
 	}
 
 	return &Bootstrap{
@@ -72,7 +93,7 @@ func New(input Input) (*Bootstrap, error) {
 				},
 			},
 			ProjectResolver: &FileResolver{
-				MemoriesHome: effective.MemoriesHome,
+				Registry: registryStore,
 			},
 		},
 	}, nil
@@ -81,31 +102,4 @@ func New(input Input) (*Bootstrap, error) {
 // Close shuts down app-owned resources.
 func (b *Bootstrap) Close() error {
 	return nil
-}
-
-func wireRegistryParsers() {
-	registry.DefaultManifestParser = func(path string) (registry.ManifestData, error) {
-		m, err := project.ParseMnemonicManifestFromFile(path)
-		if err != nil {
-			return registry.ManifestData{}, err
-		}
-		typ := "central"
-		if m.IsLocal() {
-			typ = "local"
-		}
-		return registry.ManifestData{
-			ProjectID: m.ProjectID,
-			Name:      m.Name,
-			Slug:      m.Slug,
-			Type:      typ,
-		}, nil
-	}
-
-	registry.DefaultPointerParser = func(data []byte) (string, error) {
-		pf, err := project.ParsePointerFile(data)
-		if err != nil {
-			return "", err
-		}
-		return pf.ManifestPath, nil
-	}
 }

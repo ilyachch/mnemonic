@@ -42,24 +42,34 @@ type ManifestParser func(path string) (ManifestData, error)
 // PointerParser parses a pointer file from raw data.
 type PointerParser func(data []byte) (string, error) // returns manifest_path
 
-// DefaultManifestParser parses a mnemonic.toml file using a basic TOML reader.
-// Callers should replace this with their actual manifest parser.
-var DefaultManifestParser ManifestParser
-var DefaultPointerParser PointerParser
+// Store owns file-based registry access for one memories home.
+type Store struct {
+	MemoriesHome   string
+	ManifestParser ManifestParser
+	PointerParser  PointerParser
+}
+
+// New returns a registry store configured for the given memories home.
+func New(memoriesHome string, manifestParser ManifestParser, pointerParser PointerParser) Store {
+	return Store{
+		MemoriesHome:   memoriesHome,
+		ManifestParser: manifestParser,
+		PointerParser:  pointerParser,
+	}
+}
 
 // Scan reads all projects from the memories home directory.
-// Callers must set DefaultManifestParser and DefaultPointerParser before calling.
-func Scan(memoriesHome string) ([]Entry, []Issue, error) {
-	if memoriesHome == "" {
+func (s Store) Scan() ([]Entry, []Issue, error) {
+	if s.MemoriesHome == "" {
 		return nil, nil, fmt.Errorf("memories home is required")
 	}
 
-	entries, err := os.ReadDir(memoriesHome)
+	entries, err := os.ReadDir(s.MemoriesHome)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil, nil
 		}
-		return nil, nil, fmt.Errorf("read memories home %q: %w", memoriesHome, err)
+		return nil, nil, fmt.Errorf("read memories home %q: %w", s.MemoriesHome, err)
 	}
 
 	var results []Entry
@@ -69,16 +79,15 @@ func Scan(memoriesHome string) ([]Entry, []Issue, error) {
 		name := entry.Name()
 
 		if entry.IsDir() {
-			// Central project: directory with mnemonic.toml
 			slug := name
-			manifestPath := filepath.Join(memoriesHome, slug, "mnemonic.toml")
-			memoriesAbs := filepath.Join(memoriesHome, slug)
+			manifestPath := filepath.Join(s.MemoriesHome, slug, "mnemonic.toml")
+			memoriesAbs := filepath.Join(s.MemoriesHome, slug)
 
 			if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
 				continue
 			}
 
-			if DefaultManifestParser == nil {
+			if s.ManifestParser == nil {
 				results = append(results, Entry{
 					Slug:         slug,
 					Type:         "central",
@@ -89,7 +98,7 @@ func Scan(memoriesHome string) ([]Entry, []Issue, error) {
 				continue
 			}
 
-			manifest, err := DefaultManifestParser(manifestPath)
+			manifest, err := s.ManifestParser(manifestPath)
 			if err != nil {
 				issues = append(issues, Issue{
 					Slug:    slug,
@@ -130,9 +139,9 @@ func Scan(memoriesHome string) ([]Entry, []Issue, error) {
 
 		if strings.HasSuffix(name, ".toml") {
 			slug := strings.TrimSuffix(name, ".toml")
-			pointerPath := filepath.Join(memoriesHome, name)
+			pointerPath := filepath.Join(s.MemoriesHome, name)
 
-			if DefaultPointerParser == nil {
+			if s.PointerParser == nil {
 				results = append(results, Entry{
 					Slug: slug,
 					Type: "local",
@@ -151,7 +160,7 @@ func Scan(memoriesHome string) ([]Entry, []Issue, error) {
 				continue
 			}
 
-			manifestPath, err := DefaultPointerParser(data)
+			manifestPath, err := s.PointerParser(data)
 			if err != nil {
 				issues = append(issues, Issue{
 					Slug:    slug,
@@ -162,7 +171,7 @@ func Scan(memoriesHome string) ([]Entry, []Issue, error) {
 				continue
 			}
 
-			if DefaultManifestParser == nil {
+			if s.ManifestParser == nil {
 				results = append(results, Entry{
 					Slug:         slug,
 					Type:         "local",
@@ -171,7 +180,7 @@ func Scan(memoriesHome string) ([]Entry, []Issue, error) {
 				continue
 			}
 
-			manifest, err := DefaultManifestParser(manifestPath)
+			manifest, err := s.ManifestParser(manifestPath)
 			if err != nil {
 				issues = append(issues, Issue{
 					Slug:   slug,
@@ -223,8 +232,8 @@ type Issue struct {
 }
 
 // Resolve finds a single project by slug in the memories home.
-func Resolve(memoriesHome, slug string) (Entry, error) {
-	entries, issues, err := Scan(memoriesHome)
+func (s Store) Resolve(slug string) (Entry, error) {
+	entries, issues, err := s.Scan()
 	if err != nil {
 		return Entry{}, err
 	}
@@ -245,8 +254,8 @@ func Resolve(memoriesHome, slug string) (Entry, error) {
 }
 
 // FindByMemoriesRoot finds a project whose memories directory matches the given absolute path.
-func FindByMemoriesRoot(memoriesHome, absRoot string) (Entry, bool, error) {
-	entries, _, err := Scan(memoriesHome)
+func (s Store) FindByMemoriesRoot(absRoot string) (Entry, bool, error) {
+	entries, _, err := s.Scan()
 	if err != nil {
 		return Entry{}, false, err
 	}
@@ -261,9 +270,9 @@ func FindByMemoriesRoot(memoriesHome, absRoot string) (Entry, bool, error) {
 }
 
 // Exists checks whether a slug already has a directory or pointer file.
-func Exists(memoriesHome, slug string) (bool, error) {
-	dirPath := filepath.Join(memoriesHome, slug)
-	pointerPath := filepath.Join(memoriesHome, slug+".toml")
+func (s Store) Exists(slug string) (bool, error) {
+	dirPath := filepath.Join(s.MemoriesHome, slug)
+	pointerPath := filepath.Join(s.MemoriesHome, slug+".toml")
 
 	for _, p := range []string{dirPath, pointerPath} {
 		if _, err := os.Stat(p); err == nil {
@@ -277,8 +286,8 @@ func Exists(memoriesHome, slug string) (bool, error) {
 }
 
 // Slugs returns the list of active project slugs in the registry.
-func Slugs(memoriesHome string) ([]string, error) {
-	entries, _, err := Scan(memoriesHome)
+func (s Store) Slugs() ([]string, error) {
+	entries, _, err := s.Scan()
 	if err != nil {
 		return nil, err
 	}
@@ -288,4 +297,29 @@ func Slugs(memoriesHome string) ([]string, error) {
 		slugs = append(slugs, e.Slug)
 	}
 	return slugs, nil
+}
+
+// Scan reads all projects using a zero-value store.
+func Scan(memoriesHome string) ([]Entry, []Issue, error) {
+	return New(memoriesHome, nil, nil).Scan()
+}
+
+// Resolve finds a single project using a zero-value store.
+func Resolve(memoriesHome, slug string) (Entry, error) {
+	return New(memoriesHome, nil, nil).Resolve(slug)
+}
+
+// FindByMemoriesRoot finds a project using a zero-value store.
+func FindByMemoriesRoot(memoriesHome, absRoot string) (Entry, bool, error) {
+	return New(memoriesHome, nil, nil).FindByMemoriesRoot(absRoot)
+}
+
+// Exists checks whether a slug already has a directory or pointer file.
+func Exists(memoriesHome, slug string) (bool, error) {
+	return New(memoriesHome, nil, nil).Exists(slug)
+}
+
+// Slugs returns the list of active project slugs in the registry.
+func Slugs(memoriesHome string) ([]string, error) {
+	return New(memoriesHome, nil, nil).Slugs()
 }

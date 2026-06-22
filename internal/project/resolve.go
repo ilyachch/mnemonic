@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/ilyachch/mnemonic/internal/paths"
-	"github.com/ilyachch/mnemonic/internal/registry"
+	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 )
 
 // EnvironmentProjectSelector is the environment variable used to provide an

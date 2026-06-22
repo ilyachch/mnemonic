@@ -11,14 +11,15 @@ import (
 	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
 	"github.com/ilyachch/mnemonic/internal/project"
-	"github.com/ilyachch/mnemonic/internal/registry"
 	"github.com/ilyachch/mnemonic/internal/service/indexsvc"
+	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 )
 
 // Service owns catalog-level project operations.
 type Service struct {
 	MemoriesHome string
 	StateHome    string
+	Registry     registry.Store
 }
 
 // ListResult mirrors the project list payload.
@@ -96,7 +97,7 @@ func (s Service) Resolve(selector string) (kb.KnowledgeBase, error) {
 		return kb.KnowledgeBase{}, apperr.CLIUsage("no project selected; specify --project or set MNEMONIC_PROJECT", nil)
 	}
 
-	entry, err := registry.Resolve(s.MemoriesHome, selector)
+	entry, err := s.registryStore().Resolve(selector)
 	if err != nil {
 		return kb.KnowledgeBase{}, wrapRegistryError(err)
 	}
@@ -111,7 +112,7 @@ func (s Service) Resolve(selector string) (kb.KnowledgeBase, error) {
 
 // List returns the registered projects with state paths and issue status.
 func (s Service) List() (ListResult, error) {
-	entries, issues, err := registry.Scan(s.MemoriesHome)
+	entries, issues, err := s.registryStore().Scan()
 	if err != nil {
 		return ListResult{}, fmt.Errorf("scan registry: %w", err)
 	}
@@ -293,7 +294,7 @@ func (s Service) Remove(selector string, wipe bool) (RemoveResult, error) {
 
 // Slugs returns the active project slugs.
 func (s Service) Slugs() ([]string, error) {
-	return registry.Slugs(s.MemoriesHome)
+	return s.registryStore().Slugs()
 }
 
 func (s Service) knowledgeBaseFromEntry(entry registry.Entry) (kb.KnowledgeBase, error) {
@@ -409,6 +410,14 @@ func wrapRegistryError(err error) error {
 	}
 
 	return err
+}
+
+func (s Service) registryStore() registry.Store {
+	store := s.Registry
+	if store.MemoriesHome == "" {
+		store.MemoriesHome = s.MemoriesHome
+	}
+	return store
 }
 
 func wrapInitError(err error) error {

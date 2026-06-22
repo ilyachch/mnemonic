@@ -8,7 +8,7 @@ import (
 
 	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/project"
-	"github.com/ilyachch/mnemonic/internal/registry"
+	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -206,7 +206,30 @@ func listRegistryProjects(t *testing.T) []registryProjectRow {
 	boot, err := newTestBootstrap()
 	require.NoError(t, err)
 
-	entries, _, err := registry.Scan(boot.Paths.MemoriesHome)
+	store := registry.New(boot.Paths.MemoriesHome, func(path string) (registry.ManifestData, error) {
+		manifest, err := project.ParseMnemonicManifestFromFile(path)
+		if err != nil {
+			return registry.ManifestData{}, err
+		}
+		kind := "central"
+		if manifest.IsLocal() {
+			kind = "local"
+		}
+		return registry.ManifestData{
+			ProjectID: manifest.ProjectID,
+			Name:      manifest.Name,
+			Slug:      manifest.Slug,
+			Type:      kind,
+		}, nil
+	}, func(data []byte) (string, error) {
+		pointer, err := project.ParsePointerFile(data)
+		if err != nil {
+			return "", err
+		}
+		return pointer.ManifestPath, nil
+	})
+
+	entries, _, err := store.Scan()
 	require.NoError(t, err)
 
 	var out []registryProjectRow
