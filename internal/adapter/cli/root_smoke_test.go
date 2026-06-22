@@ -22,6 +22,7 @@ func TestRootCmdWiringSmoke(t *testing.T) {
 	for _, path := range [][]string{
 		{"config", "show"},
 		{"hello"},
+		{"stdio"},
 		{"mcp"},
 		{"notes"},
 		{"notes", "backlinks"},
@@ -67,7 +68,7 @@ func TestRootCmdWiringSmoke(t *testing.T) {
 		{path: []string{"project", "import"}, flagName: "dry-run", defValue: "false"},
 		{path: []string{"project", "remove"}, flagName: "wipe", defValue: "false"},
 		{path: []string{"project", "reindex"}, flagName: "all", defValue: "false"},
-		{path: []string{"mcp"}, flagName: "read-only", defValue: "false"},
+		{path: []string{"stdio"}, flagName: "read-only", defValue: "false"},
 		{path: []string{"web", "serve"}, flagName: "addr", defValue: ""},
 		{path: []string{"web", "serve"}, flagName: "port", defValue: ""},
 	} {

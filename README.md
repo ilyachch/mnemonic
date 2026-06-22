@@ -48,7 +48,7 @@ go install github.com/ilyachch/mnemonic/cmd/mnemonic@latest
 Initialize a local project layout:
 
 ```bash
-mnemonic init my-notes --local
+mnemonic project init my-notes --local
 ```
 
 Create a note:
@@ -91,8 +91,7 @@ Top-level command scopes:
 
 - `completion`: generate shell completion scripts.
 - `config`: inspect effective config.
-- `init`: initialize a project.
-- `mcp`: run legacy MCP stdio adapter.
+- `stdio`: run the MCP stdio adapter. A hidden `mcp` alias remains for compatibility.
 - `notes`: note operations.
 - `project`: project operations.
 - `tags`: tag listing.
@@ -106,7 +105,7 @@ Administrative management for the HTTP Server-Sent Events architecture.
 #### `web serve`
 
 ```bash
-mnemonic web serve --project PROJECT [--port 8080]
+mnemonic --project PROJECT web serve [--port 8080]
 ```
 
 Launches the HTTP web listener for one resolved project. The server uses the normal project selector order, exposes only `/sse` and `/messages`, and authenticates with `MNEMONIC_PROJECT_TOKEN` when configured.
@@ -203,7 +202,7 @@ flowchart LR
         direction TB
         CLI("💻 CLI Admin\n(internal/cli)"):::interface
         WEB("🌐 Web Server (HTTP/SSE)\n(internal/web)"):::interface
-        STDIO("🤖 Stdio Adapter\n(Legacy MCP CLI)"):::interface
+STDIO("🤖 Stdio Adapter\n(stdio CLI)"):::interface
     end
 
     %% 2. Core & Server Management

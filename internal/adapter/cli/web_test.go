@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"database/sql"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -11,11 +10,10 @@ import (
 
 	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/apperr"
-	"github.com/ilyachch/mnemonic/internal/index"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
+	"github.com/ilyachch/mnemonic/internal/web"
 	"github.com/stretchr/testify/require"
-	_ "modernc.org/sqlite"
 )
 
 func TestWebHelpShowsOnlyServe(t *testing.T) {
@@ -28,7 +26,7 @@ func TestWebHelpShowsOnlyServe(t *testing.T) {
 	require.NotContains(t, result.Stdout, "perms")
 }
 
-func TestWebServeOpensIndexOnceBeforeListen(t *testing.T) {
+func TestWebServeBuildsRuntimeOnceBeforeListen(t *testing.T) {
 	root := testutil.CleanEnvForTest(t)
 	memoriesHome := filepath.Join(root, ".mnemonic")
 	require.NoError(t, os.MkdirAll(filepath.Join(memoriesHome, "demo"), 0o755))
@@ -43,36 +41,46 @@ func TestWebServeOpensIndexOnceBeforeListen(t *testing.T) {
 	manifest.Generator.App = "mnemonic"
 	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(memoriesHome, "demo", "mnemonic.toml"), manifest))
 	require.NoError(t, os.WriteFile(filepath.Join(memoriesHome, "demo", "demo.md"), []byte("# Demo\n"), 0o644))
-	_, err := index.RebuildProjectIndex(manifest.ProjectID, filepath.Join(memoriesHome, "demo"))
-	require.NoError(t, err)
 
 	t.Setenv("MNEMONIC_MEMORIES_HOME", memoriesHome)
 	t.Setenv("MNEMONIC_PROJECT", "demo")
 	t.Setenv("MNEMONIC_WEB_ADDR", ":9090")
 
+	var capturedRuntime struct {
+		ProjectID    string
+		ProjectToken string
+		ReadOnly     bool
+	}
 	var calls atomic.Int32
 	var sequence []string
-	origOpen := openWebIndexDB
+	origNew := newWebServer
 	origListen := webServeListenAndServe
-	openWebIndexDB = func(resolution app.ProjectResolution) (*sql.DB, error) {
-		sequence = append(sequence, "open")
+	newWebServer = func(runtime *app.RuntimeApp, projectToken string, readOnly bool) (*web.Server, error) {
+		sequence = append(sequence, "build")
 		calls.Add(1)
-		return sql.Open("sqlite", ":memory:")
+		capturedRuntime.ProjectID = runtime.KB.ID
+		capturedRuntime.ProjectToken = projectToken
+		capturedRuntime.ReadOnly = readOnly
+		return &web.Server{}, nil
 	}
 	webServeListenAndServe = func(server *http.Server) error {
 		require.EqualValues(t, 1, calls.Load())
 		sequence = append(sequence, "listen")
+		require.Equal(t, ":9090", server.Addr)
+		require.NotNil(t, server.Handler)
 		return http.ErrServerClosed
 	}
 	t.Cleanup(func() {
-		openWebIndexDB = origOpen
+		newWebServer = origNew
 		webServeListenAndServe = origListen
 	})
 
 	result := executeCommand("web", "serve")
 	require.NoError(t, result.Err)
 	require.EqualValues(t, 1, calls.Load())
-	require.Equal(t, []string{"open", "listen"}, sequence)
+	require.Equal(t, []string{"build", "listen"}, sequence)
+	require.Equal(t, manifest.ProjectID, capturedRuntime.ProjectID)
+	require.False(t, capturedRuntime.ReadOnly)
 }
 
 func TestWebServeRejectsMissingProjectSelection(t *testing.T) {
@@ -80,7 +88,7 @@ func TestWebServeRejectsMissingProjectSelection(t *testing.T) {
 
 	result := executeCommand("web", "serve")
 	require.Error(t, result.Err)
-	require.Equal(t, int(apperr.CodeNotFound), ExitCodeForError(result.Err))
+	require.Equal(t, int(apperr.CodeCLIUsage), ExitCodeForError(result.Err))
 	require.Contains(t, result.Err.Error(), "no project selected")
 }
 

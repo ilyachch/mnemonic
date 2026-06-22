@@ -33,7 +33,7 @@ The current server registers these tools:
 
 ## Related packages
 
-- `internal/mcp`
+- `internal/adapter/stdio`
 - `internal/project`
 - `internal/notes`
 - `internal/index`

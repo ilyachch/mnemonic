@@ -1,16 +1,14 @@
 package web
 
 import (
-	"database/sql"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
 
+	"github.com/ilyachch/mnemonic/internal/adapter/stdio"
 	"github.com/ilyachch/mnemonic/internal/app"
 	"github.com/ilyachch/mnemonic/internal/apperr"
-	"github.com/ilyachch/mnemonic/internal/mcp"
-	"github.com/ilyachch/mnemonic/internal/paths"
 	"github.com/ilyachch/mnemonic/internal/project"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -22,48 +20,39 @@ const (
 
 // Server serves one resolved project over HTTP/SSE.
 type Server struct {
-	projectResolution app.ProjectResolution
-	effectivePaths    paths.EffectivePaths
-	indexDB           *sql.DB
-	sdkServer         *sdkmcp.Server
-	projectToken      string
-	readOnly          bool
+	sdkServer    *sdkmcp.Server
+	projectToken string
+	readOnly     bool
 
 	sessions *projectSessionHandler
 }
 
 // NewServer prepares an eager MCP HTTP server for a single resolved project.
-func NewServer(resolution app.ProjectResolution, effectivePaths paths.EffectivePaths, indexDB *sql.DB, projectToken string, readOnly bool) (*Server, error) {
-	if strings.TrimSpace(resolution.Project.Slug) == "" {
-		return nil, apperr.CLIUsage("project resolution is required", nil)
+func NewServer(runtime *app.RuntimeApp, projectToken string, readOnly bool) (*Server, error) {
+	if runtime == nil {
+		return nil, apperr.CLIUsage("runtime is required", nil)
 	}
-	if strings.TrimSpace(resolution.Project.ID) == "" {
-		return nil, apperr.CLIUsage("project id is required", nil)
+	stdioServer, err := stdio.NewServer(runtime.KB, stdio.Dependencies{
+		Notes:  runtime.Services.Notes,
+		Search: runtime.Services.Search,
+		Index:  runtime.Services.Index,
+	}, readOnly)
+	if err != nil {
+		return nil, err
 	}
-	if indexDB == nil {
-		return nil, apperr.Internal("index database is required", nil)
-	}
-
-	mcpServer := mcp.NewServerWithIndexDB(resolution, effectivePaths, indexDB, readOnly)
-	sdkServer := mcpServer.BuildSDKServer()
+	sdkServer := stdioServer.BuildSDKServer()
 
 	return &Server{
-		projectResolution: resolution,
-		effectivePaths:    effectivePaths,
-		indexDB:           indexDB,
-		sdkServer:         sdkServer,
-		projectToken:      strings.TrimSpace(projectToken),
-		readOnly:          readOnly,
-		sessions:          newProjectSessionHandler(sdkServer),
+		sdkServer:    sdkServer,
+		projectToken: strings.TrimSpace(projectToken),
+		readOnly:     readOnly,
+		sessions:     newProjectSessionHandler(sdkServer),
 	}, nil
 }
 
-// Close releases the open index DB.
+// Close releases server resources.
 func (s *Server) Close() error {
-	if s == nil || s.indexDB == nil {
-		return nil
-	}
-	return s.indexDB.Close()
+	return nil
 }
 
 // ServeHTTP routes only /sse and /messages for the configured project.

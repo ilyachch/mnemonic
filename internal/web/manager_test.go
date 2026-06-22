@@ -3,7 +3,6 @@ package web
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,18 +13,15 @@ import (
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/app"
-	"github.com/ilyachch/mnemonic/internal/index"
-	"github.com/ilyachch/mnemonic/internal/paths"
+	"github.com/ilyachch/mnemonic/internal/domain/kb"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
-	_ "modernc.org/sqlite"
 )
 
 type webFixture struct {
 	server *Server
-	db     *sql.DB
 }
 
 func newWebFixture(t *testing.T, readOnly bool) *webFixture {
@@ -50,37 +46,26 @@ func newWebFixture(t *testing.T, readOnly bool) *webFixture {
 	manifest.Generator.App = "mnemonic"
 	require.NoError(t, project.WriteMnemonicManifest(filepath.Join(projectRoot, "mnemonic.toml"), manifest))
 	require.NoError(t, os.WriteFile(filepath.Join(projectRoot, "demo.md"), []byte("# Demo\n\nBody"), 0o644))
-	_, err := index.RebuildProjectIndex(projectID, projectRoot)
-	require.NoError(t, err)
 
-	indexPath, err := index.Path(projectID)
-	require.NoError(t, err)
-	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(indexPath)+"?mode=ro")
-	require.NoError(t, err)
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
-	require.NoError(t, db.Ping())
-	_, err = db.Exec(`PRAGMA busy_timeout = 5000`)
-	require.NoError(t, err)
-
-	server, err := NewServer(app.ProjectResolution{
-		MnemonicFilePath: filepath.Join(projectRoot, "mnemonic.toml"),
-		RepoRootAbs:      memoriesHome,
-		MemoriesAbs:      projectRoot,
-		ManifestAbs:      filepath.Join(projectRoot, "mnemonic.toml"),
-		Project: app.ProjectRecord{
+	runtime, err := app.NewRuntimeApp(app.RuntimeInput{
+		KB: kb.KnowledgeBase{
 			ID:           projectID,
 			Name:         "Demo",
 			Slug:         slug,
 			Kind:         "central",
-			MemoriesPath: filepath.Base(projectRoot),
+			RootDir:      projectRoot,
+			RepoRootDir:  memoriesHome,
+			ManifestPath: filepath.Join(projectRoot, "mnemonic.toml"),
+			StateDir:     filepath.Join(root, ".state", "mnemonic", "projects", projectID),
+			IndexPath:    filepath.Join(root, ".state", "mnemonic", "projects", projectID, "index.sqlite"),
 		},
-	}, paths.EffectivePaths{
-		MemoriesHome: memoriesHome,
-	}, db, "", readOnly)
+	})
 	require.NoError(t, err)
 
-	return &webFixture{server: server, db: db}
+	server, err := NewServer(runtime, "", readOnly)
+	require.NoError(t, err)
+
+	return &webFixture{server: server}
 }
 
 func (f *webFixture) request(method, path string, body []byte) (*http.Response, error) {
@@ -186,7 +171,7 @@ func TestServerReadOnlyOmitsWriteTools(t *testing.T) {
 	for _, tool := range tools.Tools {
 		names = append(names, tool.Name)
 	}
-	require.Equal(t, []string{"list_backlinks", "list_notes", "list_tags", "read_note", "search_notes"}, names)
+	require.Equal(t, []string{"doctor", "list_backlinks", "list_notes", "list_tags", "read_note", "rebuild_index", "search_notes"}, names)
 }
 
 func TestServerRejectsLegacySlugRoutes(t *testing.T) {

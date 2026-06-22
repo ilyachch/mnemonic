@@ -23,7 +23,7 @@
 - `internal/markdown` parses and renders note structure.
 - `internal/index` and `internal/search` build and query the SQLite FTS5 index.
 - `internal/registry` and `internal/registryschema` own global project metadata.
-- `internal/mcp` exposes the same local project model through MCP tools.
+- `internal/adapter/stdio` exposes the same local project model through MCP tools.
 - `internal/fs` and `internal/lock` provide atomic file writes and cross-process locking.
 
 ## Related packages

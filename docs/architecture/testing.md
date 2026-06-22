@@ -18,7 +18,7 @@ The test strategy keeps the repository behavior stable across project resolution
 - `internal/notes` covers file lifecycle operations, hashing, locking, and delete modes.
 - `internal/markdown` covers frontmatter, tags, observations, relations, wiki-links, and rendering.
 - `internal/index`, `internal/search`, and `internal/graph` cover rebuilds and query behavior.
-- `internal/mcp` covers stdio transport, tool registration, and tool semantics.
+- `internal/adapter/stdio` covers stdio transport, tool registration, and tool semantics.
 
 ## Common test practices
 

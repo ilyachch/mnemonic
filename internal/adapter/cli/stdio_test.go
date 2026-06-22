@@ -10,30 +10,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMCPCommandHelpShowsProjectFlag(t *testing.T) {
-	setWritableMCPEnv(t)
-	res := executeCommand("mcp", "--help")
+func TestStdioCommandHelpShowsProjectFlag(t *testing.T) {
+	setWritableStdioEnv(t)
+	res := executeCommand("stdio", "--help")
 	require.NoError(t, res.Err)
 	require.Contains(t, res.Stdout, "--project")
 	require.Contains(t, res.Stdout, "--read-only")
 }
 
-func TestMCPCommandReadOnlyFlagAndEnvAreAdditive(t *testing.T) {
-	setWritableMCPEnv(t)
+func TestStdioCommandReadOnlyFlagAndEnvAreAdditive(t *testing.T) {
+	setWritableStdioEnv(t)
 	root := newTestRoot(t)
-	cmd, _, err := root.Find([]string{"mcp"})
+	cmd, _, err := root.Find([]string{"stdio"})
 	require.NoError(t, err)
 
 	t.Setenv("MNEMONIC_READ_ONLY", "yes")
-	require.True(t, mcpReadOnlyEnabled(cmd))
+	require.True(t, stdioReadOnlyEnabled(cmd))
 
 	t.Setenv("MNEMONIC_READ_ONLY", "no")
 	require.NoError(t, cmd.Flags().Set("read-only", "true"))
-	require.True(t, mcpReadOnlyEnabled(cmd))
+	require.True(t, stdioReadOnlyEnabled(cmd))
 }
 
-func TestMCPCommandReturnsClearErrorWithoutProjectContext(t *testing.T) {
-	setWritableMCPEnv(t)
+func TestStdioCommandReturnsClearErrorWithoutProjectContext(t *testing.T) {
+	setWritableStdioEnv(t)
 	cwd := t.TempDir()
 	prevWD, err := os.Getwd()
 	require.NoError(t, err)
@@ -43,15 +43,15 @@ func TestMCPCommandReturnsClearErrorWithoutProjectContext(t *testing.T) {
 		_ = os.Chdir(prevWD)
 	})
 
-	res := executeCommand("mcp")
+	res := executeCommand("stdio")
 	require.Empty(t, res.Stdout)
 	require.Error(t, res.Err, "expected error, got nil")
 	require.Contains(t, res.Err.Error(), "no project selected")
 	require.Contains(t, res.Stderr, "no project selected")
 }
 
-func TestMCPCommandRejectsBadEnvironmentProjectBeforeServing(t *testing.T) {
-	setWritableMCPEnv(t)
+func TestStdioCommandRejectsBadEnvironmentProjectBeforeServing(t *testing.T) {
+	setWritableStdioEnv(t)
 	cwd := t.TempDir()
 	registerRegistryProject(t, cwd, "personal")
 
@@ -64,10 +64,23 @@ func TestMCPCommandRejectsBadEnvironmentProjectBeforeServing(t *testing.T) {
 	})
 	t.Setenv("MNEMONIC_PROJECT", "missing")
 
-	res := executeCommand("mcp")
+	res := executeCommand("stdio")
 	require.Error(t, res.Err, "expected error, got nil")
 	require.Contains(t, res.Err.Error(), `project "missing" not found`)
 	require.Empty(t, res.Stdout)
+}
+
+func TestHiddenMCPAliasStillResolves(t *testing.T) {
+	setWritableStdioEnv(t)
+	root := newTestRoot(t)
+	stdioCmd, _, err := root.Find([]string{"stdio"})
+	require.NoError(t, err)
+	require.False(t, stdioCmd.Hidden)
+
+	mcpCmd, _, err := root.Find([]string{"mcp"})
+	require.NoError(t, err)
+	require.True(t, mcpCmd.Hidden)
+	require.Equal(t, "mcp", mcpCmd.Name())
 }
 
 // registerRegistryProject inserts a local-mode project row for tests so the
@@ -99,7 +112,7 @@ func registerRegistryProject(t *testing.T, cwd, slug string) {
 	}))
 }
 
-func setWritableMCPEnv(t *testing.T) {
+func setWritableStdioEnv(t *testing.T) {
 	t.Helper()
 
 	base := t.TempDir()
