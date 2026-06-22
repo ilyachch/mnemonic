@@ -305,7 +305,7 @@ func TestImportRemoveAndSlugs(t *testing.T) {
 	manifest.UpdatedAt = manifest.CreatedAt
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(repoRoot, "mnemonic.toml"), manifest))
 
-	imported, err := svc.Import(ImportInput{Path: repoRoot})
+	imported, err := svc.Import(context.Background(), ImportInput{Path: repoRoot})
 	require.NoError(t, err)
 	require.Equal(t, 1, imported.Imported)
 	require.Equal(t, 1, imported.Indexed)

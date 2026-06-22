@@ -28,7 +28,7 @@ var projectImportCmd = &cobra.Command{
 			return err
 		}
 
-		result, err := container.Services.Catalog.Import(catalogsvc.ImportInput{Path: pathArg, DryRun: dryRun})
+		result, err := container.Services.Catalog.Import(commandContext(cmd), catalogsvc.ImportInput{Path: pathArg, DryRun: dryRun})
 		if err != nil {
 			return wrapImportError(err)
 		}

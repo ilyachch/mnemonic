@@ -216,7 +216,7 @@ func (s Service) Show(selector string) (ShowResult, error) {
 }
 
 // Import imports a project into the registry.
-func (s Service) Import(input ImportInput) (ImportResult, error) {
+func (s Service) Import(ctx context.Context, input ImportInput) (ImportResult, error) {
 	result, err := importProject(input, s.MemoriesHome)
 	if err != nil {
 		return ImportResult{}, err
@@ -230,7 +230,7 @@ func (s Service) Import(input ImportInput) (ImportResult, error) {
 		if err != nil {
 			return ImportResult{}, err
 		}
-		if _, err := indexsvc.New(resolved).Rebuild(context.Background()); err != nil {
+		if _, err := indexsvc.New(resolved).Rebuild(ctx); err != nil {
 			return ImportResult{}, err
 		}
 		result.Indexed++
