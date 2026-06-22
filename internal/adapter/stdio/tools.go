@@ -157,7 +157,6 @@ func RegisterReadOnly(server *sdkmcp.Server, deps Dependencies, description stri
 	RegisterSearchNotes(server, deps, description)
 	RegisterReadNote(server, deps)
 	RegisterListBacklinks(server, deps)
-	RegisterRebuildIndex(server, deps)
 	RegisterDoctor(server, deps)
 }
 
@@ -165,6 +164,7 @@ func RegisterWrite(server *sdkmcp.Server, deps Dependencies, description string)
 	RegisterCreateNote(server, deps, description)
 	RegisterEditNote(server, deps)
 	RegisterDeleteNote(server, deps)
+	RegisterRebuildIndex(server, deps)
 }
 
 func RegisterListNotes(server *sdkmcp.Server, deps Dependencies) {
@@ -420,7 +420,7 @@ func RegisterRebuildIndex(server *sdkmcp.Server, deps Dependencies) {
 	sdkmcp.AddTool(server, &sdkmcp.Tool{
 		Name:        "rebuild_index",
 		Description: rebuildIndexDescription,
-		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
+		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: false},
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, _ struct{}) (*sdkmcp.CallToolResult, RebuildIndexOutput, error) {
 		result, err := deps.Index.Rebuild(ctx)
 		if err != nil {

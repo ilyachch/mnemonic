@@ -176,7 +176,7 @@ func TestServerReadOnlyOmitsWriteTools(t *testing.T) {
 	for _, tool := range tools.Tools {
 		names = append(names, tool.Name)
 	}
-	require.Equal(t, []string{"doctor", "list_backlinks", "list_notes", "list_tags", "read_note", "rebuild_index", "search_notes"}, names)
+	require.Equal(t, []string{"doctor", "list_backlinks", "list_notes", "list_tags", "read_note", "search_notes"}, names)
 }
 
 func TestServerRejectsLegacySlugRoutes(t *testing.T) {
