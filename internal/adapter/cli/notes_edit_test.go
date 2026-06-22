@@ -47,6 +47,13 @@ func TestNotesEditCommandAppendsBodyAndUpdatesTimestamp(t *testing.T) {
 
 	editResult := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--append", "Next step", "--json")
 	require.NoError(t, editResult.Err, "stderr: %s", editResult.Stderr)
+	var editGot struct {
+		IndexStatus string `json:"index_status"`
+		IndexError  string `json:"index_error"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(editResult.Stdout), &editGot), "stdout: %s", editResult.Stdout)
+	require.Equal(t, "ok", editGot.IndexStatus)
+	require.Empty(t, editGot.IndexError)
 
 	var got struct {
 		Note struct {

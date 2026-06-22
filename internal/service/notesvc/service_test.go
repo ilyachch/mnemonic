@@ -112,12 +112,31 @@ func TestServiceReturnsPartialSuccessWhenIndexRebuildFails(t *testing.T) {
 			return "550e8400-e29b-41d4-a716-446655440000"
 		},
 	})
-	require.Error(t, err)
+	require.NoError(t, err)
 	require.Equal(t, "stale", created.IndexStatus)
 	require.NotEmpty(t, created.IndexError)
 
+	edited, err := svc.Edit(EditInput{
+		Selector: created.Slug,
+		Append:   []byte("Next step"),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "stale", edited.IndexStatus)
+	require.NotEmpty(t, edited.IndexError)
+
 	_, statErr := os.Stat(filepath.Join(root, "auth-migration.md"))
 	require.NoError(t, statErr)
+
+	deleted, err := svc.Delete(DeleteInput{
+		Selector: created.Slug,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "stale", deleted.IndexStatus)
+	require.NotEmpty(t, deleted.IndexError)
+
+	_, statErr = os.Stat(filepath.Join(root, "auth-migration.md"))
+	require.Error(t, statErr)
+	require.True(t, os.IsNotExist(statErr))
 }
 
 func assertIndexNoteCount(t *testing.T, store sqliteindex.Store, want int) {

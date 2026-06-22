@@ -44,12 +44,16 @@ func TestNotesDeleteCommandDryRunShowsTrashPath(t *testing.T) {
 	result := executeCommand("notes", "delete", "auth-migration", "--project", "personal", "--dry-run", "--json")
 	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 	var got struct {
-		Mode      string `json:"mode"`
-		TrashPath string `json:"trash_path"`
+		Mode        string `json:"mode"`
+		TrashPath   string `json:"trash_path"`
+		IndexStatus string `json:"index_status"`
+		IndexError  string `json:"index_error"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(result.Stdout), &got), "stdout: %s", result.Stdout)
 	require.Equal(t, "trash", got.Mode)
 	require.NotEmpty(t, got.TrashPath)
+	require.Equal(t, "skipped", got.IndexStatus)
+	require.Empty(t, got.IndexError)
 	_, err = os.Stat(notePath)
 	require.NoError(t, err)
 	_, err = os.Stat(got.TrashPath)
@@ -86,14 +90,18 @@ func TestNotesDeleteCommandMovesNoteToTrash(t *testing.T) {
 	result := executeCommand("notes", "delete", "auth-migration", "--project", "personal", "--json")
 	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 	var got struct {
-		Mode      string `json:"mode"`
-		Path      string `json:"path"`
-		TrashPath string `json:"trash_path"`
+		Mode        string `json:"mode"`
+		Path        string `json:"path"`
+		TrashPath   string `json:"trash_path"`
+		IndexStatus string `json:"index_status"`
+		IndexError  string `json:"index_error"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(result.Stdout), &got), "stdout: %s", result.Stdout)
 	require.Equal(t, "trash", got.Mode)
 	require.Equal(t, "auth-migration.md", got.Path)
 	require.NotEmpty(t, got.TrashPath)
+	require.Equal(t, "ok", got.IndexStatus)
+	require.Empty(t, got.IndexError)
 	_, err = os.Stat(notePath)
 	require.True(t, os.IsNotExist(err))
 	_, err = os.Stat(got.TrashPath)

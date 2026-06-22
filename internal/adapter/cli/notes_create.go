@@ -65,19 +65,9 @@ var notesCreateCmd = &cobra.Command{
 			return err
 		}
 
-		output := notesCreateOutput{
-			NoteID:      created.NoteID,
-			Slug:        created.Slug,
-			Path:        created.Path,
-			ContentHash: created.ContentHash,
+		if !jsonOutputEnabled(cmd) {
+			printIndexWarning(cmd, created.IndexStatus, created.IndexError)
 		}
-		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), fmt.Sprintf("%s created\n", created.Path), output)
+		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), fmt.Sprintf("%s created\n", created.Path), created)
 	},
-}
-
-type notesCreateOutput struct {
-	NoteID      string `json:"note_id"`
-	Slug        string `json:"slug"`
-	Path        string `json:"path"`
-	ContentHash string `json:"content_hash"`
 }

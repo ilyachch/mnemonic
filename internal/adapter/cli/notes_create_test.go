@@ -37,12 +37,16 @@ func TestNotesCreateCommandCreatesMarkdownNote(t *testing.T) {
 		Slug        string `json:"slug"`
 		Path        string `json:"path"`
 		ContentHash string `json:"content_hash"`
+		IndexStatus string `json:"index_status"`
+		IndexError  string `json:"index_error"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(result.Stdout), &got), "stdout: %s", result.Stdout)
 	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", got.NoteID)
 	require.Equal(t, "auth-migration", got.Slug)
 	require.Equal(t, "auth-migration.md", got.Path)
 	require.NotEmpty(t, got.ContentHash)
+	require.Equal(t, "ok", got.IndexStatus)
+	require.Empty(t, got.IndexError)
 
 	data, err := os.ReadFile(filepath.Join(projectRoot, ".mnemonic-memories", "personal", "auth-migration.md"))
 	require.NoError(t, err)

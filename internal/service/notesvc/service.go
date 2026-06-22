@@ -117,7 +117,7 @@ func (s Service) Create(input CreateInput) (CreateResult, error) {
 	if err := s.rebuildIndex(); err != nil {
 		result.IndexStatus = "stale"
 		result.IndexError = err.Error()
-		return result, err
+		return result, nil
 	}
 	result.IndexStatus = "ok"
 	return result, nil
@@ -150,7 +150,7 @@ func (s Service) Edit(input EditInput) (EditResult, error) {
 	if err := s.rebuildIndex(); err != nil {
 		result.IndexStatus = "stale"
 		result.IndexError = err.Error()
-		return result, err
+		return result, nil
 	}
 	result.IndexStatus = "ok"
 	return result, nil
@@ -182,7 +182,7 @@ func (s Service) Delete(input DeleteInput) (DeleteResult, error) {
 	if err := s.rebuildIndex(); err != nil {
 		result.IndexStatus = "stale"
 		result.IndexError = err.Error()
-		return result, err
+		return result, nil
 	}
 	result.IndexStatus = "ok"
 	return result, nil

@@ -71,25 +71,11 @@ var notesEditCmd = &cobra.Command{
 			return err
 		}
 
-		output := notesEditOutput{
-			NoteID:      edited.NoteID,
-			Slug:        edited.Slug,
-			Path:        edited.Path,
-			ContentHash: edited.ContentHash,
-			CreatedAt:   edited.CreatedAt,
-			UpdatedAt:   edited.UpdatedAt,
+		if !jsonOutputEnabled(cmd) {
+			printIndexWarning(cmd, edited.IndexStatus, edited.IndexError)
 		}
-		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), fmt.Sprintf("%s updated\n", edited.Path), output)
+		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), fmt.Sprintf("%s updated\n", edited.Path), edited)
 	},
-}
-
-type notesEditOutput struct {
-	NoteID      string `json:"note_id"`
-	Slug        string `json:"slug"`
-	Path        string `json:"path"`
-	ContentHash string `json:"content_hash"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
 }
 
 func parseEditSetValues(values []string) (map[string]string, error) {
