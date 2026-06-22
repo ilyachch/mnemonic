@@ -33,11 +33,16 @@ var projectImportCmd = &cobra.Command{
 			return wrapImportError(err)
 		}
 
+		if !jsonOutputEnabled(cmd) {
+			printProjectImportIndexWarnings(cmd, result.IndexStatus, result.IndexErrors)
+		}
 		output := projectImportOutput{
 			Path:        result.Path,
 			Imported:    result.Imported,
 			CopiedFiles: result.CopiedFiles,
 			Indexed:     result.Indexed,
+			IndexStatus: result.IndexStatus,
+			IndexErrors: result.IndexErrors,
 			Candidates:  result.Candidates,
 		}
 		human := fmt.Sprintf("%d project(s) imported\n", result.Imported)
@@ -65,9 +70,11 @@ func wrapImportError(err error) error {
 }
 
 type projectImportOutput struct {
-	Path        string                       `json:"path"`
-	Imported    int                          `json:"imported"`
-	CopiedFiles int                          `json:"copied_files"`
-	Indexed     int                          `json:"indexed"`
-	Candidates  []catalogsvc.ImportCandidate `json:"candidates,omitempty"`
+	Path        string                        `json:"path"`
+	Imported    int                           `json:"imported"`
+	CopiedFiles int                           `json:"copied_files"`
+	Indexed     int                           `json:"indexed"`
+	IndexStatus string                        `json:"index_status"`
+	IndexErrors []catalogsvc.ImportIndexError `json:"index_errors"`
+	Candidates  []catalogsvc.ImportCandidate  `json:"candidates,omitempty"`
 }

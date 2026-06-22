@@ -92,8 +92,17 @@ type ImportResult struct {
 	Imported    int
 	CopiedFiles int
 	Indexed     int
+	IndexStatus string
+	IndexErrors []ImportIndexError
 	Candidates  []ImportCandidate
 	DryRun      bool
+}
+
+// ImportIndexError describes one imported project whose index rebuild failed.
+type ImportIndexError struct {
+	ProjectID string `json:"project_id"`
+	Slug      string `json:"slug"`
+	Error     string `json:"error"`
 }
 
 // ImportCandidate mirrors the project import candidate.
@@ -230,22 +239,44 @@ func (s Service) Import(ctx context.Context, input ImportInput) (ImportResult, e
 	if err != nil {
 		return ImportResult{}, err
 	}
+	return s.finalizeImportIndexStatus(ctx, result), nil
+}
+
+func (s Service) finalizeImportIndexStatus(ctx context.Context, result ImportResult) ImportResult {
+	if result.IndexErrors == nil {
+		result.IndexErrors = []ImportIndexError{}
+	}
 	if result.DryRun {
-		return result, nil
+		result.IndexStatus = "skipped"
+		return result
 	}
 
 	for _, candidate := range result.Candidates {
 		resolved, err := s.Resolve(candidate.Slug)
 		if err != nil {
-			return ImportResult{}, err
+			result.IndexErrors = append(result.IndexErrors, ImportIndexError{
+				ProjectID: candidate.ProjectID,
+				Slug:      candidate.Slug,
+				Error:     err.Error(),
+			})
+			continue
 		}
 		if _, err := indexsvc.New(resolved).Rebuild(ctx); err != nil {
-			return ImportResult{}, err
+			result.IndexErrors = append(result.IndexErrors, ImportIndexError{
+				ProjectID: resolved.ID,
+				Slug:      resolved.Slug,
+				Error:     err.Error(),
+			})
+			continue
 		}
 		result.Indexed++
 	}
-
-	return result, nil
+	if len(result.IndexErrors) > 0 {
+		result.IndexStatus = "stale"
+		return result
+	}
+	result.IndexStatus = "ok"
+	return result
 }
 
 // Init creates a project, resolves it, and builds the initial index.

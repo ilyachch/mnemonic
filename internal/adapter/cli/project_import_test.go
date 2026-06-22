@@ -33,6 +33,8 @@ func TestProjectImportCommandDefaultsToDot(t *testing.T) {
 	require.Equal(t, 1, got.Imported)
 	require.Equal(t, 0, got.CopiedFiles)
 	require.Equal(t, 1, got.Indexed)
+	require.Equal(t, "ok", got.IndexStatus)
+	require.Empty(t, got.IndexErrors)
 	indexPath := testIndexPath(importRoot, "550e8400-e29b-41d4-a716-446655440000")
 	_, err = os.Stat(indexPath)
 	require.NoError(t, err, "index file missing")
@@ -59,6 +61,8 @@ func TestProjectImportCommandDryRunReturnsCandidatesAndDoesNotWriteRegistry(t *t
 	require.Equal(t, 1, got.Imported)
 	require.Equal(t, 0, got.CopiedFiles)
 	require.Equal(t, 0, got.Indexed)
+	require.Equal(t, "skipped", got.IndexStatus)
+	require.Empty(t, got.IndexErrors)
 	require.Len(t, got.Candidates, 1)
 	candidate := got.Candidates[0]
 	require.Equal(t, "backend", candidate.Slug)
@@ -110,6 +114,29 @@ func TestProjectImportCommandNormalizesRelativePath(t *testing.T) {
 	require.Equal(t, 1, got.Imported)
 	require.Equal(t, 0, got.CopiedFiles)
 	require.Equal(t, 1, got.Indexed)
+	require.Equal(t, "ok", got.IndexStatus)
+	require.Empty(t, got.IndexErrors)
+}
+
+func TestProjectImportCommandWarnsWhenIndexStaysStaleInHumanMode(t *testing.T) {
+	_, importRoot := seedImportProject(t)
+
+	blockingIndexDir := filepath.Dir(testIndexPath(importRoot, "550e8400-e29b-41d4-a716-446655440000"))
+	require.NoError(t, os.MkdirAll(filepath.Dir(blockingIndexDir), 0o755))
+	require.NoError(t, os.WriteFile(blockingIndexDir, []byte("block rebuild"), 0o644))
+
+	originalWD, err := os.Getwd()
+	require.NoError(t, err)
+	err = os.Chdir(importRoot)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWD)
+	})
+
+	result := executeCommand("project", "import", ".")
+	require.NoError(t, result.Err, "project import returned error\nstderr: %s", result.Stderr)
+	require.Contains(t, result.Stderr, "warning: index is stale for backend:")
+	require.Contains(t, result.Stdout, "1 project(s) imported")
 }
 
 func seedImportProject(t *testing.T) (string, string) {

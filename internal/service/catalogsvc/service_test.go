@@ -350,6 +350,8 @@ func TestImportRemoveAndSlugs(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, imported.Imported)
 	require.Equal(t, 1, imported.Indexed)
+	require.Equal(t, "ok", imported.IndexStatus)
+	require.Empty(t, imported.IndexErrors)
 	require.Len(t, imported.Candidates, 1)
 	require.FileExists(t, filepath.Join(memoriesHome, manifest.Slug+".toml"))
 	require.FileExists(t, filepath.Join(stateHome, "mnemonic", "projects", manifest.ProjectID, "index.sqlite"))
@@ -387,4 +389,129 @@ func TestImportRemoveAndSlugs(t *testing.T) {
 	require.Error(t, err)
 	_, err = os.Stat(stateDir)
 	require.Error(t, err)
+}
+
+func TestImportReturnsSkippedIndexStatusForDryRun(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+
+	memoriesHome := t.TempDir()
+	stateHome := t.TempDir()
+	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
+
+	repoRoot := t.TempDir()
+	manifest := manifestfmt.NewMnemonicManifest()
+	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440010"
+	manifest.Name = "Dry Run"
+	manifest.Slug = "dry-run"
+	manifest.MarkdownFormatVersion = 1
+	manifest.CreatedAt = time.Now().UTC()
+	manifest.UpdatedAt = manifest.CreatedAt
+	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(repoRoot, "mnemonic.toml"), manifest))
+
+	imported, err := svc.Import(context.Background(), ImportInput{Path: repoRoot, DryRun: true})
+	require.NoError(t, err)
+	require.Equal(t, 1, imported.Imported)
+	require.Equal(t, 0, imported.Indexed)
+	require.Equal(t, "skipped", imported.IndexStatus)
+	require.Empty(t, imported.IndexErrors)
+	require.Len(t, imported.Candidates, 1)
+	require.NoFileExists(t, filepath.Join(stateHome, "mnemonic", "projects", manifest.ProjectID, "index.sqlite"))
+}
+
+func TestFinalizeImportIndexStatusReportsPartialFailures(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+
+	memoriesHome := t.TempDir()
+	stateHome := t.TempDir()
+	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
+
+	okResult := seedImportedProject(t, memoriesHome, "550e8400-e29b-41d4-a716-446655440020", "ok-project", "ok")
+	failResult := seedImportedProject(t, memoriesHome, "550e8400-e29b-41d4-a716-446655440021", "fail-project", "fail")
+	require.NoError(t, os.MkdirAll(filepath.Join(stateHome, "mnemonic", "projects"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(stateHome, "mnemonic", "projects", failResult.Candidates[0].ProjectID), []byte("block rebuild"), 0o644))
+
+	result := svc.finalizeImportIndexStatus(context.Background(), ImportResult{
+		Candidates: append(okResult.Candidates, failResult.Candidates...),
+	})
+
+	require.Equal(t, 1, result.Indexed)
+	require.Equal(t, "stale", result.IndexStatus)
+	require.Len(t, result.IndexErrors, 1)
+	require.Equal(t, failResult.Candidates[0].ProjectID, result.IndexErrors[0].ProjectID)
+	require.Equal(t, failResult.Candidates[0].Slug, result.IndexErrors[0].Slug)
+	require.NotEmpty(t, result.IndexErrors[0].Error)
+	require.FileExists(t, filepath.Join(stateHome, "mnemonic", "projects", okResult.Candidates[0].ProjectID, "index.sqlite"))
+	_, err := os.Stat(filepath.Join(stateHome, "mnemonic", "projects", failResult.Candidates[0].ProjectID, "index.sqlite"))
+	require.Error(t, err)
+}
+
+func TestFinalizeImportIndexStatusReportsAllFailures(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+
+	memoriesHome := t.TempDir()
+	stateHome := t.TempDir()
+	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
+
+	firstResult := seedImportedProject(t, memoriesHome, "550e8400-e29b-41d4-a716-446655440030", "first-project", "first")
+	secondResult := seedImportedProject(t, memoriesHome, "550e8400-e29b-41d4-a716-446655440031", "second-project", "second")
+	require.NoError(t, os.MkdirAll(filepath.Join(stateHome, "mnemonic", "projects"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(stateHome, "mnemonic", "projects", firstResult.Candidates[0].ProjectID), []byte("block rebuild"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(stateHome, "mnemonic", "projects", secondResult.Candidates[0].ProjectID), []byte("block rebuild"), 0o644))
+
+	result := svc.finalizeImportIndexStatus(context.Background(), ImportResult{
+		Candidates: append(firstResult.Candidates, secondResult.Candidates...),
+	})
+
+	require.Equal(t, 0, result.Indexed)
+	require.Equal(t, "stale", result.IndexStatus)
+	require.Len(t, result.IndexErrors, 2)
+	require.ElementsMatch(t, []string{
+		firstResult.Candidates[0].Slug,
+		secondResult.Candidates[0].Slug,
+	}, []string{
+		result.IndexErrors[0].Slug,
+		result.IndexErrors[1].Slug,
+	})
+}
+
+func TestImportReturnsErrorWhenRegistrationFails(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+
+	memoriesHome := t.TempDir()
+	stateHome := t.TempDir()
+	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
+
+	repoRoot := t.TempDir()
+	manifest := manifestfmt.NewMnemonicManifest()
+	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440050"
+	manifest.Name = "Duplicate"
+	manifest.Slug = "duplicate"
+	manifest.MarkdownFormatVersion = 1
+	manifest.CreatedAt = time.Now().UTC()
+	manifest.UpdatedAt = manifest.CreatedAt
+	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(repoRoot, "mnemonic.toml"), manifest))
+
+	_, err := svc.Import(context.Background(), ImportInput{Path: repoRoot})
+	require.NoError(t, err)
+	_, err = svc.Import(context.Background(), ImportInput{Path: repoRoot})
+	require.Error(t, err)
+}
+
+func seedImportedProject(t *testing.T, memoriesHome, projectID, name, slug string) ImportResult {
+	t.Helper()
+
+	repoRoot := t.TempDir()
+	manifest := manifestfmt.NewMnemonicManifest()
+	manifest.ProjectID = projectID
+	manifest.Name = name
+	manifest.Slug = slug
+	manifest.MarkdownFormatVersion = 1
+	manifest.CreatedAt = time.Now().UTC()
+	manifest.UpdatedAt = manifest.CreatedAt
+	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(repoRoot, "mnemonic.toml"), manifest))
+
+	result, err := importProject(ImportInput{Path: repoRoot}, memoriesHome)
+	require.NoError(t, err)
+	require.Len(t, result.Candidates, 1)
+	return result
 }
