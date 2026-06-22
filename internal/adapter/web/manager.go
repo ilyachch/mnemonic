@@ -2,7 +2,6 @@ package web
 
 import (
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 
@@ -184,15 +183,4 @@ func (h *projectSessionHandler) ServePOST(w http.ResponseWriter, r *http.Request
 	}
 
 	transport.ServeHTTP(w, r)
-}
-
-// ServeAddr resolves the listener address from flag/env/default precedence.
-func ServeAddr(flagValue string) string {
-	if strings.TrimSpace(flagValue) != "" {
-		return strings.TrimSpace(flagValue)
-	}
-	if envValue := strings.TrimSpace(os.Getenv("MNEMONIC_WEB_ADDR")); envValue != "" {
-		return envValue
-	}
-	return ":8080"
 }

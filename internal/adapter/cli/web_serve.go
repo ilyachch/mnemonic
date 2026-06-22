@@ -45,10 +45,7 @@ var webServeCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		addr := webadapter.ServeAddr(addrFlag)
-		if strings.TrimSpace(portFlag) != "" {
-			addr = normalizeWebListenAddr(portFlag)
-		}
+		addr := resolveWebServeAddr(addrFlag, portFlag)
 		server := &http.Server{
 			Addr:    addr,
 			Handler: manager,
@@ -68,6 +65,19 @@ func normalizeWebListenAddr(portFlag string) string {
 		return ""
 	}
 	return fmt.Sprintf(":%s", port)
+}
+
+func resolveWebServeAddr(addrFlag, portFlag string) string {
+	if strings.TrimSpace(portFlag) != "" {
+		return normalizeWebListenAddr(portFlag)
+	}
+	if addr := strings.TrimSpace(addrFlag); addr != "" {
+		return addr
+	}
+	if envValue := strings.TrimSpace(os.Getenv("MNEMONIC_WEB_ADDR")); envValue != "" {
+		return envValue
+	}
+	return ":8080"
 }
 
 func webServeListenAndServeReal(server *http.Server) error {

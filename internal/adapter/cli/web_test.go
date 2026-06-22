@@ -84,6 +84,81 @@ func TestWebServeBuildsRuntimeOnceBeforeListen(t *testing.T) {
 	require.False(t, capturedRuntime.ReadOnly)
 }
 
+func TestWebServePortOverridesEnvFallback(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+	t.Setenv("MNEMONIC_WEB_ADDR", ":9090")
+
+	runtimeKB := kb.KnowledgeBase{
+		ID:      "550e8400-e29b-41d4-a716-446655440000",
+		Name:    "Demo",
+		Slug:    "demo",
+		Kind:    "central",
+		RootDir: filepath.Join(t.TempDir(), "demo"),
+	}
+	origNew := newWebServer
+	origListen := webServeListenAndServe
+	origResolve := resolveRuntimeApp
+	resolveRuntimeApp = func(_ *cobra.Command) (*app.RuntimeApp, error) {
+		runtime, err := app.NewRuntimeApp(app.RuntimeInput{KB: runtimeKB})
+		if err != nil {
+			return nil, err
+		}
+		return runtime, nil
+	}
+	newWebServer = func(input webadapter.ServerInput) (*webadapter.Server, error) {
+		return &webadapter.Server{}, nil
+	}
+	webServeListenAndServe = func(server *http.Server) error {
+		require.Equal(t, ":7071", server.Addr)
+		return http.ErrServerClosed
+	}
+	t.Cleanup(func() {
+		newWebServer = origNew
+		webServeListenAndServe = origListen
+		resolveRuntimeApp = origResolve
+	})
+
+	result := executeCommand("web", "serve", "--port", "7071")
+	require.NoError(t, result.Err)
+}
+
+func TestWebServeHiddenAddrStillWorks(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+
+	runtimeKB := kb.KnowledgeBase{
+		ID:      "550e8400-e29b-41d4-a716-446655440000",
+		Name:    "Demo",
+		Slug:    "demo",
+		Kind:    "central",
+		RootDir: filepath.Join(t.TempDir(), "demo"),
+	}
+	origNew := newWebServer
+	origListen := webServeListenAndServe
+	origResolve := resolveRuntimeApp
+	resolveRuntimeApp = func(_ *cobra.Command) (*app.RuntimeApp, error) {
+		runtime, err := app.NewRuntimeApp(app.RuntimeInput{KB: runtimeKB})
+		if err != nil {
+			return nil, err
+		}
+		return runtime, nil
+	}
+	newWebServer = func(input webadapter.ServerInput) (*webadapter.Server, error) {
+		return &webadapter.Server{}, nil
+	}
+	webServeListenAndServe = func(server *http.Server) error {
+		require.Equal(t, "127.0.0.1:9091", server.Addr)
+		return http.ErrServerClosed
+	}
+	t.Cleanup(func() {
+		newWebServer = origNew
+		webServeListenAndServe = origListen
+		resolveRuntimeApp = origResolve
+	})
+
+	result := executeCommand("web", "serve", "--addr", "127.0.0.1:9091")
+	require.NoError(t, result.Err)
+}
+
 func TestWebServeRejectsMissingProjectSelection(t *testing.T) {
 	testutil.CleanEnvForTest(t)
 
