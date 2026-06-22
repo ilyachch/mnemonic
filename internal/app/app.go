@@ -82,9 +82,6 @@ func New(input Input) (*Bootstrap, error) {
 					return NewRuntimeApp(RuntimeInput{Config: cfg, KB: k})
 				},
 			},
-			ProjectResolver: &FileResolver{
-				Registry: registryStore,
-			},
 		},
 	}, nil
 }
