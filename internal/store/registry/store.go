@@ -295,28 +295,3 @@ func (s Store) Slugs() ([]string, error) {
 	}
 	return slugs, nil
 }
-
-// Scan reads all projects using a zero-value store.
-func Scan(memoriesHome string) ([]Entry, []Issue, error) {
-	return New(memoriesHome, nil, nil).Scan()
-}
-
-// Resolve finds a single project using a zero-value store.
-func Resolve(memoriesHome, slug string) (Entry, error) {
-	return New(memoriesHome, nil, nil).Resolve(slug)
-}
-
-// FindByMemoriesRoot finds a project using a zero-value store.
-func FindByMemoriesRoot(memoriesHome, absRoot string) (Entry, bool, error) {
-	return New(memoriesHome, nil, nil).FindByMemoriesRoot(absRoot)
-}
-
-// Exists checks whether a slug already has a directory or pointer file.
-func Exists(memoriesHome, slug string) (bool, error) {
-	return New(memoriesHome, nil, nil).Exists(slug)
-}
-
-// Slugs returns the list of active project slugs in the registry.
-func Slugs(memoriesHome string) ([]string, error) {
-	return New(memoriesHome, nil, nil).Slugs()
-}

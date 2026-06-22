@@ -498,7 +498,7 @@ func InitProject(input InitProjectInput) error {
 
 	switch input.Mode {
 	case InitModeCentral:
-		exists, err := registry.Exists(input.MemoriesHome, slugValue)
+		exists, err := registry.New(input.MemoriesHome, nil, nil).Exists(slugValue)
 		if err != nil {
 			return err
 		}
@@ -527,7 +527,7 @@ func InitProject(input InitProjectInput) error {
 
 		return manifestfmt.WriteMnemonicManifest(manifestPath, manifest)
 	case InitModeLocal:
-		exists, err := registry.Exists(input.MemoriesHome, slugValue)
+		exists, err := registry.New(input.MemoriesHome, nil, nil).Exists(slugValue)
 		if err != nil {
 			return err
 		}
