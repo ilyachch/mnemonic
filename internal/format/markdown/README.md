@@ -1,4 +1,4 @@
-# `internal/markdown`
+# `internal/format/markdown`
 
 ## What this package owns
 
@@ -18,12 +18,12 @@ This package does not own file I/O, note locking, project resolution, index stor
 
 ## Tests to update when changing this package
 
-- `internal/markdown/frontmatter_test.go`
-- `internal/markdown/note_test.go`
-- `internal/markdown/render_test.go`
-- `internal/markdown/tag_test.go`
-- `internal/markdown/observation_test.go`
-- `internal/markdown/relation_test.go`
-- `internal/markdown/wikilink_test.go`
-- `internal/markdown/basic_memory_test.go`
+- `internal/format/markdown/frontmatter_test.go`
+- `internal/format/markdown/note_test.go`
+- `internal/format/markdown/render_test.go`
+- `internal/format/markdown/tag_test.go`
+- `internal/format/markdown/observation_test.go`
+- `internal/format/markdown/relation_test.go`
+- `internal/format/markdown/wikilink_test.go`
+- `internal/format/markdown/basic_memory_test.go`
 - `internal/notes/*_test.go` and `internal/index/*_test.go` when parser output changes downstream behavior

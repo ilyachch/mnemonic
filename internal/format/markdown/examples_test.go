@@ -11,7 +11,7 @@ import (
 func TestExampleNoteParses(t *testing.T) {
 	t.Parallel()
 
-	data, err := os.ReadFile(filepath.Join("..", "..", "testdata", "markdown", "example-note.md"))
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "testdata", "markdown", "example-note.md"))
 	require.NoError(t, err)
 
 	note, err := ParseNote(data)

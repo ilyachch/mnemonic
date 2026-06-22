@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/ilyachch/mnemonic/internal/app"
-	"github.com/ilyachch/mnemonic/internal/paths"
+	"github.com/ilyachch/mnemonic/internal/platform/paths"
 	"github.com/spf13/cobra"
 )
 

@@ -3,9 +3,9 @@ package app
 import (
 	"context"
 
-	"github.com/ilyachch/mnemonic/internal/config"
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
-	"github.com/ilyachch/mnemonic/internal/paths"
+	"github.com/ilyachch/mnemonic/internal/platform/config"
+	"github.com/ilyachch/mnemonic/internal/platform/paths"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/service/catalogsvc"
 	"github.com/ilyachch/mnemonic/internal/service/maintsvc"

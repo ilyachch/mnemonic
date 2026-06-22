@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ilyachch/mnemonic/internal/paths"
+	"github.com/ilyachch/mnemonic/internal/platform/paths"
 )
 
 // Path returns the absolute index.sqlite path for a project UUID.

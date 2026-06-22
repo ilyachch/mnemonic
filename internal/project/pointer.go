@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	mnemonicfs "github.com/ilyachch/mnemonic/internal/fs"
+	mnemonicfs "github.com/ilyachch/mnemonic/internal/platform/fs"
 	toml "github.com/pelletier/go-toml/v2"
 )
 

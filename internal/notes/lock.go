@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
-	"github.com/ilyachch/mnemonic/internal/lock"
+	"github.com/ilyachch/mnemonic/internal/platform/lock"
 )
 
 const writeLockName = "write"

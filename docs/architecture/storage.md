@@ -33,8 +33,8 @@ Each project index stores notes, tags, observations, links, and an FTS5 virtual 
 
 ## Related packages
 
-- `internal/config` and `internal/paths`
+- `internal/platform/config` and `internal/platform/paths`
 - `internal/registry` and `internal/registryschema`
 - `internal/index`
 - `internal/notes`
-- `internal/fs` and `internal/lock`
+- `internal/platform/fs` and `internal/platform/lock`

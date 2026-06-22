@@ -6,7 +6,7 @@ import (
 
 	"github.com/ilyachch/mnemonic/internal/adapter/cli"
 	"github.com/ilyachch/mnemonic/internal/app"
-	"github.com/ilyachch/mnemonic/internal/buildinfo"
+	"github.com/ilyachch/mnemonic/internal/platform/buildinfo"
 )
 
 var version = "dev"

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
-	"github.com/ilyachch/mnemonic/internal/markdown"
+	"github.com/ilyachch/mnemonic/internal/format/markdown"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/stretchr/testify/require"
 )

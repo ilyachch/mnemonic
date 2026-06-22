@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
-	"github.com/ilyachch/mnemonic/internal/config"
-	"github.com/ilyachch/mnemonic/internal/paths"
+	"github.com/ilyachch/mnemonic/internal/platform/config"
+	"github.com/ilyachch/mnemonic/internal/platform/paths"
 	"github.com/spf13/cobra"
 )
 

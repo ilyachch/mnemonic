@@ -11,7 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ilyachch/mnemonic/internal/markdown"
+	"github.com/ilyachch/mnemonic/internal/format/markdown"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 )

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ilyachch/mnemonic/internal/config"
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
+	"github.com/ilyachch/mnemonic/internal/platform/config"
 	"github.com/ilyachch/mnemonic/internal/service/indexsvc"
 	"github.com/ilyachch/mnemonic/internal/service/maintsvc"
 	"github.com/ilyachch/mnemonic/internal/service/notesvc"

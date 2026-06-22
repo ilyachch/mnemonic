@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
-	"github.com/ilyachch/mnemonic/internal/markdown"
+	"github.com/ilyachch/mnemonic/internal/format/markdown"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/assert"

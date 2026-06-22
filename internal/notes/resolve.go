@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
-	"github.com/ilyachch/mnemonic/internal/markdown"
-	"github.com/ilyachch/mnemonic/internal/paths"
+	"github.com/ilyachch/mnemonic/internal/format/markdown"
+	"github.com/ilyachch/mnemonic/internal/platform/paths"
 	"github.com/ilyachch/mnemonic/internal/project"
 	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 )

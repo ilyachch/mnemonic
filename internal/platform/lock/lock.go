@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
-	"github.com/ilyachch/mnemonic/internal/paths"
+	"github.com/ilyachch/mnemonic/internal/platform/paths"
 )
 
 var ErrBusy = errors.New("lock busy")

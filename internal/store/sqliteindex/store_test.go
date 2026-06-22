@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
+	"github.com/ilyachch/mnemonic/internal/format/markdown"
 	"github.com/ilyachch/mnemonic/internal/index"
-	"github.com/ilyachch/mnemonic/internal/markdown"
 	"github.com/stretchr/testify/require"
 )
 

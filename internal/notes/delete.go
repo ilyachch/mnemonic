@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
-	mnemonicfs "github.com/ilyachch/mnemonic/internal/fs"
+	mnemonicfs "github.com/ilyachch/mnemonic/internal/platform/fs"
 )
 
 // DeleteInput configures note deletion.

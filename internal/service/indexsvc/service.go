@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
+	"github.com/ilyachch/mnemonic/internal/format/markdown"
 	"github.com/ilyachch/mnemonic/internal/index"
-	"github.com/ilyachch/mnemonic/internal/markdown"
 	"github.com/ilyachch/mnemonic/internal/notes"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/store/markdownstore"

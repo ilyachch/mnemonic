@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"github.com/ilyachch/mnemonic/internal/buildinfo"
+	"github.com/ilyachch/mnemonic/internal/platform/buildinfo"
 	"github.com/spf13/cobra"
 )
 

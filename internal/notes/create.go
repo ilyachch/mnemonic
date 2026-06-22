@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
-	mnemonicfs "github.com/ilyachch/mnemonic/internal/fs"
-	"github.com/ilyachch/mnemonic/internal/markdown"
+	"github.com/ilyachch/mnemonic/internal/format/markdown"
+	mnemonicfs "github.com/ilyachch/mnemonic/internal/platform/fs"
 	"github.com/ilyachch/mnemonic/internal/project"
 )
 

@@ -1,6 +1,6 @@
 package project
 
-import mnemonicfs "github.com/ilyachch/mnemonic/internal/fs"
+import mnemonicfs "github.com/ilyachch/mnemonic/internal/platform/fs"
 
 // WriteMnemonicManifest writes a mnemonic.toml document through the filesystem abstraction.
 func WriteMnemonicManifest(path string, manifest *MnemonicManifest) error {

@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
-	"github.com/ilyachch/mnemonic/internal/lock"
+	"github.com/ilyachch/mnemonic/internal/platform/lock"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
 )

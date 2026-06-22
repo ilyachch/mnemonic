@@ -14,9 +14,9 @@ The test strategy keeps the repository behavior stable across project resolution
 ## Current test layout
 
 - `internal/cli` contains integration-style command tests.
-- `internal/project`, `internal/config`, and `internal/registry` cover schema parsing, validation, and migration behavior.
+- `internal/project`, `internal/platform/config`, and `internal/registry` cover schema parsing, validation, and migration behavior.
 - `internal/notes` covers file lifecycle operations, hashing, locking, and delete modes.
-- `internal/markdown` covers frontmatter, tags, observations, relations, wiki-links, and rendering.
+- `internal/format/markdown` covers frontmatter, tags, observations, relations, wiki-links, and rendering.
 - `internal/index`, `internal/search`, and `internal/graph` cover rebuilds and query behavior.
 - `internal/adapter/stdio` covers stdio transport, tool registration, and tool semantics.
 

@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ilyachch/mnemonic/internal/buildinfo"
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
+	"github.com/ilyachch/mnemonic/internal/platform/buildinfo"
 	"github.com/ilyachch/mnemonic/internal/project"
 	"github.com/ilyachch/mnemonic/internal/service/indexsvc"
 	"github.com/ilyachch/mnemonic/internal/service/notesvc"

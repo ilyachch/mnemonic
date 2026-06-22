@@ -7,7 +7,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/markdown"
+	"github.com/ilyachch/mnemonic/internal/format/markdown"
 )
 
 // NoteSummary is the note listing projection used by the CLI.

@@ -32,4 +32,4 @@ A non-local memories root contains `mnemonic.toml` with `project_id`, `name`, `s
 
 - `internal/project` for parsing, validation, init, import, discovery, and resolution.
 - `internal/cli` for `project init`, `project import`, `project discover`, `project show`, and `project list`.
-- `internal/config` and `internal/paths` for configured memories-home resolution.
+- `internal/platform/config` and `internal/platform/paths` for configured memories-home resolution.

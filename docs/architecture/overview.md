@@ -20,14 +20,14 @@
 - `internal/app` wires config, paths, registry, and service dependencies.
 - `internal/project` resolves project context from `.mnemonic`, `mnemonic.toml`, CLI flags, and environment.
 - `internal/notes` owns Markdown file lifecycle operations.
-- `internal/markdown` parses and renders note structure.
+- `internal/format/markdown` parses and renders note structure.
 - `internal/index` and `internal/search` build and query the SQLite FTS5 index.
 - `internal/registry` and `internal/registryschema` own global project metadata.
 - `internal/adapter/stdio` exposes the same local project model through MCP tools.
-- `internal/fs` and `internal/lock` provide atomic file writes and cross-process locking.
+- `internal/platform/fs` and `internal/platform/lock` provide atomic file writes and cross-process locking.
 
 ## Related packages
 
 - `internal/graph` computes backlinks from indexed relationships.
-- `internal/config` and `internal/paths` resolve configuration and XDG locations.
+- `internal/platform/config` and `internal/platform/paths` resolve configuration and XDG locations.
 - `internal/testutil` supports deterministic tests.

@@ -26,6 +26,6 @@ New and edited notes are rendered with canonical YAML frontmatter. Rendering pre
 
 ## Related packages
 
-- `internal/markdown` for parsing and rendering.
+- `internal/format/markdown` for parsing and rendering.
 - `internal/notes` for create/edit/delete flows.
 - `internal/index` for turning parsed notes into index rows.

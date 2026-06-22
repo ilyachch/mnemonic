@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ilyachch/mnemonic/internal/buildinfo"
+	"github.com/ilyachch/mnemonic/internal/platform/buildinfo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
