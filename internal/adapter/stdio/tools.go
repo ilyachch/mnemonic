@@ -93,6 +93,8 @@ type CreateNoteOutput struct {
 	Slug        string `json:"slug"`
 	Path        string `json:"path"`
 	ContentHash string `json:"content_hash"`
+	IndexStatus string `json:"index_status"`
+	IndexError  string `json:"index_error,omitempty"`
 }
 
 type EditNoteInput struct {
@@ -110,6 +112,8 @@ type EditNoteOutput struct {
 	ContentHash string `json:"content_hash"`
 	CreatedAt   string `json:"created_at"`
 	UpdatedAt   string `json:"updated_at"`
+	IndexStatus string `json:"index_status"`
+	IndexError  string `json:"index_error,omitempty"`
 }
 
 type DeleteNoteInput struct {
@@ -119,10 +123,12 @@ type DeleteNoteInput struct {
 }
 
 type DeleteNoteOutput struct {
-	Deleted   bool   `json:"deleted"`
-	Mode      string `json:"mode"`
-	Path      string `json:"path,omitempty"`
-	TrashPath string `json:"trash_path,omitempty"`
+	Deleted     bool   `json:"deleted"`
+	Mode        string `json:"mode"`
+	Path        string `json:"path,omitempty"`
+	TrashPath   string `json:"trash_path,omitempty"`
+	IndexStatus string `json:"index_status"`
+	IndexError  string `json:"index_error,omitempty"`
 }
 
 type RebuildIndexOutput struct {
@@ -307,6 +313,8 @@ func RegisterCreateNote(server *sdkmcp.Server, deps Dependencies, description st
 			Slug:        created.Slug,
 			Path:        created.Path,
 			ContentHash: created.ContentHash,
+			IndexStatus: created.IndexStatus,
+			IndexError:  created.IndexError,
 		}, nil
 	})
 }
@@ -368,6 +376,8 @@ func RegisterEditNote(server *sdkmcp.Server, deps Dependencies) {
 			ContentHash: edited.ContentHash,
 			CreatedAt:   edited.CreatedAt,
 			UpdatedAt:   edited.UpdatedAt,
+			IndexStatus: edited.IndexStatus,
+			IndexError:  edited.IndexError,
 		}, nil
 	})
 }
@@ -408,10 +418,12 @@ func RegisterDeleteNote(server *sdkmcp.Server, deps Dependencies) {
 			return nil, DeleteNoteOutput{}, err
 		}
 		return nil, DeleteNoteOutput{
-			Deleted:   true,
-			Mode:      deleted.Mode,
-			Path:      deleted.Path,
-			TrashPath: deleted.TrashPath,
+			Deleted:     true,
+			Mode:        deleted.Mode,
+			Path:        deleted.Path,
+			TrashPath:   deleted.TrashPath,
+			IndexStatus: deleted.IndexStatus,
+			IndexError:  deleted.IndexError,
 		}, nil
 	})
 }
