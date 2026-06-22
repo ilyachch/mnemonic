@@ -2,7 +2,6 @@ package indexsvc
 
 import (
 	"context"
-	"database/sql"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,13 +102,7 @@ func (s Service) Doctor(ctx context.Context) (DoctorOutput, error) {
 	}
 	result.addCheck(DoctorCheck{Name: "index quick_check", Status: "ok"})
 
-	db, err := s.Index.OpenReadonly()
-	if err != nil {
-		return DoctorOutput{}, err
-	}
-	defer func() { _ = db.Close() }()
-
-	schemaStatus, err := s.Index.CheckSchemaStatus(db)
+	schemaStatus, err := s.Index.SchemaStatus()
 	if err != nil {
 		return DoctorOutput{}, err
 	}
@@ -120,7 +113,7 @@ func (s Service) Doctor(ctx context.Context) (DoctorOutput, error) {
 	}
 	result.addCheck(DoctorCheck{Name: "index schema", Status: "ok"})
 
-	dupUUIDs, dupSlugs, unresolved, trashIgnored, err := doctorNoteChecks(root, s.Index, db)
+	dupUUIDs, dupSlugs, unresolved, trashIgnored, err := doctorNoteChecks(root, s.Index)
 	if err != nil {
 		return DoctorOutput{}, err
 	}
@@ -165,7 +158,7 @@ func doctorParseCheck(name, path string) DoctorCheck {
 	return DoctorCheck{Name: name, Status: "ok"}
 }
 
-func doctorNoteChecks(root string, index sqliteindex.Store, db *sql.DB) (dupUUIDs int, dupSlugs int, unresolved int, trashIgnored int, err error) {
+func doctorNoteChecks(root string, index sqliteindex.Store) (dupUUIDs int, dupSlugs int, unresolved int, trashIgnored int, err error) {
 	paths, err := (markdownstore.Store{RootDir: root}).Walk()
 	if err != nil {
 		return 0, 0, 0, 0, err
@@ -201,7 +194,7 @@ func doctorNoteChecks(root string, index sqliteindex.Store, db *sql.DB) (dupUUID
 			dupSlugs++
 		}
 	}
-	unresolved, err = index.CountUnresolvedLinks(db)
+	unresolved, err = index.UnresolvedLinkCount()
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}

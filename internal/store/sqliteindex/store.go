@@ -151,6 +151,17 @@ func (s Store) CheckSchemaStatus(db *sql.DB) (SchemaStatus, error) {
 	return CheckSchemaStatus(db)
 }
 
+// SchemaStatus opens the index read-only and reports whether the schema is compatible.
+func (s Store) SchemaStatus() (SchemaStatus, error) {
+	db, err := s.OpenReadonly()
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = db.Close() }()
+
+	return CheckSchemaStatus(db)
+}
+
 // Search runs an FTS query against the index database.
 func (s Store) Search(db *sql.DB, query string, limit int, tag string) ([]SearchHit, error) {
 	if db == nil {
@@ -323,6 +334,17 @@ func (s Store) CountUnresolvedLinks(db *sql.DB) (int, error) {
 		return 0, fmt.Errorf("count unresolved links: %w", err)
 	}
 	return unresolved, nil
+}
+
+// UnresolvedLinkCount opens the index read-only and counts unresolved links.
+func (s Store) UnresolvedLinkCount() (int, error) {
+	db, err := s.OpenReadonly()
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = db.Close() }()
+
+	return s.CountUnresolvedLinks(db)
 }
 
 func (s Store) validateIndexPath() error {
