@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/spf13/cobra"
 )
 
@@ -35,8 +36,14 @@ var projectDoctorCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			human := fmt.Sprintf("%d projects checked\n", len(result.Projects))
-			return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, result)
+			human := fmt.Sprintf("%d projects checked\n", result.Total)
+			if err := PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, result); err != nil {
+				return err
+			}
+			if result.Failed > 0 {
+				return apperr.Internal(fmt.Sprintf("%d project(s) failed", result.Failed), nil)
+			}
+			return nil
 		}
 
 		runtime, err := runtimeAppForSelector(commandContext(cmd), selector)

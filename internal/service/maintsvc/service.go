@@ -39,16 +39,18 @@ type ProjectResult struct {
 	Error     string `json:"error,omitempty"`
 }
 
-// ReindexAllOutput aggregates the reindex-all result.
-type ReindexAllOutput struct {
+// ReindexAllResult aggregates the reindex-all result.
+type ReindexAllResult struct {
+	Total    int             `json:"total"`
 	Indexed  int             `json:"indexed"`
 	Failed   int             `json:"failed,omitempty"`
 	Skipped  int             `json:"skipped,omitempty"`
 	Projects []ProjectResult `json:"projects,omitempty"`
 }
 
-// DoctorAllOutput aggregates the doctor-all result.
-type DoctorAllOutput struct {
+// DoctorAllResult aggregates the doctor-all result.
+type DoctorAllResult struct {
+	Total        int             `json:"total"`
 	Ok           int             `json:"ok"`
 	Warning      int             `json:"warning,omitempty"`
 	NeedsReindex int             `json:"needs_reindex,omitempty"`
@@ -63,13 +65,13 @@ func New(catalog *catalogsvc.Service, runtimeFactory RuntimeFactory) *Service {
 }
 
 // ReindexAll rebuilds the indexes for every catalog project.
-func (s Service) ReindexAll(ctx context.Context) (ReindexAllOutput, error) {
+func (s Service) ReindexAll(ctx context.Context) (ReindexAllResult, error) {
 	entries, err := s.catalogEntries()
 	if err != nil {
-		return ReindexAllOutput{}, err
+		return ReindexAllResult{}, err
 	}
 
-	result := ReindexAllOutput{}
+	result := ReindexAllResult{Total: len(entries)}
 	for _, item := range entries {
 		projectResult := ProjectResult{
 			ProjectID: item.ProjectID,
@@ -128,13 +130,13 @@ func (s Service) ReindexAll(ctx context.Context) (ReindexAllOutput, error) {
 }
 
 // DoctorAll runs the runtime doctor checks for every catalog project.
-func (s Service) DoctorAll(ctx context.Context) (DoctorAllOutput, error) {
+func (s Service) DoctorAll(ctx context.Context) (DoctorAllResult, error) {
 	entries, err := s.catalogEntries()
 	if err != nil {
-		return DoctorAllOutput{}, err
+		return DoctorAllResult{}, err
 	}
 
-	result := DoctorAllOutput{}
+	result := DoctorAllResult{Total: len(entries)}
 	for _, item := range entries {
 		projectResult := ProjectResult{
 			ProjectID: item.ProjectID,

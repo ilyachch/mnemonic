@@ -11,6 +11,7 @@ import (
 	"github.com/ilyachch/mnemonic/internal/app"
 	manifestfmt "github.com/ilyachch/mnemonic/internal/format/manifest"
 	"github.com/ilyachch/mnemonic/internal/platform/paths"
+	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -23,6 +24,15 @@ type cmdResult struct {
 // executeCommand runs a fresh CLI root with the given arguments and returns stdout, stderr, and error.
 func executeCommand(args ...string) cmdResult {
 	root := newRootForTest()
+	return executeCommandWithRoot(root, args...)
+}
+
+func executeCommandWithBootstrap(boot *app.Bootstrap, args ...string) cmdResult {
+	root := NewRootCommand(boot)
+	return executeCommandWithRoot(root, args...)
+}
+
+func executeCommandWithRoot(root *cobra.Command, args ...string) cmdResult {
 	bufOut := new(bytes.Buffer)
 	bufErr := new(bytes.Buffer)
 
@@ -163,4 +173,12 @@ func resolveMemoriesHome() (string, error) {
 		return "", err
 	}
 	return boot.Paths.MemoriesHome, nil
+}
+
+func testCatalogStore(memoriesHome string) registry.Store {
+	return registry.New(memoriesHome, func(path string) (*manifestfmt.Manifest, error) {
+		return manifestfmt.ParseMnemonicManifestFromFile(path)
+	}, func(data []byte) (*manifestfmt.PointerFile, error) {
+		return manifestfmt.ParsePointerFile(data)
+	})
 }

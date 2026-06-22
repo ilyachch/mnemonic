@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/spf13/cobra"
 )
 
@@ -37,7 +38,13 @@ var projectReindexCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), fmt.Sprintf("%d projects reindexed\n", result.Indexed), result)
+			if err := PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), fmt.Sprintf("%d projects reindexed\n", result.Indexed), result); err != nil {
+				return err
+			}
+			if result.Failed > 0 {
+				return apperr.Internal(fmt.Sprintf("%d project(s) failed", result.Failed), nil)
+			}
+			return nil
 		default:
 			result, err := reindexSingleProject(commandContext(cmd), selector)
 			if err != nil {

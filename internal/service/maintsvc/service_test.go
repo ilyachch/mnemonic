@@ -59,6 +59,7 @@ func TestReindexAllVisitsEveryProject(t *testing.T) {
 
 	result, err := svc.ReindexAll(context.Background())
 	require.NoError(t, err)
+	require.Equal(t, 3, result.Total)
 	require.Equal(t, 2, result.Indexed)
 	require.Equal(t, 1, result.Failed)
 	require.Len(t, result.Projects, 3)
@@ -129,6 +130,7 @@ func TestDoctorAllVisitsEveryProject(t *testing.T) {
 
 	result, err := svc.DoctorAll(context.Background())
 	require.NoError(t, err)
+	require.Equal(t, 3, result.Total)
 	require.Equal(t, 1, result.Ok)
 	require.Equal(t, 1, result.NeedsReindex)
 	require.Equal(t, 1, result.Failed)
