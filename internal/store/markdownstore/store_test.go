@@ -47,6 +47,10 @@ func TestStoreCreateEditAndDelete(t *testing.T) {
 	assert.Equal(t, "Auth migration", show.Note.Title)
 	assert.Equal(t, "## Summary\nNext step", string(show.Note.Body))
 	assert.Equal(t, edited.ContentHash, show.ContentHash)
+	data, err := os.ReadFile(filepath.Join(root, "auth-migration.md"))
+	require.NoError(t, err)
+	assert.Equal(t, data, show.RawMarkdown)
+	assert.Equal(t, HashBytes(data), show.ContentHash)
 
 	result, err := store.Delete(DeleteInput{
 		Selector: created.Slug,

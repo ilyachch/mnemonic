@@ -50,6 +50,7 @@ func TestServiceRebuildsIndexForCreateEditDelete(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, created.Path, shown.Path)
 	require.Equal(t, created.ContentHash, shown.ContentHash)
+	require.NotEmpty(t, shown.RawMarkdown)
 
 	edited, err := svc.Edit(EditInput{
 		Selector: created.Slug,
@@ -66,6 +67,7 @@ func TestServiceRebuildsIndexForCreateEditDelete(t *testing.T) {
 	shown, err = svc.Show(created.Slug)
 	require.NoError(t, err)
 	require.Equal(t, "## Summary\nNext step", string(shown.Note.Body))
+	require.Equal(t, shown.ContentHash, markdownstore.HashBytes(shown.RawMarkdown))
 
 	assertIndexNoteCount(t, svc.Index, 1)
 

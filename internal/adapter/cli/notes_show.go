@@ -1,9 +1,6 @@
 package cli
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -24,11 +21,6 @@ var notesShowCmd = &cobra.Command{
 			return err
 		}
 
-		data, err := os.ReadFile(filepath.Join(runtime.KB.RootDir, filepath.FromSlash(resolved.Path)))
-		if err != nil {
-			return fmt.Errorf("read note %q: %w", resolved.Path, err)
-		}
-
 		output := notesShowOutput{
 			Note: notesShowItem{
 				NoteID:      resolved.Note.MnemonicNoteID,
@@ -41,7 +33,7 @@ var notesShowCmd = &cobra.Command{
 				UpdatedAt:   resolved.Note.UpdatedAt.UTC().Format(time.RFC3339),
 			},
 		}
-		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), string(data), output)
+		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), string(resolved.RawMarkdown), output)
 	},
 }
 

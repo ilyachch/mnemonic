@@ -104,6 +104,7 @@ type ResolvedNote struct {
 type ShowResult struct {
 	ResolvedNote
 	ContentHash string `json:"content_hash"`
+	RawMarkdown []byte `json:"-"`
 }
 
 // Create writes a new markdown note beneath the store root.
@@ -360,9 +361,18 @@ func (s Store) Show(selector string) (ShowResult, error) {
 		return ShowResult{}, fmt.Errorf("read note %q: %w", resolved.Path, err)
 	}
 
+	note, err := markdown.ParseNote(data)
+	if err != nil {
+		return ShowResult{}, fmt.Errorf("parse note %q: %w", resolved.Path, err)
+	}
+
 	return ShowResult{
-		ResolvedNote: resolved,
-		ContentHash:  HashBytes(data),
+		ResolvedNote: ResolvedNote{
+			Note: note,
+			Path: resolved.Path,
+		},
+		ContentHash: HashBytes(data),
+		RawMarkdown: append([]byte(nil), data...),
 	}, nil
 }
 
