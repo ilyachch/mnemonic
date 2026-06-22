@@ -379,22 +379,33 @@ func (s Service) knowledgeBaseFromEntry(entry registry.Entry) (kb.KnowledgeBase,
 		}
 	}
 
-	if resolved.ManifestPath != "" && (resolved.ProjectID == "" || resolved.Name == "" || resolved.Slug == "") {
-		manifest, err := manifestfmt.ParseMnemonicManifestFromFile(resolved.ManifestPath)
-		if err != nil {
-			return kb.KnowledgeBase{}, err
-		}
-		if resolved.ProjectID == "" {
-			resolved.ProjectID = manifest.ProjectID
-		}
-		if resolved.Name == "" {
-			resolved.Name = manifest.Name
-		}
-		if resolved.Slug == "" {
-			resolved.Slug = manifest.Slug
-		}
-		if resolved.Type == "" {
-			resolved.Type = string(manifest.Type)
+	needsManifest := resolved.ProjectID == "" || resolved.Name == "" || resolved.Slug == "" || resolved.Type == ""
+	if resolved.ManifestPath != "" {
+		if needsManifest {
+			manifest, err := manifestfmt.ParseMnemonicManifestFromFile(resolved.ManifestPath)
+			if err != nil {
+				return kb.KnowledgeBase{}, err
+			}
+			if resolved.ProjectID == "" {
+				resolved.ProjectID = manifest.ProjectID
+			}
+			if resolved.Name == "" {
+				resolved.Name = manifest.Name
+			}
+			if resolved.Slug == "" {
+				resolved.Slug = manifest.Slug
+			}
+			if resolved.Type == "" {
+				resolved.Type = string(manifest.Type)
+			}
+			if strings.TrimSpace(resolved.Description) == "" {
+				resolved.Description = manifest.Description
+			}
+		} else if strings.TrimSpace(resolved.Description) == "" {
+			manifest, err := manifestfmt.ParseMnemonicManifestFromFile(resolved.ManifestPath)
+			if err == nil {
+				resolved.Description = manifest.Description
+			}
 		}
 	}
 
@@ -409,6 +420,7 @@ func (s Service) knowledgeBaseFromEntry(entry registry.Entry) (kb.KnowledgeBase,
 		Name:         resolved.Name,
 		Slug:         resolved.Slug,
 		Kind:         resolved.Type,
+		Description:  resolved.Description,
 		RootDir:      resolved.MemoriesAbs,
 		RepoRootDir:  resolved.RepoRootAbs,
 		ManifestPath: resolved.ManifestPath,

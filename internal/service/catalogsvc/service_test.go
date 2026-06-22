@@ -39,6 +39,7 @@ func TestResolveBuildsKnowledgeBase(t *testing.T) {
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
 	manifest.Name = "Demo"
 	manifest.Slug = slug
+	manifest.Description = "Catalog description"
 	manifest.MarkdownFormatVersion = 1
 	manifest.CreatedAt = time.Now().UTC()
 	manifest.UpdatedAt = manifest.CreatedAt
@@ -52,11 +53,32 @@ func TestResolveBuildsKnowledgeBase(t *testing.T) {
 	require.Equal(t, manifest.Name, resolved.Name)
 	require.Equal(t, slug, resolved.Slug)
 	require.Equal(t, "central", resolved.Kind)
+	require.Equal(t, "Catalog description", resolved.Description)
 	require.Equal(t, projectDir, resolved.RootDir)
 	require.Equal(t, projectDir, resolved.RepoRootDir)
 	require.Equal(t, filepath.Join(projectDir, "mnemonic.toml"), resolved.ManifestPath)
 	require.Equal(t, filepath.Join(stateHome, "mnemonic", "projects", manifest.ProjectID), resolved.StateDir)
 	require.Equal(t, filepath.Join(stateHome, "mnemonic", "projects", manifest.ProjectID, "index.sqlite"), resolved.IndexPath)
+}
+
+func TestKnowledgeBaseFromEntryUsesEntryDescriptionWithoutReadingManifest(t *testing.T) {
+	svc := Service{MemoriesHome: t.TempDir(), StateHome: t.TempDir()}
+	manifestPath := filepath.Join(t.TempDir(), "missing", "mnemonic.toml")
+
+	resolved, err := svc.knowledgeBaseFromEntry(registry.Entry{
+		ProjectID:    "550e8400-e29b-41d4-a716-446655440099",
+		Name:         "Demo",
+		Slug:         "demo",
+		Type:         "central",
+		Description:  "Entry description",
+		ManifestPath: manifestPath,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "Entry description", resolved.Description)
+	require.Equal(t, "Demo", resolved.Name)
+	require.Equal(t, "demo", resolved.Slug)
+	require.Equal(t, "central", resolved.Kind)
+	require.Equal(t, manifestPath, resolved.ManifestPath)
 }
 
 func TestInitCreatesCentralProjectAndIndex(t *testing.T) {

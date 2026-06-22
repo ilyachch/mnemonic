@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
-	manifestfmt "github.com/ilyachch/mnemonic/internal/format/manifest"
 	"github.com/ilyachch/mnemonic/internal/platform/buildinfo"
 	"github.com/ilyachch/mnemonic/internal/service/indexsvc"
 	"github.com/ilyachch/mnemonic/internal/service/notesvc"
@@ -72,22 +71,6 @@ func (s *Server) BuildSDKServer() *sdkmcp.Server {
 		},
 	)
 
-	RegisterAll(sdkServer, s.Services, s.readManifestDescription(), s.ReadOnly)
+	RegisterAll(sdkServer, s.Services, s.KB.Description, s.ReadOnly)
 	return sdkServer
-}
-
-func (s *Server) readManifestDescription() string {
-	if s == nil || strings.TrimSpace(s.KB.ManifestPath) == "" {
-		return ""
-	}
-
-	data, err := os.ReadFile(s.KB.ManifestPath)
-	if err != nil {
-		return ""
-	}
-	manifest, err := manifestfmt.ParseMnemonicManifest(data)
-	if err != nil {
-		return ""
-	}
-	return manifest.Description
 }

@@ -16,6 +16,7 @@ type Entry struct {
 	Name         string
 	Slug         string
 	Type         string // "central" or "local"
+	Description  string
 	ManifestPath string
 	MemoriesAbs  string
 	RepoRootAbs  string
@@ -124,6 +125,7 @@ func (s Store) Scan() ([]Entry, []Issue, error) {
 				Name:         manifestData.Name,
 				Slug:         slug,
 				Type:         "central",
+				Description:  manifestData.Description,
 				ManifestPath: manifestPath,
 				MemoriesAbs:  memoriesAbs,
 				RepoRootAbs:  memoriesAbs,
@@ -206,6 +208,7 @@ func (s Store) Scan() ([]Entry, []Issue, error) {
 				Name:         manifestData.Name,
 				Slug:         slug,
 				Type:         "local",
+				Description:  manifestData.Description,
 				ManifestPath: pointerFile.ManifestPath,
 				MemoriesAbs:  memoriesAbs,
 				RepoRootAbs:  repoRootAbs,

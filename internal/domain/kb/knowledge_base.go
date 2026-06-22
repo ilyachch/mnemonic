@@ -6,6 +6,7 @@ type KnowledgeBase struct {
 	Name         string `json:"name"`
 	Slug         string `json:"slug"`
 	Kind         string `json:"kind"`
+	Description  string `json:"description,omitempty"`
 	RootDir      string `json:"root_dir"`
 	RepoRootDir  string `json:"repo_root_dir,omitempty"`
 	ManifestPath string `json:"manifest_path,omitempty"`
