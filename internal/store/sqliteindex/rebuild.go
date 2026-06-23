@@ -48,7 +48,7 @@ func (s Store) Rebuild() (RebuildResult, error) {
 
 	tempPath := tempIndexPath(s.IndexPath)
 	_ = os.Remove(tempPath)
-	if err := os.MkdirAll(filepath.Dir(tempPath), 0o755); err != nil {
+	if err = os.MkdirAll(filepath.Dir(tempPath), 0o755); err != nil {
 		return RebuildResult{}, err
 	}
 

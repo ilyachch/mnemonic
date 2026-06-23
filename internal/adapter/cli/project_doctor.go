@@ -33,16 +33,16 @@ var projectDoctorCmd = &cobra.Command{
 			if container.Services.Maint == nil {
 				return errors.New("maintenance service is not configured")
 			}
-			result, err := container.Services.Maint.DoctorAll(commandContext(cmd))
-			if err != nil {
+			maintResult, maintErr := container.Services.Maint.DoctorAll(commandContext(cmd))
+			if maintErr != nil {
+				return maintErr
+			}
+			human := fmt.Sprintf("%d projects checked\n", maintResult.Total)
+			if err = PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, maintResult); err != nil {
 				return err
 			}
-			human := fmt.Sprintf("%d projects checked\n", result.Total)
-			if err := PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, result); err != nil {
-				return err
-			}
-			if result.Failed > 0 {
-				return apperr.Internal(fmt.Sprintf("%d project(s) failed", result.Failed), nil)
+			if maintResult.Failed > 0 {
+				return apperr.Internal(fmt.Sprintf("%d project(s) failed", maintResult.Failed), nil)
 			}
 			return nil
 		}

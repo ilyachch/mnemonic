@@ -59,7 +59,7 @@ func main() {
 
 	command, args := mnemonicCommand(repoRoot)
 	if *reindex {
-		if err := runReindex(repoRoot, command, args, *project, env); err != nil {
+		if err = runReindex(repoRoot, command, args, *project, env); err != nil {
 			fatalf("reindex: %v", err)
 		}
 	}

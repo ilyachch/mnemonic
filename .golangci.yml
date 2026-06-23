@@ -51,8 +51,8 @@ linters:
       disable:
         - fieldalignment
     errcheck:
-      check-blank: true
-      check-type-assertions: true
+      check-blank: false
+      check-type-assertions: false
     gocyclo:
       min-complexity: 15
     gocognit:

@@ -286,7 +286,7 @@ func (s Service) Init(ctx context.Context, input InitInput) (InitResult, error) 
 		return InitResult{}, err
 	}
 
-	if err := InitProject(InitProjectInput{
+	if err = InitProject(InitProjectInput{
 		CWD:          input.WorkingDir,
 		MemoriesHome: s.MemoriesHome,
 		Name:         input.Name,
@@ -317,7 +317,7 @@ func (s Service) Init(ctx context.Context, input InitInput) (InitResult, error) 
 	_, err = indexsvc.New(resolved).Rebuild(ctx)
 	if err != nil {
 		result.IndexError = err.Error()
-		return result, nil
+		return result, nil //nolint:nilerr // partial success: IndexError communicates the failure
 	}
 	result.IndexStatus = "ok"
 	return result, nil
@@ -619,7 +619,7 @@ func importProject(input ImportInput, memoriesHome string) (ImportResult, error)
 	}
 
 	manifestPath := filepath.Join(resolvedPath, "mnemonic.toml")
-	if _, err := os.Stat(manifestPath); err != nil {
+	if _, err = os.Stat(manifestPath); err != nil {
 		if os.IsNotExist(err) {
 			return ImportResult{}, fmt.Errorf("mnemonic.toml not found at %s", resolvedPath)
 		}

@@ -24,7 +24,7 @@ var tagsListCmd = &cobra.Command{
 			return err
 		}
 
-		if err := requireRuntimeSearchIndex(runtime); err != nil {
+		if err = requireRuntimeSearchIndex(runtime); err != nil {
 			return err
 		}
 

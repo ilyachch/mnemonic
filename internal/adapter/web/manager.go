@@ -163,7 +163,7 @@ func (h *projectSessionHandler) ServeGET(w http.ResponseWriter, r *http.Request)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 	_ = session.Wait()
 }
 

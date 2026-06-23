@@ -29,9 +29,9 @@ var notesEditCmd = &cobra.Command{
 		}
 		var setFields map[string]string
 		if cmd.Flags().Changed("set") {
-			setValues, err := cmd.Flags().GetStringArray("set")
-			if err != nil {
-				return err
+			setValues, setErr := cmd.Flags().GetStringArray("set")
+			if setErr != nil {
+				return setErr
 			}
 			setFields, err = parseEditSetValues(setValues)
 			if err != nil {
@@ -55,8 +55,9 @@ var notesEditCmd = &cobra.Command{
 			Set:      setFields,
 			IfMatch:  ifMatch,
 		}
+		var body []byte
 		if bodyFile != "" {
-			body, err := os.ReadFile(bodyFile)
+			body, err = os.ReadFile(bodyFile)
 			if err != nil {
 				return fmt.Errorf("read body file: %w", err)
 			}

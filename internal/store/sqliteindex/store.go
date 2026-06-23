@@ -202,7 +202,7 @@ func (s Store) Search(db *sql.DB, query string, limit int, tag string) ([]Search
 	if err != nil {
 		return nil, fmt.Errorf("search query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	results := make([]SearchHit, 0)
 	for rows.Next() {
@@ -239,7 +239,7 @@ func (s Store) ListTags(db *sql.DB) ([]TagCount, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query tag list: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	tags := make([]TagCount, 0)
 	for rows.Next() {
@@ -307,7 +307,7 @@ func (s Store) Backlinks(db *sql.DB, targetNoteID string, limit int) ([]Backlink
 	if err != nil {
 		return nil, fmt.Errorf("query backlinks: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]Backlink, 0)
 	for rows.Next() {

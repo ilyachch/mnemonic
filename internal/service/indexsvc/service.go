@@ -97,7 +97,7 @@ func (s Service) Doctor(ctx context.Context) (DoctorOutput, error) {
 	}
 	result.addCheck(DoctorCheck{Name: "index exists", Status: "ok"})
 
-	if err := s.Index.QuickCheck(); err != nil {
+	if err = s.Index.QuickCheck(); err != nil {
 		return DoctorOutput{}, err
 	}
 	result.addCheck(DoctorCheck{Name: "index quick_check", Status: "ok"})

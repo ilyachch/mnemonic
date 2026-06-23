@@ -196,8 +196,9 @@ func (s Store) Edit(input EditInput) (EditResult, error) {
 	}
 
 	absPath := filepath.Join(root, filepath.FromSlash(resolved.Path))
+	var current []byte
 	if input.IfMatch != "" {
-		current, err := os.ReadFile(absPath)
+		current, err = os.ReadFile(absPath)
 		if err != nil {
 			return EditResult{}, fmt.Errorf("read note: %w", err)
 		}
@@ -206,7 +207,7 @@ func (s Store) Edit(input EditInput) (EditResult, error) {
 		}
 	}
 
-	if err := applyEditSet(&resolved.Note, input.Set); err != nil {
+	if err = applyEditSet(&resolved.Note, input.Set); err != nil {
 		return EditResult{}, err
 	}
 
@@ -271,7 +272,7 @@ func (s Store) Delete(input DeleteInput) (DeleteResult, error) {
 		if input.DryRun {
 			return DeleteResult{Mode: "hard", Path: resolved.Path}, nil
 		}
-		if err := os.Remove(absPath); err != nil {
+		if err = os.Remove(absPath); err != nil {
 			return DeleteResult{}, fmt.Errorf("remove note: %w", err)
 		}
 		return DeleteResult{Mode: "hard", Path: resolved.Path}, nil
@@ -295,10 +296,10 @@ func (s Store) Delete(input DeleteInput) (DeleteResult, error) {
 	if err != nil {
 		return DeleteResult{}, fmt.Errorf("read note: %w", err)
 	}
-	if err := mnemonicfs.WriteFile(trashPath, data, 0o644); err != nil {
+	if err = mnemonicfs.WriteFile(trashPath, data, 0o644); err != nil {
 		return DeleteResult{}, fmt.Errorf("move note to trash: %w", err)
 	}
-	if err := os.Remove(absPath); err != nil {
+	if err = os.Remove(absPath); err != nil {
 		return DeleteResult{}, fmt.Errorf("remove source note: %w", err)
 	}
 
