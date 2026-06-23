@@ -116,3 +116,8 @@ func mustConfigFile(t *testing.T, path string) string {
 
 	return path
 }
+func TestUserHomeDirFallback(t *testing.T) {
+	// Should return a non-empty string (uses real HOME env)
+	home := userHomeDirFallback()
+	require.NotEmpty(t, home)
+}

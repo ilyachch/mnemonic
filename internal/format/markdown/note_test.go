@@ -81,3 +81,31 @@ func TestParseNoteRejectsWrongFieldTypes(t *testing.T) {
 		"Body\n"))
 	require.Error(t, err)
 }
+
+func TestNoteTimeField_TimeType(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	raw := map[string]any{"created_at": now}
+	result, err := noteTimeField(raw, "created_at")
+	require.NoError(t, err)
+	require.Equal(t, now.UTC(), result)
+}
+
+func TestNoteTimeField_MissingField(t *testing.T) {
+	t.Parallel()
+
+	raw := map[string]any{"other": "value"}
+	result, err := noteTimeField(raw, "created_at")
+	require.NoError(t, err)
+	require.True(t, result.IsZero())
+}
+
+func TestNoteTimeField_NilValue(t *testing.T) {
+	t.Parallel()
+
+	raw := map[string]any{"created_at": nil}
+	result, err := noteTimeField(raw, "created_at")
+	require.NoError(t, err)
+	require.True(t, result.IsZero())
+}

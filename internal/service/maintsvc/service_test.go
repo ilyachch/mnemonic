@@ -13,8 +13,15 @@ import (
 	"github.com/ilyachch/mnemonic/internal/service/catalogsvc"
 	"github.com/ilyachch/mnemonic/internal/service/indexsvc"
 	registry "github.com/ilyachch/mnemonic/internal/store/registry"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestNew(t *testing.T) {
+	svc := New(&catalogsvc.Service{MemoriesHome: t.TempDir(), StateHome: t.TempDir()}, nil)
+	assert.NotNil(t, svc)
+	assert.NotNil(t, svc.Catalog)
+}
 
 func TestReindexAllVisitsEveryProject(t *testing.T) {
 	testCatalogParsers(t)

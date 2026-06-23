@@ -147,3 +147,15 @@ func TestCheckSchemaStatus(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, SchemaStatusNeedsRebuild, status)
 }
+
+func TestSchemaStatus_OpenError(t *testing.T) {
+	store := Store{IndexPath: "/nonexistent/path/index.sqlite"}
+	_, err := store.SchemaStatus()
+	require.Error(t, err)
+}
+
+func TestUnresolvedLinkCount_OpenError(t *testing.T) {
+	store := Store{IndexPath: "/nonexistent/path/index.sqlite"}
+	_, err := store.UnresolvedLinkCount()
+	require.Error(t, err)
+}

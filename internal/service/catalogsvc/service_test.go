@@ -2,6 +2,7 @@ package catalogsvc
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/ilyachch/mnemonic/internal/platform/clock"
 	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 	"github.com/ilyachch/mnemonic/internal/testutil"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -514,4 +516,43 @@ func seedImportedProject(t *testing.T, memoriesHome, projectID, name, slug strin
 	require.NoError(t, err)
 	require.Len(t, result.Candidates, 1)
 	return result
+}
+
+func TestWrapRegistryError(t *testing.T) {
+	// nil -> nil
+	require.Nil(t, wrapRegistryError(nil))
+
+	// ErrNotFound -> apperr.NotFound
+	notFoundErr := wrapRegistryError(registry.ErrNotFound{Slug: "test"})
+	require.Error(t, notFoundErr)
+	var appErr *apperr.Error
+	require.ErrorAs(t, notFoundErr, &appErr)
+	require.Equal(t, apperr.CodeNotFound, appErr.Code)
+
+	// Unknown error passes through
+	plain := errors.New("plain error")
+	require.Equal(t, plain, wrapRegistryError(plain))
+}
+
+func TestRegistryPathForKind(t *testing.T) {
+	assert.Equal(t, filepath.Join("/mem", "slug", "mnemonic.toml"), registryPathForKind("/mem", "central", "slug"))
+	assert.Equal(t, filepath.Join("/mem", "slug.toml"), registryPathForKind("/mem", "local", "slug"))
+	assert.Equal(t, "", registryPathForKind("/mem", "unknown", "slug"))
+}
+
+func TestResolveImportPath(t *testing.T) {
+	tmp := t.TempDir()
+
+	// Empty path defaults to current directory
+	_, err := resolveImportPath(ImportInput{Path: ""})
+	require.NoError(t, err)
+
+	// Existing directory
+	_, err = resolveImportPath(ImportInput{Path: tmp})
+	require.NoError(t, err)
+
+	// Non-existent path
+	_, err = resolveImportPath(ImportInput{Path: "/nonexistent/path/12345"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not found")
 }
