@@ -22,7 +22,7 @@ repos:
       - id: go-mod-tidy
         name: go mod tidy
   - repo: https://github.com/golangci/golangci-lint
-    rev: v1.64.8
+    rev: v2.12.2
     hooks:
       - id: golangci-lint
         name: golangci-lint
