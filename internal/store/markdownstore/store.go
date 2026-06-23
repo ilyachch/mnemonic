@@ -112,7 +112,7 @@ type ShowResult struct {
 func (s Store) Create(input CreateInput) (CreateResult, error) {
 	root := s.rootDir()
 	if root == "" {
-		return CreateResult{}, fmt.Errorf("root directory is required")
+		return CreateResult{}, errors.New("root directory is required")
 	}
 	if input.Title == "" {
 		return CreateResult{}, apperr.CLIUsage("note title is required", nil)
@@ -178,7 +178,7 @@ func (s Store) Create(input CreateInput) (CreateResult, error) {
 func (s Store) Edit(input EditInput) (EditResult, error) {
 	root := s.rootDir()
 	if root == "" {
-		return EditResult{}, fmt.Errorf("root directory is required")
+		return EditResult{}, errors.New("root directory is required")
 	}
 	if input.Selector == "" {
 		return EditResult{}, apperr.NotFound("note selector is required", nil)
@@ -246,7 +246,7 @@ func (s Store) Edit(input EditInput) (EditResult, error) {
 func (s Store) Delete(input DeleteInput) (DeleteResult, error) {
 	root := s.rootDir()
 	if root == "" {
-		return DeleteResult{}, fmt.Errorf("root directory is required")
+		return DeleteResult{}, errors.New("root directory is required")
 	}
 	if input.Selector == "" {
 		return DeleteResult{}, apperr.NotFound("note selector is required", nil)
@@ -309,7 +309,7 @@ func (s Store) Delete(input DeleteInput) (DeleteResult, error) {
 func (s Store) List() ([]NoteSummary, error) {
 	root := s.rootDir()
 	if root == "" {
-		return nil, fmt.Errorf("root directory is required")
+		return nil, errors.New("root directory is required")
 	}
 
 	paths, err := s.Walk()
@@ -381,7 +381,7 @@ func (s Store) Show(selector string) (ShowResult, error) {
 func (s Store) Resolve(selector string) (ResolvedNote, error) {
 	root := s.rootDir()
 	if root == "" {
-		return ResolvedNote{}, fmt.Errorf("root directory is required")
+		return ResolvedNote{}, errors.New("root directory is required")
 	}
 	if selector == "" {
 		return ResolvedNote{}, apperr.NotFound("note selector is required", nil)
@@ -419,7 +419,7 @@ func (s Store) Resolve(selector string) (ResolvedNote, error) {
 func (s Store) Walk() ([]string, error) {
 	root := s.rootDir()
 	if root == "" {
-		return nil, fmt.Errorf("root directory is required")
+		return nil, errors.New("root directory is required")
 	}
 
 	return walkRoot(root)
@@ -487,7 +487,7 @@ type TrashPathInput struct {
 func ResolveTrashPath(input TrashPathInput) (string, error) {
 	rootDir := input.RootDir
 	if rootDir == "" {
-		return "", fmt.Errorf("root directory is required")
+		return "", errors.New("root directory is required")
 	}
 
 	trashDirName := input.TrashDirName
@@ -543,18 +543,18 @@ func ResolveTrashPath(input TrashPathInput) (string, error) {
 
 func cleanRelativePath(path string) (string, error) {
 	if path == "" {
-		return "", fmt.Errorf("original path is required")
+		return "", errors.New("original path is required")
 	}
 	if filepath.IsAbs(path) {
-		return "", fmt.Errorf("original path must be relative")
+		return "", errors.New("original path must be relative")
 	}
 
 	cleaned := filepath.Clean(path)
 	if cleaned == "." {
-		return "", fmt.Errorf("original path is required")
+		return "", errors.New("original path is required")
 	}
 	if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("original path escapes root directory")
+		return "", errors.New("original path escapes root directory")
 	}
 
 	return cleaned, nil

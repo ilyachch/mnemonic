@@ -2,6 +2,7 @@ package cli
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/ilyachch/mnemonic/internal/service/searchsvc"
 	"github.com/spf13/cobra"
@@ -54,8 +55,10 @@ func formatNotesSearchHuman(hits []searchsvc.SearchResult) string {
 		return "0 hits\n"
 	}
 	out := ""
+	var outSb57 strings.Builder
 	for _, hit := range hits {
-		out += hit.Slug + " " + strconv.FormatFloat(hit.Score, 'f', 3, 64) + " " + hit.Path + "\n"
+		outSb57.WriteString(hit.Slug + " " + strconv.FormatFloat(hit.Score, 'f', 3, 64) + " " + hit.Path + "\n")
 	}
+	out += outSb57.String()
 	return out
 }

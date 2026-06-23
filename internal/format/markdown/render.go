@@ -2,6 +2,7 @@ package markdown
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -22,12 +23,12 @@ var canonicalFrontmatterKeys = map[string]struct{}{
 // RenderNote serializes a note into canonical YAML frontmatter plus body.
 func RenderNote(note Note) ([]byte, error) {
 	if note.MnemonicNoteID == "" {
-		return nil, fmt.Errorf("mnemonic_note_id is required")
+		return nil, errors.New("mnemonic_note_id is required")
 	}
 
 	slug := note.EffectiveSlug()
 	if slug == "" {
-		return nil, fmt.Errorf("slug is required")
+		return nil, errors.New("slug is required")
 	}
 
 	var buf bytes.Buffer

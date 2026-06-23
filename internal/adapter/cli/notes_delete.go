@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"fmt"
-
 	"github.com/ilyachch/mnemonic/internal/service/notesvc"
 	"github.com/spf13/cobra"
 )
@@ -43,6 +41,6 @@ var notesDeleteCmd = &cobra.Command{
 		if !jsonOutputEnabled(cmd) {
 			printIndexWarning(cmd, deleted.IndexStatus, deleted.IndexError)
 		}
-		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), fmt.Sprintf("%s deleted\n", args[0]), newNotesDeleteOutput(deleted))
+		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), args[0]+" deleted\n", newNotesDeleteOutput(deleted))
 	},
 }

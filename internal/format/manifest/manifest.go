@@ -2,6 +2,7 @@ package manifest
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -109,37 +110,37 @@ func (m *Manifest) ApplyDefaults() {
 // Validate checks the schema invariants expected for mnemonic.toml files.
 func (m *Manifest) Validate() error {
 	if m == nil {
-		return fmt.Errorf("mnemonic manifest is nil")
+		return errors.New("mnemonic manifest is nil")
 	}
 	if m.Version == 0 {
-		return fmt.Errorf("mnemonic manifest version is required")
+		return errors.New("mnemonic manifest version is required")
 	}
 	if m.Version != 1 {
 		return fmt.Errorf("mnemonic manifest version %d is unsupported; expected 1", m.Version)
 	}
 	if m.ProjectID == "" {
-		return fmt.Errorf("project_id is required")
+		return errors.New("project_id is required")
 	}
 	if m.Name == "" {
-		return fmt.Errorf("name is required")
+		return errors.New("name is required")
 	}
 	if m.Slug == "" {
-		return fmt.Errorf("slug is required")
+		return errors.New("slug is required")
 	}
 	if m.MarkdownFormatVersion <= 0 {
-		return fmt.Errorf("markdown_format_version must be positive")
+		return errors.New("markdown_format_version must be positive")
 	}
 	if m.CreatedAt.IsZero() {
-		return fmt.Errorf("created_at is required")
+		return errors.New("created_at is required")
 	}
 	if m.UpdatedAt.IsZero() {
-		return fmt.Errorf("updated_at is required")
+		return errors.New("updated_at is required")
 	}
 	if len(m.Layout.NotesGlob) == 0 {
-		return fmt.Errorf("layout.notes_glob is required")
+		return errors.New("layout.notes_glob is required")
 	}
 	if len(m.Layout.Ignore) == 0 {
-		return fmt.Errorf("layout.ignore is required")
+		return errors.New("layout.ignore is required")
 	}
 
 	switch m.Type {
@@ -242,7 +243,7 @@ func ParsePointerFile(data []byte) (*PointerFile, error) {
 		return nil, fmt.Errorf("pointer file syntax error: %w", err)
 	}
 	if pf.ManifestPath == "" {
-		return nil, fmt.Errorf("manifest_path is required")
+		return nil, errors.New("manifest_path is required")
 	}
 	return &pf, nil
 }
@@ -250,7 +251,7 @@ func ParsePointerFile(data []byte) (*PointerFile, error) {
 // WritePointerFile writes a pointer file to disk.
 func WritePointerFile(path string, pf *PointerFile) error {
 	if pf == nil {
-		return fmt.Errorf("pointer file is required")
+		return errors.New("pointer file is required")
 	}
 	data, err := toml.Marshal(pf)
 	if err != nil {

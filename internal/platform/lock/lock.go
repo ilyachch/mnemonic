@@ -33,15 +33,15 @@ type Guard struct {
 func Path(stateDir string, name string) (string, error) {
 	stateDir = strings.TrimSpace(stateDir)
 	if stateDir == "" {
-		return "", fmt.Errorf("state directory is required")
+		return "", errors.New("state directory is required")
 	}
 
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return "", fmt.Errorf("lock name is required")
+		return "", errors.New("lock name is required")
 	}
 	if strings.ContainsAny(name, `/\`) {
-		return "", fmt.Errorf("lock name must not contain path separators")
+		return "", errors.New("lock name must not contain path separators")
 	}
 
 	return filepath.Join(

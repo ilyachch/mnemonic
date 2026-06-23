@@ -2,7 +2,7 @@ package cli
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"os"
 
 	"github.com/ilyachch/mnemonic/internal/app"
@@ -33,7 +33,7 @@ func cliStateFromContext(ctx context.Context) *cliState {
 func bootstrapFromContext(ctx context.Context) (*app.Bootstrap, error) {
 	state := cliStateFromContext(ctx)
 	if state == nil || state.boot == nil {
-		return nil, fmt.Errorf("application bootstrap is not configured")
+		return nil, errors.New("application bootstrap is not configured")
 	}
 	return state.boot, nil
 }

@@ -81,15 +81,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch {
-	case r.URL.Path == sseEndpoint:
+	switch r.URL.Path {
+	case sseEndpoint:
 		if r.Method != http.MethodGet {
 			w.Header().Set("Allow", http.MethodGet)
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		s.sessions.ServeGET(w, r)
-	case r.URL.Path == messagesEndpoint:
+	case messagesEndpoint:
 		if r.Method != http.MethodPost {
 			w.Header().Set("Allow", http.MethodPost)
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

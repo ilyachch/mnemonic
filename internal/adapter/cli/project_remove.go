@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 )
 
@@ -44,7 +42,7 @@ Index and lock files are always cleaned up.`,
 			MarkdownDeleted: result.MarkdownDeleted,
 			FullWipe:        result.FullWipe,
 		}
-		human := fmt.Sprintf("%s removed\n", result.Slug)
+		human := result.Slug + " removed\n"
 		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, output)
 	},
 }

@@ -2,6 +2,7 @@ package markdown
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 
 	frontmatter "github.com/adrg/frontmatter"
@@ -42,7 +43,7 @@ func ParseFrontmatter(data []byte) (Frontmatter, error) {
 		return nil
 	}))
 	if err != nil || bytes.Equal(body, data) {
-		return Frontmatter{}, fmt.Errorf("unclosed frontmatter")
+		return Frontmatter{}, errors.New("unclosed frontmatter")
 	}
 
 	return Frontmatter{

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
@@ -32,7 +33,7 @@ var projectReindexCmd = &cobra.Command{
 		switch {
 		case all:
 			if container.Services.Maint == nil {
-				return fmt.Errorf("maintenance service is not configured")
+				return errors.New("maintenance service is not configured")
 			}
 			result, err := container.Services.Maint.ReindexAll(commandContext(cmd))
 			if err != nil {
@@ -50,7 +51,7 @@ var projectReindexCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), fmt.Sprintf("%s reindexed\n", result.ProjectID), result)
+			return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), result.ProjectID+" reindexed\n", result)
 		}
 	},
 }
@@ -72,7 +73,7 @@ func reindexSingleProject(ctx context.Context, selector string) (projectReindexP
 
 	indexService := runtime.Services.Index
 	if indexService == nil {
-		return projectReindexProjectResult{}, fmt.Errorf("runtime index service is not configured")
+		return projectReindexProjectResult{}, errors.New("runtime index service is not configured")
 	}
 
 	result, err := indexService.Rebuild(ctx)

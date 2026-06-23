@@ -205,7 +205,6 @@ func (s fakeMaintIndexService) Doctor(ctx context.Context) (indexsvc.DoctorOutpu
 
 func testCatalogParsers(t *testing.T) {
 	t.Helper()
-
 }
 
 func testCatalogStore(memoriesHome string) registry.Store {

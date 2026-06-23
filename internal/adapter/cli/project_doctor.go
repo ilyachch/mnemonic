@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
@@ -30,7 +31,7 @@ var projectDoctorCmd = &cobra.Command{
 
 		if all {
 			if container.Services.Maint == nil {
-				return fmt.Errorf("maintenance service is not configured")
+				return errors.New("maintenance service is not configured")
 			}
 			result, err := container.Services.Maint.DoctorAll(commandContext(cmd))
 			if err != nil {
@@ -53,14 +54,14 @@ var projectDoctorCmd = &cobra.Command{
 
 		indexService := runtime.Services.Index
 		if indexService == nil {
-			return fmt.Errorf("runtime index service is not configured")
+			return errors.New("runtime index service is not configured")
 		}
 
 		result, err := indexService.Doctor(commandContext(cmd))
 		if err != nil {
 			return err
 		}
-		human := fmt.Sprintf("%s\n", result.Status)
+		human := result.Status + "\n"
 		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, result)
 	},
 }

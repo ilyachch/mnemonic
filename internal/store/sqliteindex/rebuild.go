@@ -4,9 +4,11 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
@@ -26,7 +28,7 @@ func (s Store) Rebuild() (RebuildResult, error) {
 		return RebuildResult{}, err
 	}
 	if strings.TrimSpace(s.RootDir) == "" {
-		return RebuildResult{}, fmt.Errorf("root dir is required")
+		return RebuildResult{}, errors.New("root dir is required")
 	}
 
 	guard, err := acquireRebuildLock(s.IndexPath)
@@ -136,7 +138,7 @@ func insertDocs(db *sql.DB, docs []NoteDoc, kbid string) error {
 				toID.String = resolved
 			}
 			_, _ = db.Exec(`INSERT INTO links(link_id, note_id, to_note_id, target, relation_type, source_line) VALUES (?, ?, ?, ?, ?, ?)`,
-				hashString(doc.NoteID+link.RawTarget+link.Source+fmt.Sprint(link.Line)), doc.NoteID, toID, link.RawTarget, link.RelationType, link.Line)
+				hashString(doc.NoteID+link.RawTarget+link.Source+strconv.Itoa(link.Line)), doc.NoteID, toID, link.RawTarget, link.RelationType, link.Line)
 		}
 	}
 	return nil
@@ -167,7 +169,7 @@ func hashString(s string) string {
 
 func quickCheckFile(path string) error {
 	if strings.TrimSpace(path) == "" {
-		return fmt.Errorf("path is required")
+		return errors.New("path is required")
 	}
 
 	db, err := sql.Open(sqliteDriverName, path)

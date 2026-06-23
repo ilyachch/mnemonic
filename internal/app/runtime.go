@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"strings"
 
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
@@ -35,7 +35,7 @@ type RuntimeApp struct {
 // NewRuntimeApp builds the runtime container from one resolved knowledge base.
 func NewRuntimeApp(input RuntimeInput) (*RuntimeApp, error) {
 	if strings.TrimSpace(input.KB.ID) == "" {
-		return nil, fmt.Errorf("knowledge base is required")
+		return nil, errors.New("knowledge base is required")
 	}
 
 	return &RuntimeApp{
@@ -60,10 +60,10 @@ func (r *RuntimeApp) IndexService() maintsvc.IndexService {
 func (b *Bootstrap) Runtime(ctx context.Context, selector string) (*RuntimeApp, error) {
 	_ = ctx
 	if b == nil {
-		return nil, fmt.Errorf("app bootstrap is required")
+		return nil, errors.New("app bootstrap is required")
 	}
 	if b.Services.Catalog == nil {
-		return nil, fmt.Errorf("catalog service is not configured")
+		return nil, errors.New("catalog service is not configured")
 	}
 
 	resolved, err := b.Services.Catalog.Resolve(selector)

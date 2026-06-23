@@ -323,7 +323,7 @@ func callAndPrint(
 		return errors.New("nil result")
 	}
 	if result.IsError {
-		return fmt.Errorf("tool returned error")
+		return errors.New("tool returned error")
 	}
 	if decodeTarget != nil {
 		if err := decodeStructured(result.StructuredContent, decodeTarget); err != nil {

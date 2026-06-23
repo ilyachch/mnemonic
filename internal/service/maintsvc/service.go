@@ -2,7 +2,7 @@ package maintsvc
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"strings"
 
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
@@ -208,7 +208,7 @@ func (s Service) DoctorAll(ctx context.Context) (DoctorAllResult, error) {
 
 func (s Service) catalogEntries() ([]catalogsvc.ListItem, error) {
 	if s.Catalog == nil {
-		return nil, fmt.Errorf("catalog service is not configured")
+		return nil, errors.New("catalog service is not configured")
 	}
 	projects, err := s.Catalog.List()
 	if err != nil {
@@ -220,14 +220,14 @@ func (s Service) catalogEntries() ([]catalogsvc.ListItem, error) {
 func (s Service) resolveKnowledgeBase(selector string) (kb.KnowledgeBase, error) {
 	selector = strings.TrimSpace(selector)
 	if selector == "" {
-		return kb.KnowledgeBase{}, fmt.Errorf("project selector is required")
+		return kb.KnowledgeBase{}, errors.New("project selector is required")
 	}
 	return s.Catalog.Resolve(selector)
 }
 
 func (s Service) runtimeFor(ctx context.Context, resolved kb.KnowledgeBase) (Runtime, error) {
 	if s.RuntimeFactory == nil {
-		return nil, fmt.Errorf("runtime factory is not configured")
+		return nil, errors.New("runtime factory is not configured")
 	}
 	return s.RuntimeFactory(ctx, resolved)
 }

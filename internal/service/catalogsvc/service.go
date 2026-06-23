@@ -383,7 +383,7 @@ func (s Service) knowledgeBaseFromEntry(entry registry.Entry) (kb.KnowledgeBase,
 	resolved := entry
 
 	if strings.TrimSpace(resolved.Slug) == "" {
-		return kb.KnowledgeBase{}, fmt.Errorf("project slug is required")
+		return kb.KnowledgeBase{}, errors.New("project slug is required")
 	}
 
 	switch resolved.Type {
@@ -459,7 +459,7 @@ func (s Service) knowledgeBaseFromEntry(entry registry.Entry) (kb.KnowledgeBase,
 	}
 
 	if strings.TrimSpace(resolved.ProjectID) == "" {
-		return kb.KnowledgeBase{}, fmt.Errorf("project id is required")
+		return kb.KnowledgeBase{}, errors.New("project id is required")
 	}
 
 	stateDir := s.statePath(resolved.ProjectID)

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
@@ -61,7 +60,7 @@ var projectInitCmd = &cobra.Command{
 		if !jsonOutputEnabled(cmd) {
 			printIndexWarning(cmd, result.IndexStatus, result.IndexError)
 		}
-		human := fmt.Sprintf("%s initialized\n", result.Slug)
+		human := result.Slug + " initialized\n"
 		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, result)
 	},
 }

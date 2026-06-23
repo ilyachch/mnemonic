@@ -2,7 +2,6 @@ package apperr
 
 import (
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -66,7 +65,7 @@ func TestErrors_Is(t *testing.T) {
 }
 
 func TestNew(t *testing.T) {
-	inner := fmt.Errorf("disk full")
+	inner := errors.New("disk full")
 	err := New(CodeInternal, "write failed", inner)
 
 	var appErr *Error

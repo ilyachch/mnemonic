@@ -56,7 +56,7 @@ func New(memoriesHome string, manifestParser ManifestParser, pointerParser Point
 // Scan reads all projects from the memories home directory.
 func (s Store) Scan() ([]Entry, []Issue, error) {
 	if s.MemoriesHome == "" {
-		return nil, nil, fmt.Errorf("memories home is required")
+		return nil, nil, errors.New("memories home is required")
 	}
 
 	entries, err := os.ReadDir(s.MemoriesHome)

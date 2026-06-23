@@ -2,7 +2,7 @@ package stdio
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"log/slog"
 	"os"
 	"strings"
@@ -32,16 +32,16 @@ type Server struct {
 // NewServer builds a stdio adapter around runtime services for one knowledge base.
 func NewServer(k kb.KnowledgeBase, services Dependencies, readOnly bool) (*Server, error) {
 	if strings.TrimSpace(k.ID) == "" {
-		return nil, fmt.Errorf("knowledge base is required")
+		return nil, errors.New("knowledge base is required")
 	}
 	if services.Notes == nil {
-		return nil, fmt.Errorf("notes service is required")
+		return nil, errors.New("notes service is required")
 	}
 	if services.Search == nil {
-		return nil, fmt.Errorf("search service is required")
+		return nil, errors.New("search service is required")
 	}
 	if services.Index == nil {
-		return nil, fmt.Errorf("index service is required")
+		return nil, errors.New("index service is required")
 	}
 
 	return &Server{
@@ -54,7 +54,7 @@ func NewServer(k kb.KnowledgeBase, services Dependencies, readOnly bool) (*Serve
 // Run starts the stdio adapter on the provided MCP transport.
 func (s *Server) Run(ctx context.Context, transport sdkmcp.Transport) error {
 	if s == nil {
-		return fmt.Errorf("stdio server is required")
+		return errors.New("stdio server is required")
 	}
 	return s.BuildSDKServer().Run(ctx, transport)
 }

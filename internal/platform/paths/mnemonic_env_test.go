@@ -109,7 +109,6 @@ func TestGetMnemonicPaths(t *testing.T) {
 		}
 
 		for _, tt := range tests {
-			tt := tt
 			t.Run(tt.name, func(t *testing.T) {
 				setXDGEnv(t)
 				t.Setenv(tt.envKey, tt.envValue)
@@ -195,7 +194,6 @@ func TestGetMnemonicPaths(t *testing.T) {
 		}
 
 		for _, tt := range tests {
-			tt := tt
 			t.Run(tt.name, func(t *testing.T) {
 				setXDGEnv(t)
 				t.Setenv(tt.envKey, "relative/"+tt.name)

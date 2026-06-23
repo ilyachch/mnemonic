@@ -2,6 +2,7 @@ package sqliteindex
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -165,11 +166,11 @@ func (s Store) SchemaStatus() (SchemaStatus, error) {
 // Search runs an FTS query against the index database.
 func (s Store) Search(db *sql.DB, query string, limit int, tag string) ([]SearchHit, error) {
 	if db == nil {
-		return nil, fmt.Errorf("db is required")
+		return nil, errors.New("db is required")
 	}
 	query = sanitizeFTSQuery(query)
 	if strings.TrimSpace(query) == "" {
-		return nil, fmt.Errorf("query is required")
+		return nil, errors.New("query is required")
 	}
 	if limit <= 0 {
 		limit = 20
@@ -221,7 +222,7 @@ func (s Store) Search(db *sql.DB, query string, limit int, tag string) ([]Search
 // ListTags returns grouped tags and note counts.
 func (s Store) ListTags(db *sql.DB) ([]TagCount, error) {
 	if db == nil {
-		return nil, fmt.Errorf("db is required")
+		return nil, errors.New("db is required")
 	}
 
 	rows, err := db.Query(
@@ -258,11 +259,11 @@ func (s Store) ListTags(db *sql.DB) ([]TagCount, error) {
 // LookupNoteByIdentifier returns the note matching the selector.
 func (s Store) LookupNoteByIdentifier(db *sql.DB, identifier string) (IndexedNote, error) {
 	if db == nil {
-		return IndexedNote{}, fmt.Errorf("db is required")
+		return IndexedNote{}, errors.New("db is required")
 	}
 	identifier = strings.TrimSpace(identifier)
 	if identifier == "" {
-		return IndexedNote{}, fmt.Errorf("identifier is required")
+		return IndexedNote{}, errors.New("identifier is required")
 	}
 
 	row := db.QueryRow(
@@ -284,11 +285,11 @@ func (s Store) LookupNoteByIdentifier(db *sql.DB, identifier string) (IndexedNot
 // Backlinks returns resolved links pointing to a note.
 func (s Store) Backlinks(db *sql.DB, targetNoteID string, limit int) ([]Backlink, error) {
 	if db == nil {
-		return nil, fmt.Errorf("db is required")
+		return nil, errors.New("db is required")
 	}
 	targetNoteID = strings.TrimSpace(targetNoteID)
 	if targetNoteID == "" {
-		return nil, fmt.Errorf("target note id is required")
+		return nil, errors.New("target note id is required")
 	}
 
 	sqlQuery := `SELECT l.link_id, l.note_id, n.slug, n.title, n.rel_path, l.relation_type, l.source_line
@@ -326,7 +327,7 @@ func (s Store) Backlinks(db *sql.DB, targetNoteID string, limit int) ([]Backlink
 // CountUnresolvedLinks returns the number of links without a resolved target note.
 func (s Store) CountUnresolvedLinks(db *sql.DB) (int, error) {
 	if db == nil {
-		return 0, fmt.Errorf("db is required")
+		return 0, errors.New("db is required")
 	}
 
 	var unresolved int
@@ -349,7 +350,7 @@ func (s Store) UnresolvedLinkCount() (int, error) {
 
 func (s Store) validateIndexPath() error {
 	if strings.TrimSpace(s.IndexPath) == "" {
-		return fmt.Errorf("index path is required")
+		return errors.New("index path is required")
 	}
 	return nil
 }

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -52,7 +53,7 @@ var webServeCmd = &cobra.Command{
 		}
 
 		err = webServeListenAndServe(server)
-		if err != nil && err != http.ErrServerClosed {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return fmt.Errorf("serve web MCP: %w", err)
 		}
 		return nil
@@ -64,7 +65,7 @@ func normalizeWebListenAddr(portFlag string) string {
 	if port == "" {
 		return ""
 	}
-	return fmt.Sprintf(":%s", port)
+	return ":" + port
 }
 
 func resolveWebServeAddr(addrFlag, portFlag string) string {
