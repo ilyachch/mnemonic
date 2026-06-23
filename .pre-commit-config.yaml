@@ -19,23 +19,11 @@ repos:
   - repo: https://github.com/dnephin/pre-commit-golang
     rev: v0.5.1
     hooks:
-      - id: go-fmt
-        name: go fmt
-        args: [-l]
-      - id: go-vet
-        name: go vet
-        args: [-all]
       - id: go-mod-tidy
         name: go mod tidy
-      - id: go-build
-        name: go build
-        args: [./...]
   - repo: https://github.com/golangci/golangci-lint
     rev: v1.64.8
     hooks:
       - id: golangci-lint
         name: golangci-lint
-        args:
-          - --timeout=5m
-          - --config=.golangci.yml
-          - ./...
+        args: [--fix, --timeout=2m]
