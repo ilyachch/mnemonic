@@ -116,7 +116,6 @@ func main() {
 			run: func() error {
 				return callAndPrint(ctx, session, *timeout, "create_note", map[string]any{
 					"title": alphaTitle,
-					"path":  alphaSlug + ".md",
 					"body":  "Alpha smoke body.",
 					"tags":  []string{"mcp", "smoke"},
 				}, &alpha)
