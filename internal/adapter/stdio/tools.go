@@ -2,7 +2,6 @@ package stdio
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -184,33 +183,37 @@ func RegisterListNotes(server *sdkmcp.Server, deps Dependencies) {
 		if err != nil {
 			return nil, ListNotesOutput{}, err
 		}
-
-		limit := input.Limit
-		if limit <= 0 {
-			limit = 20
-		}
-
-		cursor := 0
-		if strings.TrimSpace(input.Cursor) != "" {
-			cursor, err = strconv.Atoi(input.Cursor)
-			if err != nil || cursor < 0 {
-				return nil, ListNotesOutput{}, fmt.Errorf("invalid cursor %q", input.Cursor)
-			}
-		}
-		if cursor > len(notes) {
-			cursor = len(notes)
-		}
-		end := cursor + limit
-		if end > len(notes) {
-			end = len(notes)
-		}
-
-		result := ListNotesOutput{Notes: notes[cursor:end]}
-		if end < len(notes) {
-			result.NextCursor = strconv.Itoa(end)
-		}
-		return nil, result, nil
+		return nil, paginateNotes(notes, input), nil
 	})
+}
+
+func paginateNotes(notes []notesvc.NoteSummary, input ListNotesInput) ListNotesOutput {
+	limit := input.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	cursor := parseCursor(input.Cursor, len(notes))
+	end := cursor + limit
+	if end > len(notes) {
+		end = len(notes)
+	}
+	result := ListNotesOutput{Notes: notes[cursor:end]}
+	if end < len(notes) {
+		result.NextCursor = strconv.Itoa(end)
+	}
+	return result
+}
+
+func parseCursor(raw string, maxVal int) int {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil || v < 0 || v > maxVal {
+		return 0
+	}
+	return v
 }
 
 func RegisterReadNote(server *sdkmcp.Server, deps Dependencies) {
@@ -329,42 +332,10 @@ func RegisterEditNote(server *sdkmcp.Server, deps Dependencies) {
 			OpenWorldHint:   BoolPtr(false),
 		},
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input EditNoteInput) (*sdkmcp.CallToolResult, EditNoteOutput, error) {
-		if input.Identifier == "" {
-			return nil, EditNoteOutput{}, apperr.CLIUsage("note identifier is required", nil)
+		if err := validateEditInput(input); err != nil {
+			return nil, EditNoteOutput{}, err
 		}
-		modeCount := 0
-		if input.Append != "" {
-			modeCount++
-		}
-		if input.ReplaceBody != "" {
-			modeCount++
-		}
-		if len(input.MergeFrontmatter) > 0 {
-			modeCount++
-		}
-		if modeCount == 0 {
-			return nil, EditNoteOutput{}, apperr.CLIUsage("edit requires append, replace_body, or merge_frontmatter", nil)
-		}
-		if modeCount > 1 {
-			return nil, EditNoteOutput{}, apperr.CLIUsage("edit modes append, replace_body, and merge_frontmatter are mutually exclusive", nil)
-		}
-		if input.ReplaceBody != "" && input.IfMatchHash == "" {
-			return nil, EditNoteOutput{}, apperr.Unsafe("replace_body requires if_match_hash from read_note", nil)
-		}
-
-		editInput := notesvc.EditInput{
-			Selector: input.Identifier,
-			IfMatch:  input.IfMatchHash,
-		}
-		if input.ReplaceBody != "" {
-			editInput.Body = []byte(input.ReplaceBody)
-			editInput.HasBody = true
-		} else if input.Append != "" {
-			editInput.Append = []byte(input.Append)
-		} else {
-			editInput.Set = input.MergeFrontmatter
-		}
-
+		editInput := buildEditInput(input)
 		edited, err := deps.Notes.Edit(editInput)
 		if err != nil {
 			return nil, EditNoteOutput{}, err
@@ -380,6 +351,49 @@ func RegisterEditNote(server *sdkmcp.Server, deps Dependencies) {
 			IndexError:  edited.IndexError,
 		}, nil
 	})
+}
+
+func validateEditInput(input EditNoteInput) error {
+	if input.Identifier == "" {
+		return apperr.CLIUsage("note identifier is required", nil)
+	}
+	modeCount := 0
+	if input.Append != "" {
+		modeCount++
+	}
+	if input.ReplaceBody != "" {
+		modeCount++
+	}
+	if len(input.MergeFrontmatter) > 0 {
+		modeCount++
+	}
+	if modeCount == 0 {
+		return apperr.CLIUsage("edit requires append, replace_body, or merge_frontmatter", nil)
+	}
+	if modeCount > 1 {
+		return apperr.CLIUsage("edit modes append, replace_body, and merge_frontmatter are mutually exclusive", nil)
+	}
+	if input.ReplaceBody != "" && input.IfMatchHash == "" {
+		return apperr.Unsafe("replace_body requires if_match_hash from read_note", nil)
+	}
+	return nil
+}
+
+func buildEditInput(input EditNoteInput) notesvc.EditInput {
+	editInput := notesvc.EditInput{
+		Selector: input.Identifier,
+		IfMatch:  input.IfMatchHash,
+	}
+	switch {
+	case input.ReplaceBody != "":
+		editInput.Body = []byte(input.ReplaceBody)
+		editInput.HasBody = true
+	case input.Append != "":
+		editInput.Append = []byte(input.Append)
+	default:
+		editInput.Set = input.MergeFrontmatter
+	}
+	return editInput
 }
 
 func RegisterDeleteNote(server *sdkmcp.Server, deps Dependencies) {

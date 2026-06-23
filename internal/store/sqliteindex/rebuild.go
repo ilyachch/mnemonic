@@ -95,53 +95,70 @@ func tempIndexPath(path string) string {
 }
 
 func insertDocs(db *sql.DB, docs []NoteDoc, kbid string) error {
-	seenNoteIDs := make(map[string]struct{})
-	seenSlugs := make(map[string]struct{})
-	seenNorm := make(map[string]int)
+	_, _, seenNorm, err := validateDocs(docs)
+	if err != nil {
+		return err
+	}
+	for _, doc := range docs {
+		if err := insertNoteDoc(db, doc, kbid); err != nil {
+			return err
+		}
+	}
+	for _, doc := range docs {
+		insertDocLinks(db, doc, docs, seenNorm)
+	}
+	return nil
+}
+
+func validateDocs(docs []NoteDoc) (seenNoteIDs, seenSlugs map[string]struct{}, seenNorm map[string]int, err error) {
+	seenNoteIDs = make(map[string]struct{})
+	seenSlugs = make(map[string]struct{})
+	seenNorm = make(map[string]int)
 	for _, doc := range docs {
 		if _, ok := seenNoteIDs[doc.NoteID]; ok {
-			return fmt.Errorf("duplicate note_id %s", doc.NoteID)
+			return nil, nil, nil, fmt.Errorf("duplicate note_id %s", doc.NoteID)
 		}
 		seenNoteIDs[doc.NoteID] = struct{}{}
 		if _, ok := seenSlugs[doc.Slug]; ok {
-			return fmt.Errorf("duplicate slug %s", doc.Slug)
+			return nil, nil, nil, fmt.Errorf("duplicate slug %s", doc.Slug)
 		}
 		seenSlugs[doc.Slug] = struct{}{}
-		norm := normalizeTitleSlug(doc.Title)
-		seenNorm[norm]++
+		seenNorm[normalizeTitleSlug(doc.Title)]++
 	}
-	for _, doc := range docs {
-		if _, err := db.Exec(`INSERT INTO notes(note_id, project_id, slug, rel_path, title, content_hash, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-			doc.NoteID, kbid, doc.Slug, doc.RelPath, doc.Title, doc.ContentHash); err != nil {
-			return err
-		}
-		_, _ = db.Exec(`INSERT INTO notes_fts(rowid, note_id, title, body) VALUES ((SELECT rowid FROM notes WHERE note_id = ?), ?, ?, ?)`,
-			doc.NoteID, doc.NoteID, doc.Title, doc.SearchText)
-		for _, tag := range doc.Tags {
-			if tag.Value == "" {
-				continue
-			}
-			_, _ = db.Exec(`INSERT INTO note_tags(note_id, tag) VALUES (?, ?)`, doc.NoteID, tag.Source+":"+tag.Value)
-		}
-		for _, ob := range doc.Observations {
-			_, _ = db.Exec(`INSERT INTO observations(observation_id, note_id, kind, value) VALUES (?, ?, ?, ?)`,
-				hashString(doc.NoteID+ob.Content), doc.NoteID, ob.Category, ob.Content)
-		}
-	}
+	return
+}
 
-	for _, doc := range docs {
-		for _, link := range doc.Links {
-			toID := sql.NullString{}
-			if resolved, ok := resolveLinkTarget(docs, seenNorm, link.RawTarget); ok {
-				toID.Valid = true
-				toID.String = resolved
-			}
-			_, _ = db.Exec(`INSERT INTO links(link_id, note_id, to_note_id, target, relation_type, source_line) VALUES (?, ?, ?, ?, ?, ?)`,
-				hashString(doc.NoteID+link.RawTarget+link.Source+strconv.Itoa(link.Line)), doc.NoteID, toID, link.RawTarget, link.RelationType, link.Line)
+func insertNoteDoc(db *sql.DB, doc NoteDoc, kbid string) error {
+	if _, err := db.Exec(`INSERT INTO notes(note_id, project_id, slug, rel_path, title, content_hash, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+		doc.NoteID, kbid, doc.Slug, doc.RelPath, doc.Title, doc.ContentHash); err != nil {
+		return err
+	}
+	_, _ = db.Exec(`INSERT INTO notes_fts(rowid, note_id, title, body) VALUES ((SELECT rowid FROM notes WHERE note_id = ?), ?, ?, ?)`,
+		doc.NoteID, doc.NoteID, doc.Title, doc.SearchText)
+	for _, tag := range doc.Tags {
+		if tag.Value == "" {
+			continue
 		}
+		_, _ = db.Exec(`INSERT INTO note_tags(note_id, tag) VALUES (?, ?)`, doc.NoteID, tag.Source+":"+tag.Value)
+	}
+	for _, ob := range doc.Observations {
+		_, _ = db.Exec(`INSERT INTO observations(observation_id, note_id, kind, value) VALUES (?, ?, ?, ?)`,
+			hashString(doc.NoteID+ob.Content), doc.NoteID, ob.Category, ob.Content)
 	}
 	return nil
+}
+
+func insertDocLinks(db *sql.DB, doc NoteDoc, docs []NoteDoc, seenNorm map[string]int) {
+	for _, link := range doc.Links {
+		toID := sql.NullString{}
+		if resolved, ok := resolveLinkTarget(docs, seenNorm, link.RawTarget); ok {
+			toID.Valid = true
+			toID.String = resolved
+		}
+		_, _ = db.Exec(`INSERT INTO links(link_id, note_id, to_note_id, target, relation_type, source_line) VALUES (?, ?, ?, ?, ?, ?)`,
+			hashString(doc.NoteID+link.RawTarget+link.Source+strconv.Itoa(link.Line)), doc.NoteID, toID, link.RawTarget, link.RelationType, link.Line)
+	}
 }
 
 func resolveLinkTarget(docs []NoteDoc, norms map[string]int, target string) (string, bool) {

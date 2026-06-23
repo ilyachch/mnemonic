@@ -263,21 +263,27 @@ func (s Store) Delete(input DeleteInput) (DeleteResult, error) {
 	if err != nil {
 		return DeleteResult{}, err
 	}
-
-	absPath := filepath.Join(root, filepath.FromSlash(resolved.Path))
 	if input.Hard {
-		if !input.Yes {
-			return DeleteResult{}, apperr.Unsafe("hard delete requires --yes", nil)
-		}
-		if input.DryRun {
-			return DeleteResult{Mode: "hard", Path: resolved.Path}, nil
-		}
-		if err = os.Remove(absPath); err != nil {
-			return DeleteResult{}, fmt.Errorf("remove note: %w", err)
-		}
+		return s.hardDelete(root, resolved, input)
+	}
+	return s.trashDelete(root, resolved, input)
+}
+
+func (s Store) hardDelete(root string, resolved ResolvedNote, input DeleteInput) (DeleteResult, error) {
+	if !input.Yes {
+		return DeleteResult{}, apperr.Unsafe("hard delete requires --yes", nil)
+	}
+	if input.DryRun {
 		return DeleteResult{Mode: "hard", Path: resolved.Path}, nil
 	}
+	absPath := filepath.Join(root, filepath.FromSlash(resolved.Path))
+	if err := os.Remove(absPath); err != nil {
+		return DeleteResult{}, fmt.Errorf("remove note: %w", err)
+	}
+	return DeleteResult{Mode: "hard", Path: resolved.Path}, nil
+}
 
+func (s Store) trashDelete(root string, resolved ResolvedNote, input DeleteInput) (DeleteResult, error) {
 	trashPath, err := ResolveTrashPath(TrashPathInput{
 		RootDir:      root,
 		OriginalPath: resolved.Path,
@@ -287,11 +293,10 @@ func (s Store) Delete(input DeleteInput) (DeleteResult, error) {
 	if err != nil {
 		return DeleteResult{}, err
 	}
-
 	if input.DryRun {
 		return DeleteResult{Mode: "trash", Path: resolved.Path, TrashPath: trashPath}, nil
 	}
-
+	absPath := filepath.Join(root, filepath.FromSlash(resolved.Path))
 	data, err := os.ReadFile(absPath)
 	if err != nil {
 		return DeleteResult{}, fmt.Errorf("read note: %w", err)
@@ -302,7 +307,6 @@ func (s Store) Delete(input DeleteInput) (DeleteResult, error) {
 	if err = os.Remove(absPath); err != nil {
 		return DeleteResult{}, fmt.Errorf("remove source note: %w", err)
 	}
-
 	return DeleteResult{Mode: "trash", Path: resolved.Path, TrashPath: trashPath}, nil
 }
 
@@ -429,46 +433,42 @@ func (s Store) Walk() ([]string, error) {
 func walkRoot(root string) ([]string, error) {
 	var notes []string
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
+		if err != nil || path == root {
 			return err
 		}
-
-		if path == root {
-			return nil
-		}
-
 		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			return fmt.Errorf("rel %q: %w", path, err)
 		}
-		rel = filepath.ToSlash(rel)
-
-		if entry.IsDir() {
-			if entry.Name() == ".trash" {
+		if !shouldIncludeEntry(entry, filepath.ToSlash(rel)) {
+			if entry.IsDir() && entry.Name() == ".trash" {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-
-		if entry.Name() == "mnemonic.toml" {
-			return nil
-		}
-
-		if !strings.HasSuffix(entry.Name(), ".md") {
-			return nil
-		}
-
-		if strings.Contains(rel, "/.trash/") || strings.HasPrefix(rel, ".trash/") || rel == ".trash" {
-			return nil
-		}
-
-		notes = append(notes, rel)
+		notes = append(notes, filepath.ToSlash(rel))
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
 	return notes, nil
+}
+
+func shouldIncludeEntry(entry fs.DirEntry, rel string) bool {
+	if entry.IsDir() {
+		return false
+	}
+	if entry.Name() == "mnemonic.toml" {
+		return false
+	}
+	if !strings.HasSuffix(entry.Name(), ".md") {
+		return false
+	}
+	if strings.Contains(rel, "/.trash/") || strings.HasPrefix(rel, ".trash/") || rel == ".trash" {
+		return false
+	}
+	return true
 }
 
 // HashBytes returns a deterministic SHA-256 content hash for note bytes.

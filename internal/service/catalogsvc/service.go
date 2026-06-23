@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
@@ -329,41 +330,18 @@ func (s Service) Remove(selector string, wipe bool) (RemoveResult, error) {
 	if err != nil {
 		return RemoveResult{}, err
 	}
-
-	registryRemoved := false
-	registryPath := registryPathForKind(s.MemoriesHome, resolved.Kind, resolved.Slug)
-	if registryPath != "" {
-		if err := os.Remove(registryPath); err != nil && !os.IsNotExist(err) {
-			return RemoveResult{}, fmt.Errorf("remove registry entry %q: %w", registryPath, err)
-		}
-		registryRemoved = true
+	registryRemoved, err := s.removeRegistryEntry(registryPathForKind(s.MemoriesHome, resolved.Kind, resolved.Slug))
+	if err != nil {
+		return RemoveResult{}, err
 	}
-
-	indexDeleted := false
-	if resolved.IndexPath != "" {
-		for _, path := range []string{resolved.IndexPath, resolved.IndexPath + "-wal", resolved.IndexPath + "-shm"} {
-			if _, err := os.Stat(path); err == nil {
-				if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-					return RemoveResult{}, fmt.Errorf("remove index artifact %q: %w", path, err)
-				}
-				indexDeleted = true
-			}
-		}
+	indexDeleted, err := s.removeIndexArtifacts(resolved.IndexPath, resolved.StateDir)
+	if err != nil {
+		return RemoveResult{}, err
 	}
-	if resolved.StateDir != "" {
-		if err := os.RemoveAll(resolved.StateDir); err != nil {
-			return RemoveResult{}, fmt.Errorf("remove state directory %q: %w", resolved.StateDir, err)
-		}
+	markdownDeleted, err := s.wipeMarkdown(wipe, resolved.RootDir)
+	if err != nil {
+		return RemoveResult{}, err
 	}
-
-	markdownDeleted := false
-	if wipe && resolved.RootDir != "" {
-		if err := os.RemoveAll(resolved.RootDir); err != nil {
-			return RemoveResult{}, fmt.Errorf("wipe markdown: %w", err)
-		}
-		markdownDeleted = true
-	}
-
 	return RemoveResult{
 		ProjectID:       resolved.ID,
 		Slug:            resolved.Slug,
@@ -374,6 +352,46 @@ func (s Service) Remove(selector string, wipe bool) (RemoveResult, error) {
 	}, nil
 }
 
+func (s Service) removeRegistryEntry(path string) (bool, error) {
+	if path == "" {
+		return false, nil
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return false, fmt.Errorf("remove registry entry %q: %w", path, err)
+	}
+	return true, nil
+}
+
+func (s Service) removeIndexArtifacts(indexPath, stateDir string) (bool, error) {
+	deleted := false
+	if indexPath != "" {
+		for _, path := range []string{indexPath, indexPath + "-wal", indexPath + "-shm"} {
+			if _, err := os.Stat(path); err == nil {
+				if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+					return false, fmt.Errorf("remove index artifact %q: %w", path, err)
+				}
+				deleted = true
+			}
+		}
+	}
+	if stateDir != "" {
+		if err := os.RemoveAll(stateDir); err != nil {
+			return false, fmt.Errorf("remove state directory %q: %w", stateDir, err)
+		}
+	}
+	return deleted, nil
+}
+
+func (s Service) wipeMarkdown(wipe bool, rootDir string) (bool, error) {
+	if !wipe || rootDir == "" {
+		return false, nil
+	}
+	if err := os.RemoveAll(rootDir); err != nil {
+		return false, fmt.Errorf("wipe markdown: %w", err)
+	}
+	return true, nil
+}
+
 // Slugs returns the active project slugs.
 func (s Service) Slugs() ([]string, error) {
 	return s.registryStore().Slugs()
@@ -381,89 +399,17 @@ func (s Service) Slugs() ([]string, error) {
 
 func (s Service) knowledgeBaseFromEntry(entry registry.Entry) (kb.KnowledgeBase, error) {
 	resolved := entry
-
 	if strings.TrimSpace(resolved.Slug) == "" {
 		return kb.KnowledgeBase{}, errors.New("project slug is required")
 	}
-
-	switch resolved.Type {
-	case "central":
-		if resolved.ManifestPath == "" {
-			resolved.ManifestPath = filepath.Join(s.MemoriesHome, resolved.Slug, "mnemonic.toml")
-		}
-		if resolved.MemoriesAbs == "" {
-			resolved.MemoriesAbs = filepath.Dir(resolved.ManifestPath)
-		}
-		if resolved.RepoRootAbs == "" {
-			resolved.RepoRootAbs = resolved.MemoriesAbs
-		}
-	case "local":
-		if resolved.ManifestPath == "" {
-			pointerPath := filepath.Join(s.MemoriesHome, resolved.Slug+".toml")
-			data, err := os.ReadFile(pointerPath)
-			if err != nil {
-				return kb.KnowledgeBase{}, fmt.Errorf("read pointer file: %w", err)
-			}
-			manifestPath, err := manifestfmt.ParsePointerFile(data)
-			if err != nil {
-				return kb.KnowledgeBase{}, err
-			}
-			resolved.ManifestPath = manifestPath.ManifestPath
-		}
-		if resolved.ManifestPath != "" && resolved.MemoriesAbs == "" {
-			resolved.MemoriesAbs = filepath.Dir(resolved.ManifestPath)
-		}
-		if resolved.ManifestPath != "" && resolved.RepoRootAbs == "" {
-			resolved.RepoRootAbs = filepath.Dir(filepath.Dir(resolved.ManifestPath))
-		}
-	default:
-		if resolved.ManifestPath == "" {
-			resolved.ManifestPath = filepath.Join(s.MemoriesHome, resolved.Slug, "mnemonic.toml")
-		}
-		if resolved.MemoriesAbs == "" {
-			resolved.MemoriesAbs = filepath.Dir(resolved.ManifestPath)
-		}
-		if resolved.RepoRootAbs == "" {
-			resolved.RepoRootAbs = resolved.MemoriesAbs
-		}
+	if err := s.resolvePathsForKind(&resolved); err != nil {
+		return kb.KnowledgeBase{}, err
 	}
-
-	needsManifest := resolved.ProjectID == "" || resolved.Name == "" || resolved.Slug == "" || resolved.Type == ""
-	if resolved.ManifestPath != "" {
-		if needsManifest {
-			manifest, err := manifestfmt.ParseMnemonicManifestFromFile(resolved.ManifestPath)
-			if err != nil {
-				return kb.KnowledgeBase{}, err
-			}
-			if resolved.ProjectID == "" {
-				resolved.ProjectID = manifest.ProjectID
-			}
-			if resolved.Name == "" {
-				resolved.Name = manifest.Name
-			}
-			if resolved.Slug == "" {
-				resolved.Slug = manifest.Slug
-			}
-			if resolved.Type == "" {
-				resolved.Type = string(manifest.Type)
-			}
-			if strings.TrimSpace(resolved.Description) == "" {
-				resolved.Description = manifest.Description
-			}
-		} else if strings.TrimSpace(resolved.Description) == "" {
-			manifest, err := manifestfmt.ParseMnemonicManifestFromFile(resolved.ManifestPath)
-			if err == nil {
-				resolved.Description = manifest.Description
-			}
-		}
-	}
-
+	s.enrichFromManifest(&resolved)
 	if strings.TrimSpace(resolved.ProjectID) == "" {
 		return kb.KnowledgeBase{}, errors.New("project id is required")
 	}
-
 	stateDir := s.statePath(resolved.ProjectID)
-
 	return kb.KnowledgeBase{
 		ID:           resolved.ProjectID,
 		Name:         resolved.Name,
@@ -476,6 +422,102 @@ func (s Service) knowledgeBaseFromEntry(entry registry.Entry) (kb.KnowledgeBase,
 		StateDir:     stateDir,
 		IndexPath:    filepath.Join(stateDir, "index.sqlite"),
 	}, nil
+}
+
+func (s Service) resolvePathsForKind(resolved *registry.Entry) error {
+	switch resolved.Type {
+	case "local":
+		return s.resolveLocalPaths(resolved)
+	default:
+		s.resolveCentralDefaults(resolved)
+		return nil
+	}
+}
+
+func (s Service) resolveCentralDefaults(resolved *registry.Entry) {
+	if resolved.ManifestPath == "" {
+		resolved.ManifestPath = filepath.Join(s.MemoriesHome, resolved.Slug, "mnemonic.toml")
+	}
+	if resolved.MemoriesAbs == "" {
+		resolved.MemoriesAbs = filepath.Dir(resolved.ManifestPath)
+	}
+	if resolved.RepoRootAbs == "" {
+		resolved.RepoRootAbs = resolved.MemoriesAbs
+	}
+}
+
+func (s Service) resolveLocalPaths(resolved *registry.Entry) error {
+	if resolved.ManifestPath == "" {
+		mp, err := s.resolveLocalManifest(resolved.Slug)
+		if err != nil {
+			return err
+		}
+		resolved.ManifestPath = mp
+	}
+	if resolved.ManifestPath != "" && resolved.MemoriesAbs == "" {
+		resolved.MemoriesAbs = filepath.Dir(resolved.ManifestPath)
+	}
+	if resolved.ManifestPath != "" && resolved.RepoRootAbs == "" {
+		resolved.RepoRootAbs = filepath.Dir(filepath.Dir(resolved.ManifestPath))
+	}
+	return nil
+}
+
+func (s Service) resolveLocalManifest(slug string) (string, error) {
+	pointerPath := filepath.Join(s.MemoriesHome, slug+".toml")
+	data, err := os.ReadFile(pointerPath)
+	if err != nil {
+		return "", fmt.Errorf("read pointer file: %w", err)
+	}
+	manifestPath, err := manifestfmt.ParsePointerFile(data)
+	if err != nil {
+		return "", err
+	}
+	return manifestPath.ManifestPath, nil
+}
+
+func (s Service) enrichFromManifest(resolved *registry.Entry) {
+	if resolved.ManifestPath == "" {
+		return
+	}
+	needsManifest := resolved.ProjectID == "" || resolved.Name == "" || resolved.Slug == "" || resolved.Type == ""
+	if needsManifest {
+		s.fillEntryFromManifest(resolved)
+	} else {
+		s.fillDescriptionOnly(resolved)
+	}
+}
+
+func (s Service) fillEntryFromManifest(resolved *registry.Entry) {
+	manifest, err := manifestfmt.ParseMnemonicManifestFromFile(resolved.ManifestPath)
+	if err != nil {
+		return
+	}
+	if resolved.ProjectID == "" {
+		resolved.ProjectID = manifest.ProjectID
+	}
+	if resolved.Name == "" {
+		resolved.Name = manifest.Name
+	}
+	if resolved.Slug == "" {
+		resolved.Slug = manifest.Slug
+	}
+	if resolved.Type == "" {
+		resolved.Type = string(manifest.Type)
+	}
+	if strings.TrimSpace(resolved.Description) == "" {
+		resolved.Description = manifest.Description
+	}
+}
+
+func (s Service) fillDescriptionOnly(resolved *registry.Entry) {
+	if strings.TrimSpace(resolved.Description) != "" {
+		return
+	}
+	manifest, err := manifestfmt.ParseMnemonicManifestFromFile(resolved.ManifestPath)
+	if err == nil {
+		resolved.Description = manifest.Description
+	}
 }
 
 func (s Service) statePath(projectID string) string {
@@ -541,75 +583,75 @@ func InitProject(input InitProjectInput) error {
 	if err != nil {
 		return err
 	}
-
 	now := clock.NowUTC()
 	projectID := idgen.NewUUID()
 
 	switch input.Mode {
 	case InitModeCentral:
-		exists, err := registry.New(input.MemoriesHome, nil, nil).Exists(slugValue)
-		if err != nil {
-			return err
-		}
-		if exists {
-			return fmt.Errorf("project slug %q already exists", slugValue)
-		}
-
-		if err := os.MkdirAll(filepath.Join(input.MemoriesHome, slugValue), 0o755); err != nil {
-			return fmt.Errorf("create central memories directory: %w", err)
-		}
-
-		manifestPath := filepath.Join(input.MemoriesHome, slugValue, "mnemonic.toml")
-		if _, err := os.Stat(manifestPath); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("stat central manifest: %w", err)
-		}
-
-		manifest := manifestfmt.NewMnemonicManifest()
-		manifest.ProjectID = projectID
-		manifest.Name = input.Name
-		manifest.Slug = slugValue
-		manifest.MarkdownFormatVersion = 1
-		manifest.Description = input.Description
-		manifest.CreatedAt = now
-		manifest.UpdatedAt = now
-		manifest.Generator.App = "mnemonic"
-
-		return manifestfmt.WriteMnemonicManifest(manifestPath, manifest)
+		return initCentralProject(input.MemoriesHome, input.Name, slugValue, input.Description, projectID, now)
 	case InitModeLocal:
-		exists, err := registry.New(input.MemoriesHome, nil, nil).Exists(slugValue)
-		if err != nil {
-			return err
-		}
-		if exists {
-			return fmt.Errorf("project slug %q already exists", slugValue)
-		}
-
-		memoriesPath := filepath.Join(input.CWD, ".mnemonic-memories", slugValue)
-		if err := os.MkdirAll(memoriesPath, 0o755); err != nil {
-			return fmt.Errorf("create local memories directory: %w", err)
-		}
-
-		localManifestPath := filepath.Join(memoriesPath, "mnemonic.toml")
-		manifest := manifestfmt.NewMnemonicManifest()
-		manifest.ProjectID = projectID
-		manifest.Name = input.Name
-		manifest.Slug = slugValue
-		manifest.Type = manifestfmt.ManifestTypeLocal
-		manifest.MarkdownFormatVersion = 1
-		manifest.Description = input.Description
-		manifest.CreatedAt = now
-		manifest.UpdatedAt = now
-		manifest.Generator.App = "mnemonic"
-
-		if err := manifestfmt.WriteMnemonicManifest(localManifestPath, manifest); err != nil {
-			return err
-		}
-
-		pointerPath := filepath.Join(input.MemoriesHome, slugValue+".toml")
-		return manifestfmt.WritePointerFile(pointerPath, &manifestfmt.PointerFile{ManifestPath: localManifestPath})
+		return initLocalProject(input.MemoriesHome, input.CWD, input.Name, slugValue, input.Description, projectID, now)
 	default:
 		return fmt.Errorf("unknown init mode %q", input.Mode)
 	}
+}
+
+func initCentralProject(memoriesHome, name, slugValue, description, projectID string, now time.Time) error {
+	reg := registry.New(memoriesHome, nil, nil)
+	exists, err := reg.Exists(slugValue)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return fmt.Errorf("project slug %q already exists", slugValue)
+	}
+	if err := os.MkdirAll(filepath.Join(memoriesHome, slugValue), 0o755); err != nil {
+		return fmt.Errorf("create central memories directory: %w", err)
+	}
+	manifestPath := filepath.Join(memoriesHome, slugValue, "mnemonic.toml")
+	if _, err := os.Stat(manifestPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("stat central manifest: %w", err)
+	}
+	manifest := buildInitManifest(projectID, name, slugValue, "", description, now)
+	return manifestfmt.WriteMnemonicManifest(manifestPath, manifest)
+}
+
+func initLocalProject(memoriesHome, cwd, name, slugValue, description, projectID string, now time.Time) error {
+	reg := registry.New(memoriesHome, nil, nil)
+	exists, err := reg.Exists(slugValue)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return fmt.Errorf("project slug %q already exists", slugValue)
+	}
+	memoriesPath := filepath.Join(cwd, ".mnemonic-memories", slugValue)
+	if err := os.MkdirAll(memoriesPath, 0o755); err != nil {
+		return fmt.Errorf("create local memories directory: %w", err)
+	}
+	localManifestPath := filepath.Join(memoriesPath, "mnemonic.toml")
+	manifest := buildInitManifest(projectID, name, slugValue, string(manifestfmt.ManifestTypeLocal), description, now)
+	if err := manifestfmt.WriteMnemonicManifest(localManifestPath, manifest); err != nil {
+		return err
+	}
+	pointerPath := filepath.Join(memoriesHome, slugValue+".toml")
+	return manifestfmt.WritePointerFile(pointerPath, &manifestfmt.PointerFile{ManifestPath: localManifestPath})
+}
+
+func buildInitManifest(projectID, name, slugValue, kind, description string, now time.Time) *manifestfmt.Manifest {
+	m := manifestfmt.NewMnemonicManifest()
+	m.ProjectID = projectID
+	m.Name = name
+	m.Slug = slugValue
+	m.MarkdownFormatVersion = 1
+	m.Description = description
+	m.CreatedAt = now
+	m.UpdatedAt = now
+	m.Generator.App = "mnemonic"
+	if kind != "" {
+		m.Type = manifestfmt.ManifestType(kind)
+	}
+	return m
 }
 
 func importProject(input ImportInput, memoriesHome string) (ImportResult, error) {

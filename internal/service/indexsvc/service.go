@@ -163,19 +163,33 @@ func doctorNoteChecks(root string, index sqliteindex.Store) (dupUUIDs int, dupSl
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
-	seenUUID := map[string]int{}
-	seenSlug := map[string]int{}
+	seenUUID, seenSlug, err := countNoteIDs(paths, root, &trashIgnored)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	dupUUIDs = countDups(seenUUID)
+	dupSlugs = countDups(seenSlug)
+	unresolved, err = index.UnresolvedLinkCount()
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	return dupUUIDs, dupSlugs, unresolved, trashIgnored, nil
+}
+
+func countNoteIDs(paths []string, root string, trashIgnored *int) (seenUUID, seenSlug map[string]int, err error) {
+	seenUUID = map[string]int{}
+	seenSlug = map[string]int{}
 	for _, rel := range paths {
-		if strings.Contains(rel, ".trash/") || strings.HasPrefix(rel, ".trash/") || rel == ".trash" {
-			trashIgnored++
+		if isTrashNote(rel) {
+			*trashIgnored++
 		}
 		data, readErr := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
 		if readErr != nil {
-			return 0, 0, 0, 0, readErr
+			return nil, nil, readErr
 		}
 		note, parseErr := markdown.ParseNote(data)
 		if parseErr != nil {
-			return 0, 0, 0, 0, parseErr
+			return nil, nil, parseErr
 		}
 		if note.MnemonicNoteID != "" {
 			seenUUID[note.MnemonicNoteID]++
@@ -184,21 +198,21 @@ func doctorNoteChecks(root string, index sqliteindex.Store) (dupUUIDs int, dupSl
 			seenSlug[slug]++
 		}
 	}
-	for _, count := range seenUUID {
+	return
+}
+
+func isTrashNote(rel string) bool {
+	return strings.Contains(rel, ".trash/") || strings.HasPrefix(rel, ".trash/") || rel == ".trash"
+}
+
+func countDups(m map[string]int) int {
+	n := 0
+	for _, count := range m {
 		if count > 1 {
-			dupUUIDs++
+			n++
 		}
 	}
-	for _, count := range seenSlug {
-		if count > 1 {
-			dupSlugs++
-		}
-	}
-	unresolved, err = index.UnresolvedLinkCount()
-	if err != nil {
-		return 0, 0, 0, 0, err
-	}
-	return dupUUIDs, dupSlugs, unresolved, trashIgnored, nil
+	return n
 }
 
 func doctorStaleTempCheck(root string) DoctorCheck {

@@ -74,66 +74,76 @@ func (d *parsedDocument) lineBytes(line int) []byte {
 }
 
 func collectVisibleLines(node ast.Node, source []byte, lineForOffset func(int) int) []visibleLine {
-	var lines []visibleLine
-	var buf strings.Builder
-	currentLine := 0
-
-	flush := func() {
-		if buf.Len() == 0 {
-			currentLine = 0
-			return
-		}
-		lines = append(lines, visibleLine{
-			Text: buf.String(),
-			Line: currentLine,
-		})
-		buf.Reset()
-		currentLine = 0
-	}
-
+	acc := newLineAccumulator(source, lineForOffset)
 	var walk func(ast.Node)
 	walk = func(n ast.Node) {
 		switch n := n.(type) {
 		case *ast.CodeBlock, *ast.FencedCodeBlock, *ast.CodeSpan:
 			return
 		case *ast.Text:
-			raw := n.Segment.Value(source)
-			if len(raw) == 0 {
-				return
-			}
-			offset := n.Segment.Start
-			for len(raw) > 0 {
-				if currentLine == 0 {
-					currentLine = lineForOffset(offset)
-				}
-				newline := bytes.IndexByte(raw, '\n')
-				if newline < 0 {
-					buf.Write(raw)
-					if n.SoftLineBreak() || n.HardLineBreak() {
-						flush()
-					}
-					return
-				}
-
-				buf.Write(raw[:newline])
-				flush()
-				offset += newline + 1
-				raw = raw[newline+1:]
-			}
+			acc.appendText(n)
 			return
 		}
-
 		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
 			walk(child)
 			if isBlockBoundary(child) {
-				flush()
+				acc.flush()
 			}
 		}
 	}
-
 	walk(node)
-	flush()
-	return lines
+	acc.flush()
+	return acc.lines
+}
+
+type lineAccumulator struct {
+	source        []byte
+	lineForOffset func(int) int
+	lines         []visibleLine
+	buf           strings.Builder
+	currentLine   int
+}
+
+func newLineAccumulator(source []byte, lineForOffset func(int) int) *lineAccumulator {
+	return &lineAccumulator{source: source, lineForOffset: lineForOffset}
+}
+
+func (a *lineAccumulator) appendText(n *ast.Text) {
+	raw := n.Segment.Value(a.source)
+	if len(raw) == 0 {
+		return
+	}
+	offset := n.Segment.Start
+	for len(raw) > 0 {
+		if a.currentLine == 0 {
+			a.currentLine = a.lineForOffset(offset)
+		}
+		newline := bytes.IndexByte(raw, '\n')
+		if newline < 0 {
+			a.buf.Write(raw)
+			if n.SoftLineBreak() || n.HardLineBreak() {
+				a.flush()
+			}
+			return
+		}
+		a.buf.Write(raw[:newline])
+		a.flush()
+		offset += newline + 1
+		raw = raw[newline+1:]
+	}
+}
+
+func (a *lineAccumulator) flush() {
+	if a.buf.Len() == 0 {
+		a.currentLine = 0
+		return
+	}
+	a.lines = append(a.lines, visibleLine{
+		Text: a.buf.String(),
+		Line: a.currentLine,
+	})
+	a.buf.Reset()
+	a.currentLine = 0
 }
 
 func isBlockBoundary(node ast.Node) bool {

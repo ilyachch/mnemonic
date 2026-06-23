@@ -58,7 +58,6 @@ func (s Store) Scan() ([]Entry, []Issue, error) {
 	if s.MemoriesHome == "" {
 		return nil, nil, errors.New("memories home is required")
 	}
-
 	entries, err := os.ReadDir(s.MemoriesHome)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -69,154 +68,84 @@ func (s Store) Scan() ([]Entry, []Issue, error) {
 
 	var results []Entry
 	var issues []Issue
-
 	for _, entry := range entries {
-		name := entry.Name()
-
 		if entry.IsDir() {
-			slug := name
-			manifestPath := filepath.Join(s.MemoriesHome, slug, "mnemonic.toml")
-			memoriesAbs := filepath.Join(s.MemoriesHome, slug)
-
-			if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
-				continue
-			}
-
-			if s.ManifestParser == nil {
-				results = append(results, Entry{
-					Slug:         slug,
-					Type:         "central",
-					ManifestPath: manifestPath,
-					MemoriesAbs:  memoriesAbs,
-					RepoRootAbs:  memoriesAbs,
-				})
-				continue
-			}
-
-			manifestData, err := s.ManifestParser(manifestPath)
-			if err != nil {
-				issues = append(issues, Issue{
-					Slug:    slug,
-					Path:    memoriesAbs,
-					Error:   fmt.Sprintf("[CORRUPTED] %v", err),
-					Corrupt: true,
-				})
-				results = append(results, Entry{
-					Slug:         slug,
-					Type:         "central",
-					ManifestPath: manifestPath,
-					MemoriesAbs:  memoriesAbs,
-					RepoRootAbs:  memoriesAbs,
-				})
-				continue
-			}
-
-			if slug != manifestData.Slug {
-				issues = append(issues, Issue{
-					Slug:    slug,
-					Path:    memoriesAbs,
-					Error:   fmt.Sprintf("Project name mismatch in registry (%s) and manifest (%s). Please align these values.", slug, manifestData.Slug),
-					Corrupt: true,
-				})
-			}
-
-			results = append(results, Entry{
-				ProjectID:    manifestData.ProjectID,
-				Name:         manifestData.Name,
-				Slug:         slug,
-				Type:         "central",
-				Description:  manifestData.Description,
-				ManifestPath: manifestPath,
-				MemoriesAbs:  memoriesAbs,
-				RepoRootAbs:  memoriesAbs,
-			})
-			continue
-		}
-
-		if strings.HasSuffix(name, ".toml") {
-			slug := strings.TrimSuffix(name, ".toml")
-			pointerPath := filepath.Join(s.MemoriesHome, name)
-
-			if s.PointerParser == nil {
-				results = append(results, Entry{
-					Slug: slug,
-					Type: "local",
-				})
-				continue
-			}
-
-			data, err := os.ReadFile(pointerPath)
-			if err != nil {
-				issues = append(issues, Issue{
-					Slug:    slug,
-					Path:    pointerPath,
-					Error:   fmt.Sprintf("[CORRUPTED] cannot read pointer: %v", err),
-					Corrupt: true,
-				})
-				continue
-			}
-
-			pointerFile, err := s.PointerParser(data)
-			if err != nil {
-				issues = append(issues, Issue{
-					Slug:    slug,
-					Path:    pointerPath,
-					Error:   fmt.Sprintf("[CORRUPTED] invalid pointer: %v", err),
-					Corrupt: true,
-				})
-				continue
-			}
-
-			if s.ManifestParser == nil {
-				results = append(results, Entry{
-					Slug:         slug,
-					Type:         "local",
-					ManifestPath: pointerFile.ManifestPath,
-				})
-				continue
-			}
-
-			manifestData, err := s.ManifestParser(pointerFile.ManifestPath)
-			if err != nil {
-				issues = append(issues, Issue{
-					Slug:   slug,
-					Path:   pointerPath,
-					Error:  fmt.Sprintf("[ORPHANED/MISSING] Local manifest not found at %s. The project might have been moved. Please update the path in %s or re-import the project.", pointerFile.ManifestPath, pointerPath),
-					Orphan: true,
-				})
-				results = append(results, Entry{
-					Slug:         slug,
-					Type:         "local",
-					ManifestPath: pointerFile.ManifestPath,
-				})
-				continue
-			}
-
-			if slug != manifestData.Slug {
-				issues = append(issues, Issue{
-					Slug:    slug,
-					Path:    pointerPath,
-					Error:   fmt.Sprintf("Project name mismatch in registry (%s) and manifest (%s). Please align these values.", slug, manifestData.Slug),
-					Corrupt: true,
-				})
-			}
-
-			memoriesAbs := filepath.Dir(pointerFile.ManifestPath)
-			repoRootAbs := filepath.Dir(filepath.Dir(pointerFile.ManifestPath))
-			results = append(results, Entry{
-				ProjectID:    manifestData.ProjectID,
-				Name:         manifestData.Name,
-				Slug:         slug,
-				Type:         "local",
-				Description:  manifestData.Description,
-				ManifestPath: pointerFile.ManifestPath,
-				MemoriesAbs:  memoriesAbs,
-				RepoRootAbs:  repoRootAbs,
-			})
+			s.scanDirectory(entry.Name(), &results, &issues)
+		} else if strings.HasSuffix(entry.Name(), ".toml") {
+			s.scanPointer(entry.Name(), &results, &issues)
 		}
 	}
-
 	return results, issues, nil
+}
+
+func (s Store) scanDirectory(name string, results *[]Entry, issues *[]Issue) {
+	slug := name
+	manifestPath := filepath.Join(s.MemoriesHome, slug, "mnemonic.toml")
+	memoriesAbs := filepath.Join(s.MemoriesHome, slug)
+
+	if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
+		return
+	}
+	if s.ManifestParser == nil {
+		*results = append(*results, Entry{
+			Slug: slug, Type: "central",
+			ManifestPath: manifestPath, MemoriesAbs: memoriesAbs, RepoRootAbs: memoriesAbs,
+		})
+		return
+	}
+	manifestData, err := s.ManifestParser(manifestPath)
+	if err != nil {
+		*issues = append(*issues, Issue{Slug: slug, Path: memoriesAbs, Error: fmt.Sprintf("[CORRUPTED] %v", err), Corrupt: true})
+		*results = append(*results, Entry{Slug: slug, Type: "central", ManifestPath: manifestPath, MemoriesAbs: memoriesAbs, RepoRootAbs: memoriesAbs})
+		return
+	}
+	if slug != manifestData.Slug {
+		*issues = append(*issues, Issue{Slug: slug, Path: memoriesAbs, Error: fmt.Sprintf("Project name mismatch in registry (%s) and manifest (%s). Please align these values.", slug, manifestData.Slug), Corrupt: true})
+	}
+	*results = append(*results, Entry{
+		ProjectID: manifestData.ProjectID, Name: manifestData.Name, Slug: slug, Type: "central",
+		Description: manifestData.Description, ManifestPath: manifestPath, MemoriesAbs: memoriesAbs, RepoRootAbs: memoriesAbs,
+	})
+}
+
+func (s Store) scanPointer(name string, results *[]Entry, issues *[]Issue) {
+	slug := strings.TrimSuffix(name, ".toml")
+	pointerPath := filepath.Join(s.MemoriesHome, name)
+
+	if s.PointerParser == nil {
+		*results = append(*results, Entry{Slug: slug, Type: "local"})
+		return
+	}
+	data, err := os.ReadFile(pointerPath)
+	if err != nil {
+		*issues = append(*issues, Issue{Slug: slug, Path: pointerPath, Error: fmt.Sprintf("[CORRUPTED] cannot read pointer: %v", err), Corrupt: true})
+		return
+	}
+	pointerFile, err := s.PointerParser(data)
+	if err != nil {
+		*issues = append(*issues, Issue{Slug: slug, Path: pointerPath, Error: fmt.Sprintf("[CORRUPTED] invalid pointer: %v", err), Corrupt: true})
+		return
+	}
+	if s.ManifestParser == nil {
+		*results = append(*results, Entry{Slug: slug, Type: "local", ManifestPath: pointerFile.ManifestPath})
+		return
+	}
+	manifestData, err := s.ManifestParser(pointerFile.ManifestPath)
+	if err != nil {
+		*issues = append(*issues, Issue{Slug: slug, Path: pointerPath, Error: fmt.Sprintf("[ORPHANED/MISSING] Local manifest not found at %s. The project might have been moved. Please update the path in %s or re-import the project.", pointerFile.ManifestPath, pointerPath), Orphan: true})
+		*results = append(*results, Entry{Slug: slug, Type: "local", ManifestPath: pointerFile.ManifestPath})
+		return
+	}
+	if slug != manifestData.Slug {
+		*issues = append(*issues, Issue{Slug: slug, Path: pointerPath, Error: fmt.Sprintf("Project name mismatch in registry (%s) and manifest (%s). Please align these values.", slug, manifestData.Slug), Corrupt: true})
+	}
+	memoriesAbs := filepath.Dir(pointerFile.ManifestPath)
+	repoRootAbs := filepath.Dir(filepath.Dir(pointerFile.ManifestPath))
+	*results = append(*results, Entry{
+		ProjectID: manifestData.ProjectID, Name: manifestData.Name, Slug: slug, Type: "local",
+		Description: manifestData.Description, ManifestPath: pointerFile.ManifestPath,
+		MemoriesAbs: memoriesAbs, RepoRootAbs: repoRootAbs,
+	})
 }
 
 // Issue reports a problem encountered during registry scanning.

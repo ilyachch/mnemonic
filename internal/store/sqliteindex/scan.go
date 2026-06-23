@@ -65,65 +65,77 @@ func ScanNotes(root string) ([]NoteDoc, []error, error) {
 		if filepath.Base(relPath) == "mnemonic.toml" {
 			continue
 		}
-		abs := filepath.Join(root, filepath.FromSlash(relPath))
-		data, readErr := os.ReadFile(abs)
-		if readErr != nil {
-			errs = append(errs, fmt.Errorf("%s: read note: %w", relPath, readErr))
+		doc, skipErr := scanOneNote(root, relPath)
+		if skipErr != nil {
+			errs = append(errs, skipErr)
 			continue
 		}
-		st, statErr := os.Stat(abs)
-		if statErr != nil {
-			errs = append(errs, fmt.Errorf("%s: stat note: %w", relPath, statErr))
-			continue
-		}
-		note, parseErr := markdown.ParseNote(data)
-		if parseErr != nil {
-			errs = append(errs, fmt.Errorf("%s: parse note: %w", relPath, parseErr))
-			continue
-		}
-		info := NoteDoc{
-			NoteID:       note.MnemonicNoteID,
-			Slug:         note.EffectiveSlug(),
-			Title:        note.Title,
-			RelPath:      relPath,
-			Frontmatter:  note.Frontmatter,
-			BodyMarkdown: string(note.Body),
-			BodyText:     string(note.Body),
-			ContentHash:  hashNoteBytes(data),
-			FileMTimeNS:  st.ModTime().UnixNano(),
-			FileSize:     st.Size(),
-		}
-		info.Tags = append(info.Tags, tagRow{Source: "frontmatter"})
-		for _, t := range note.Tags {
-			info.Tags = append(info.Tags, tagRow{Source: "frontmatter", Value: t})
-		}
-		for _, t := range markdown.ParseTags(data) {
-			info.Tags = append(info.Tags, tagRow{Source: "inline", Value: t.Value})
-		}
-		for _, ob := range markdown.ParseObservations(data) {
-			info.Observations = append(info.Observations, observationRow{
-				Category:    ob.Category,
-				Content:     ob.Content,
-				LineStart:   ob.LineStart,
-				ContentHash: hashString(ob.Category + "\n" + ob.Content),
-			})
-			info.Tags = append(info.Tags, tagRow{Source: "observation", Value: ob.Category})
-		}
-		var searchable []string
-		searchable = append(searchable, note.Title, string(note.Body))
-		searchable = append(searchable, note.Tags...)
-		for _, ob := range info.Observations {
-			searchable = append(searchable, ob.Category, ob.Content)
-		}
-		info.SearchText = strings.Join(searchable, "\n")
-		for _, rel := range markdown.ParseRelations(note.Body) {
-			target := strings.TrimSpace(rel.Target.Target)
-			row := linkRow{RelationType: rel.RelationType, RawTarget: target, Source: string(rel.Source), Line: rel.Line}
-			info.Links = append(info.Links, row)
-		}
-		docs = append(docs, info)
+		docs = append(docs, doc)
 	}
 	return docs, errs, nil
+}
+
+func scanOneNote(root, relPath string) (NoteDoc, error) {
+	abs := filepath.Join(root, filepath.FromSlash(relPath))
+	data, err := os.ReadFile(abs)
+	if err != nil {
+		return NoteDoc{}, fmt.Errorf("%s: read note: %w", relPath, err)
+	}
+	st, err := os.Stat(abs)
+	if err != nil {
+		return NoteDoc{}, fmt.Errorf("%s: stat note: %w", relPath, err)
+	}
+	note, err := markdown.ParseNote(data)
+	if err != nil {
+		return NoteDoc{}, fmt.Errorf("%s: parse note: %w", relPath, err)
+	}
+	info := NoteDoc{
+		NoteID:       note.MnemonicNoteID,
+		Slug:         note.EffectiveSlug(),
+		Title:        note.Title,
+		RelPath:      relPath,
+		Frontmatter:  note.Frontmatter,
+		BodyMarkdown: string(note.Body),
+		BodyText:     string(note.Body),
+		ContentHash:  hashNoteBytes(data),
+		FileMTimeNS:  st.ModTime().UnixNano(),
+		FileSize:     st.Size(),
+	}
+	populateNoteDocData(&info, note, data)
+	return info, nil
+}
+
+func populateNoteDocData(info *NoteDoc, note markdown.Note, data []byte) {
+	info.Tags = append(info.Tags, tagRow{Source: "frontmatter"})
+	for _, t := range note.Tags {
+		info.Tags = append(info.Tags, tagRow{Source: "frontmatter", Value: t})
+	}
+	for _, t := range markdown.ParseTags(data) {
+		info.Tags = append(info.Tags, tagRow{Source: "inline", Value: t.Value})
+	}
+	for _, ob := range markdown.ParseObservations(data) {
+		info.Observations = append(info.Observations, observationRow{
+			Category:    ob.Category,
+			Content:     ob.Content,
+			LineStart:   ob.LineStart,
+			ContentHash: hashString(ob.Category + "\n" + ob.Content),
+		})
+		info.Tags = append(info.Tags, tagRow{Source: "observation", Value: ob.Category})
+	}
+	searchable := make([]string, 0, 2+len(note.Tags)+2*len(info.Observations))
+	searchable = append(searchable, note.Title, string(note.Body))
+	searchable = append(searchable, note.Tags...)
+	for _, ob := range info.Observations {
+		searchable = append(searchable, ob.Category, ob.Content)
+	}
+	info.SearchText = strings.Join(searchable, "\n")
+	for _, rel := range markdown.ParseRelations(note.Body) {
+		target := strings.TrimSpace(rel.Target.Target)
+		info.Links = append(info.Links, linkRow{
+			RelationType: rel.RelationType, RawTarget: target,
+			Source: string(rel.Source), Line: rel.Line,
+		})
+	}
 }
 
 func hashNoteBytes(content []byte) string {

@@ -33,39 +33,68 @@ func RenderNote(note Note) ([]byte, error) {
 
 	var buf bytes.Buffer
 	buf.WriteString("---\n")
-
-	if err := renderFrontmatterField(&buf, "mnemonic_note_id", note.MnemonicNoteID); err != nil {
+	if err := renderCanonicalFrontmatter(&buf, note, slug); err != nil {
 		return nil, err
+	}
+	if err := renderExtraFrontmatter(&buf, note); err != nil {
+		return nil, err
+	}
+	buf.WriteString("---\n")
+	buf.Write(note.Body)
+
+	return buf.Bytes(), nil
+}
+
+func renderCanonicalFrontmatter(buf *bytes.Buffer, note Note, slug string) error {
+	pairs := []struct {
+		key   string
+		value any
+	}{
+		{"mnemonic_note_id", note.MnemonicNoteID},
 	}
 	if note.Title != "" {
-		if err := renderFrontmatterField(&buf, "title", note.Title); err != nil {
-			return nil, err
-		}
+		pairs = append(pairs, struct {
+			key   string
+			value any
+		}{"title", note.Title})
 	}
-	if err := renderFrontmatterField(&buf, "slug", slug); err != nil {
-		return nil, err
-	}
+	pairs = append(pairs, struct {
+		key   string
+		value any
+	}{"slug", slug})
 	if len(note.Tags) > 0 {
-		if err := renderFrontmatterField(&buf, "tags", note.Tags); err != nil {
-			return nil, err
-		}
+		pairs = append(pairs, struct {
+			key   string
+			value any
+		}{"tags", note.Tags})
 	}
 	if !note.CreatedAt.IsZero() {
-		if err := renderFrontmatterField(&buf, "created_at", note.CreatedAt.UTC()); err != nil {
-			return nil, err
-		}
+		pairs = append(pairs, struct {
+			key   string
+			value any
+		}{"created_at", note.CreatedAt.UTC()})
 	}
 	if !note.UpdatedAt.IsZero() {
-		if err := renderFrontmatterField(&buf, "updated_at", note.UpdatedAt.UTC()); err != nil {
-			return nil, err
-		}
+		pairs = append(pairs, struct {
+			key   string
+			value any
+		}{"updated_at", note.UpdatedAt.UTC()})
 	}
 	if note.Type != "" {
-		if err := renderFrontmatterField(&buf, "type", note.Type); err != nil {
-			return nil, err
+		pairs = append(pairs, struct {
+			key   string
+			value any
+		}{"type", note.Type})
+	}
+	for _, p := range pairs {
+		if err := renderFrontmatterField(buf, p.key, p.value); err != nil {
+			return err
 		}
 	}
+	return nil
+}
 
+func renderExtraFrontmatter(buf *bytes.Buffer, note Note) error {
 	extraKeys := make([]string, 0, len(note.Frontmatter))
 	for key := range note.Frontmatter {
 		if _, ok := canonicalFrontmatterKeys[key]; ok {
@@ -75,15 +104,11 @@ func RenderNote(note Note) ([]byte, error) {
 	}
 	sort.Strings(extraKeys)
 	for _, key := range extraKeys {
-		if err := renderFrontmatterField(&buf, key, note.Frontmatter[key]); err != nil {
-			return nil, err
+		if err := renderFrontmatterField(buf, key, note.Frontmatter[key]); err != nil {
+			return err
 		}
 	}
-
-	buf.WriteString("---\n")
-	buf.Write(note.Body)
-
-	return buf.Bytes(), nil
+	return nil
 }
 
 func renderFrontmatterField(buf *bytes.Buffer, key string, value any) error {

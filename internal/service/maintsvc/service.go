@@ -135,75 +135,63 @@ func (s Service) DoctorAll(ctx context.Context) (DoctorAllResult, error) {
 	if err != nil {
 		return DoctorAllResult{}, err
 	}
-
 	result := DoctorAllResult{Total: len(entries)}
 	for _, item := range entries {
-		projectResult := ProjectResult{
-			ProjectID: item.ProjectID,
-			Slug:      item.Slug,
-		}
-
-		resolved, err := s.resolveKnowledgeBase(item.Slug)
-		if err != nil {
-			projectResult.Status = "error"
-			projectResult.Error = err.Error()
-			result.Failed++
-			result.Projects = append(result.Projects, projectResult)
-			continue
-		}
-
-		runtime, err := s.runtimeFor(ctx, resolved)
-		if err != nil {
-			projectResult.ProjectID = resolved.ID
-			projectResult.Status = "error"
-			projectResult.Error = err.Error()
-			result.Failed++
-			result.Projects = append(result.Projects, projectResult)
-			continue
-		}
-
-		indexService := runtime.IndexService()
-		if indexService == nil {
-			projectResult.ProjectID = resolved.ID
-			projectResult.Status = "error"
-			projectResult.Error = "runtime index service is not configured"
-			result.Failed++
-			result.Projects = append(result.Projects, projectResult)
-			continue
-		}
-
-		output, err := indexService.Doctor(ctx)
-		if err != nil {
-			projectResult.ProjectID = resolved.ID
-			projectResult.Status = "error"
-			projectResult.Error = err.Error()
-			result.Failed++
-			result.Projects = append(result.Projects, projectResult)
-			continue
-		}
-
-		projectResult.ProjectID = resolved.ID
-		projectResult.Status = output.Status
-		switch output.Status {
-		case "needs_reindex":
-			result.NeedsReindex++
-		case "warning":
-			result.Warning++
-		case "ok", "":
-			result.Ok++
-			if projectResult.Status == "" {
-				projectResult.Status = "ok"
-			}
-		default:
-			result.Ok++
-		}
-		if projectResult.Status == "" {
-			projectResult.Status = "ok"
-		}
-		result.Projects = append(result.Projects, projectResult)
+		s.doctorOne(ctx, item, &result)
 	}
-
 	return result, nil
+}
+
+func (s Service) doctorOne(ctx context.Context, item catalogsvc.ListItem, result *DoctorAllResult) {
+	projectResult := ProjectResult{ProjectID: item.ProjectID, Slug: item.Slug}
+	resolved, err := s.resolveKnowledgeBase(item.Slug)
+	if err != nil {
+		doctorFail(result, &projectResult, err.Error())
+		return
+	}
+	runtime, err := s.runtimeFor(ctx, resolved)
+	if err != nil {
+		projectResult.ProjectID = resolved.ID
+		doctorFail(result, &projectResult, err.Error())
+		return
+	}
+	indexService := runtime.IndexService()
+	if indexService == nil {
+		projectResult.ProjectID = resolved.ID
+		doctorFail(result, &projectResult, "runtime index service is not configured")
+		return
+	}
+	output, err := indexService.Doctor(ctx)
+	if err != nil {
+		projectResult.ProjectID = resolved.ID
+		doctorFail(result, &projectResult, err.Error())
+		return
+	}
+	projectResult.ProjectID = resolved.ID
+	projectResult.Status = output.Status
+	s.accumulateDoctorStatus(result, projectResult.Status)
+	if projectResult.Status == "" {
+		projectResult.Status = "ok"
+	}
+	result.Projects = append(result.Projects, projectResult)
+}
+
+func doctorFail(result *DoctorAllResult, pr *ProjectResult, errMsg string) {
+	pr.Status = "error"
+	pr.Error = errMsg
+	result.Failed++
+	result.Projects = append(result.Projects, *pr)
+}
+
+func (s Service) accumulateDoctorStatus(result *DoctorAllResult, status string) {
+	switch status {
+	case "needs_reindex":
+		result.NeedsReindex++
+	case "warning":
+		result.Warning++
+	default:
+		result.Ok++
+	}
 }
 
 func (s Service) catalogEntries() ([]catalogsvc.ListItem, error) {
