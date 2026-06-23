@@ -26,4 +26,4 @@ repos:
     hooks:
       - id: golangci-lint
         name: golangci-lint
-        args: [--fix, --timeout=2m]
+        args: [--fix, --timeout=2m, --config=.golangci.yml]

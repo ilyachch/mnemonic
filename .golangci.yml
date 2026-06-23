@@ -7,7 +7,7 @@ run:
 linters:
   enable:
     # === Default (already active; we're just noting them here) ===
-    # - errcheck      # Check for unhandled errors
+    - errcheck # Check for unhandled errors
     - govet # Basic Go static analysis
     - ineffassign # Useless variable assignments
     - staticcheck # Mega-pack of bug checks
@@ -20,7 +20,7 @@ linters:
     - rowserrcheck # Checks whether rows.Err() was called after a loop
     # === Performance ===
     - makezero # Detects bugs involving `append` on slices created with an incorrect `make()`
-    # - perfsprint    # Replaces the slow `fmt.Sprintf` with `string()` or `strconv` wherever possible
+    - perfsprint # Replaces the slow `fmt.Sprintf` with `string()` or `strconv` wherever possible
     - prealloc # Suggests where to pre-allocate memory for slices
     # === Complexity and Readability (Style) ===
     - gocyclo # Cyclomatic complexity
