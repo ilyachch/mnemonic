@@ -1,57 +1,62 @@
 name: pull-request
-
 on:
   pull_request:
-
+    types: [opened, synchronize, reopened, ready_for_review]
 permissions:
   contents: read
-
 concurrency:
   group: pull-request-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
-
 jobs:
-  lint:
-    name: Lint
+  check-draft:
+    name: Check Draft Status
     runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    outputs:
+      run-tests: "true"
     steps:
-      - &checkout_step
-        name: Check out repository
+      - name: Status
+        run: echo "PR is ready for review, running pipeline..."
+  lint:
+    name: Lint & Test (ubuntu-latest)
+    runs-on: ubuntu-latest
+    needs: check-draft
+    steps:
+      - name: Check out repository
         uses: actions/checkout@v6.0.3
-
-      - &setup_go_step
-        name: Set up Go
+      - name: Set up Go
         uses: actions/setup-go@v6.4.0
         with:
           go-version-file: go.mod
           cache: true
-
-      - name: Check formatting
-        shell: bash
-        run: |
-          files=$(git ls-files '*.go')
-          out=$(gofmt -l $files)
-          if [ -n "$out" ]; then
-            echo "The following files need gofmt:"
-            echo "$out"
-            exit 1
-          fi
-
-      - name: Run go vet
-        run: go vet ./...
-
-      - name: Run race tests
-        run: go test -race ./...
-
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9.2.1
+        with:
+          version: v2.12.2
+          args: --timeout=5m
+  check-coverage:
+    name: Check Coverage
+    runs-on: ubuntu-latest
+    needs: check-draft
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6.0.3
+      - name: Set up Go
+        uses: actions/setup-go@v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Set up Just
+        uses: taiki-e/install-action@just
       - name: Check code coverage
-        shell: bash
-        run: bash scripts/check-coverage.sh
-
-  test:
-    name: Test (${{ matrix.os }})
+        run: just coverage-check 70.0
+  test-matrix:
+    name: Test Matrix (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     needs:
+      - check-draft
       - lint
+      - check-coverage
     strategy:
       fail-fast: false
       matrix:
@@ -59,37 +64,40 @@ jobs:
           - ubuntu-latest
           - macos-latest
     steps:
-      - *checkout_step
-      - *setup_go_step
-
+      - name: Check out repository
+        uses: actions/checkout@v6.0.3
+      - name: Set up Go
+        uses: actions/setup-go@v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Set up Just
+        uses: taiki-e/install-action@just
       - name: Run test suite
-        run: go test ./...
-
+        run: just test-unit
   build:
     name: Build (${{ matrix.goos }}-${{ matrix.goarch }})
     runs-on: ubuntu-latest
     needs:
-      - lint
+      - test-matrix
     strategy:
       fail-fast: false
       matrix:
         include:
           - goos: linux
             goarch: amd64
-            ext: ""
           - goos: linux
             goarch: arm64
-            ext: ""
           - goos: darwin
             goarch: arm64
-            ext: ""
-          - goos: darwin
-            goarch: amd64
-            ext: ""
     steps:
-      - *checkout_step
-      - *setup_go_step
-
+      - name: Check out repository
+        uses: actions/checkout@v6.0.3
+      - name: Set up Go
+        uses: actions/setup-go@v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
       - name: Build binary
         shell: bash
         env:
@@ -100,5 +108,5 @@ jobs:
           mkdir -p dist/check
           go build -trimpath \
             -ldflags="-s -w -X main.version=pr-${GITHUB_SHA::7}" \
-            -o "dist/check/mnemonic-${GOOS}-${GOARCH}${{ matrix.ext }}" \
+            -o "dist/check/mnemonic-${GOOS}-${GOARCH}" \
             ./cmd/mnemonic

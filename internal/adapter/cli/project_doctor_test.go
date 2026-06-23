@@ -1,0 +1,231 @@
+package cli
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	clockpkg "github.com/ilyachch/mnemonic/internal/platform/clock"
+	"github.com/ilyachch/mnemonic/internal/store/markdownstore"
+	"github.com/ilyachch/mnemonic/internal/testutil"
+	"github.com/stretchr/testify/require"
+)
+
+func TestProjectDoctorReturnsOkForHealthyProject(t *testing.T) {
+	projectRoot := testutil.CleanEnvForTest(t)
+
+	restoreClock := clockpkg.SetClock(testutil.NewClock(
+		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		"550e8400-e29b-41d4-a716-446655440000",
+	))
+	defer restoreClock()
+
+	setLocalProjectMemoriesHome(t, projectRoot)
+	err := writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, err)
+
+	restoreWD := chdirForNotesTest(t, projectRoot)
+	defer restoreWD()
+
+	memoriesRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
+	writeTaggedNote(t, filepath.Join(memoriesRoot, "target-note.md"), "550e8400-e29b-41d4-a716-446655440001", "Target Note", "target-note", nil, "target body\n")
+	writeTaggedNote(t, filepath.Join(memoriesRoot, "source-note.md"), "550e8400-e29b-41d4-a716-446655440002", "Source Note", "source-note", nil, "[[Target Note]]\n")
+	reindexResult := executeCommand("project", "reindex", "personal", "--json")
+	require.NoError(t, reindexResult.Err, "project reindex returned error\nstderr: %s", reindexResult.Stderr)
+
+	before := mustNoteSnapshot(t, memoriesRoot)
+	result := executeCommand("project", "doctor", "personal", "--json")
+	require.NoError(t, result.Err, "project doctor returned error\nstderr: %s", result.Stderr)
+	require.Contains(t, result.Stdout, `"status": "ok"`)
+	after := mustNoteSnapshot(t, memoriesRoot)
+	require.Equal(t, before, after, "markdown snapshot changed")
+}
+
+func TestProjectDoctorUsesEnvironmentSelector(t *testing.T) {
+	projectRoot := testutil.CleanEnvForTest(t)
+	t.Setenv("MNEMONIC_PROJECT", "personal")
+
+	restoreClock := clockpkg.SetClock(testutil.NewClock(
+		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		"550e8400-e29b-41d4-a716-446655440000",
+	))
+	defer restoreClock()
+
+	setLocalProjectMemoriesHome(t, projectRoot)
+	err := writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, err)
+
+	restoreWD := chdirForNotesTest(t, projectRoot)
+	defer restoreWD()
+
+	memoriesRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
+	writeTaggedNote(t, filepath.Join(memoriesRoot, "healthy-note.md"), "550e8400-e29b-41d4-a716-446655440001", "Healthy Note", "healthy-note", nil, "body\n")
+	reindexResult := executeCommand("project", "reindex", "--json")
+	require.NoError(t, reindexResult.Err, "project reindex returned error\nstderr: %s", reindexResult.Stderr)
+
+	result := executeCommand("project", "doctor", "--json")
+	require.NoError(t, result.Err, "project doctor returned error\nstderr: %s", result.Stderr)
+	require.Contains(t, result.Stdout, `"status": "ok"`)
+}
+
+func TestProjectDoctorPositionalProjectWinsOverFlag(t *testing.T) {
+	projectRoot := testutil.CleanEnvForTest(t)
+
+	restoreClock := clockpkg.SetClock(testutil.NewClock(
+		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		"550e8400-e29b-41d4-a716-446655440000",
+	))
+	defer restoreClock()
+
+	setLocalProjectMemoriesHome(t, projectRoot)
+	err := writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, err)
+
+	restoreWD := chdirForNotesTest(t, projectRoot)
+	defer restoreWD()
+
+	memoriesRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
+	writeTaggedNote(t, filepath.Join(memoriesRoot, "healthy-note.md"), "550e8400-e29b-41d4-a716-446655440001", "Healthy Note", "healthy-note", nil, "body\n")
+	reindexResult := executeCommand("project", "reindex", "personal", "--project", "work", "--json")
+	require.NoError(t, reindexResult.Err, "project reindex returned error\nstderr: %s", reindexResult.Stderr)
+
+	result := executeCommand("project", "doctor", "personal", "--project", "work", "--json")
+	require.NoError(t, result.Err, "project doctor returned error\nstderr: %s", result.Stderr)
+	require.Contains(t, result.Stdout, `"status": "ok"`)
+}
+
+func TestProjectDoctorMissingIndexReturnsNeedsReindex(t *testing.T) {
+	projectRoot := testutil.CleanEnvForTest(t)
+
+	restoreClock := clockpkg.SetClock(testutil.NewClock(
+		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		"550e8400-e29b-41d4-a716-446655440000",
+	))
+	defer restoreClock()
+
+	setLocalProjectMemoriesHome(t, projectRoot)
+	err := writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, err)
+
+	restoreWD := chdirForNotesTest(t, projectRoot)
+	defer restoreWD()
+
+	result := executeCommand("project", "doctor", "personal", "--json")
+	require.NoError(t, result.Err, "project doctor returned error\nstderr: %s", result.Stderr)
+	require.Contains(t, result.Stdout, `"status": "needs_reindex"`)
+}
+
+func TestProjectDoctorRequiresSelector(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+	t.Setenv("MNEMONIC_MEMORIES_HOME", t.TempDir())
+
+	result := executeCommand("project", "doctor", "--json")
+	require.Error(t, result.Err)
+	require.Equal(t, 2, ExitCodeForError(result.Err))
+	require.Contains(t, result.Err.Error(), "project selector is required")
+}
+
+func TestProjectDoctorCorruptedIndexReturnsExitSix(t *testing.T) {
+	projectRoot := testutil.CleanEnvForTest(t)
+
+	restoreClock := clockpkg.SetClock(testutil.NewClock(
+		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		"550e8400-e29b-41d4-a716-446655440000",
+	))
+	defer restoreClock()
+
+	setLocalProjectMemoriesHome(t, projectRoot)
+	err := writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, err)
+
+	restoreWD := chdirForNotesTest(t, projectRoot)
+	defer restoreWD()
+
+	indexPath := testIndexPath(projectRoot, "550e8400-e29b-41d4-a716-446655440000")
+	err = os.MkdirAll(filepath.Dir(indexPath), 0o755)
+	require.NoError(t, err)
+	err = os.WriteFile(indexPath, []byte("broken"), 0o644)
+	require.NoError(t, err)
+
+	result := executeCommand("project", "doctor", "personal", "--json")
+	require.Error(t, result.Err, "project doctor error = nil, want corrupted index")
+	require.Equal(t, 6, ExitCodeForError(result.Err))
+}
+
+func TestProjectDoctorAllRejectsExplicitProjectSelector(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+	t.Setenv("MNEMONIC_MEMORIES_HOME", t.TempDir())
+
+	result := executeCommand("project", "doctor", "--all", "--project", "work", "--json")
+	require.Error(t, result.Err)
+	require.Equal(t, 2, ExitCodeForError(result.Err))
+	require.Contains(t, result.Err.Error(), "--all cannot be combined with a project selector")
+}
+
+func TestProjectDoctorAllRejectsPositionalSelector(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+	t.Setenv("MNEMONIC_MEMORIES_HOME", t.TempDir())
+
+	result := executeCommand("project", "doctor", "--all", "personal", "--json")
+	require.Error(t, result.Err)
+	require.Equal(t, 2, ExitCodeForError(result.Err))
+	require.Contains(t, result.Err.Error(), "--all cannot be combined with a project selector")
+}
+
+func TestProjectDoctorReportsStaleTempFileWithoutDeletingIt(t *testing.T) {
+	projectRoot := testutil.CleanEnvForTest(t)
+
+	restoreClock := clockpkg.SetClock(testutil.NewClock(
+		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		"550e8400-e29b-41d4-a716-446655440000",
+	))
+	defer restoreClock()
+
+	setLocalProjectMemoriesHome(t, projectRoot)
+	err := writeLocalProjectFixture(t, projectRoot, "personal")
+	require.NoError(t, err)
+
+	restoreWD := chdirForNotesTest(t, projectRoot)
+	defer restoreWD()
+
+	memoriesRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
+	writeTaggedNote(t, filepath.Join(memoriesRoot, "healthy-note.md"), "550e8400-e29b-41d4-a716-446655440001", "Healthy Note", "healthy-note", nil, "body\n")
+	reindexResult := executeCommand("project", "reindex", "personal", "--json")
+	require.NoError(t, reindexResult.Err, "project reindex returned error\nstderr: %s", reindexResult.Stderr)
+
+	tempPath := filepath.Join(memoriesRoot, ".tmp-test")
+	err = os.WriteFile(tempPath, []byte("stale\n"), 0o644)
+	require.NoError(t, err)
+
+	result := executeCommand("project", "doctor", "personal", "--json")
+	require.NoError(t, result.Err, "project doctor returned error\nstderr: %s", result.Stderr)
+	require.Contains(t, result.Stdout, `"status": "warning"`)
+	require.Contains(t, result.Stdout, `"name": "stale temp files"`)
+	require.Contains(t, result.Stdout, `"count": 1`)
+	require.Contains(t, result.Stdout, tempPath)
+	_, err = os.Stat(tempPath)
+	require.NoError(t, err, "Stat(%q) error = %v", tempPath, err)
+}
+
+func mustNoteSnapshot(t *testing.T, root string) string {
+	t.Helper()
+	paths, err := markdownstore.Store{RootDir: root}.Walk()
+	require.NoError(t, err)
+	var b strings.Builder
+	for _, rel := range paths {
+		abs := filepath.Join(root, filepath.FromSlash(rel))
+		data, err := os.ReadFile(abs)
+		require.NoError(t, err, "ReadFile(%q) error = %v", rel, err)
+		info, err := os.Stat(abs)
+		require.NoError(t, err, "Stat(%q) error = %v", rel, err)
+		b.WriteString(rel)
+		b.WriteByte('\n')
+		b.WriteString(info.ModTime().UTC().Format(time.RFC3339Nano))
+		b.WriteByte('\n')
+		b.Write(data)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}

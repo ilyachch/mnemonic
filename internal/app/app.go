@@ -1,10 +1,15 @@
 package app
 
 import (
-	"github.com/ilyachch/mnemonic/internal/config"
-	"github.com/ilyachch/mnemonic/internal/paths"
-	"github.com/ilyachch/mnemonic/internal/project"
-	"github.com/ilyachch/mnemonic/internal/registry"
+	"context"
+
+	"github.com/ilyachch/mnemonic/internal/domain/kb"
+	manifest "github.com/ilyachch/mnemonic/internal/format/manifest"
+	"github.com/ilyachch/mnemonic/internal/platform/config"
+	"github.com/ilyachch/mnemonic/internal/platform/paths"
+	"github.com/ilyachch/mnemonic/internal/service/catalogsvc"
+	"github.com/ilyachch/mnemonic/internal/service/maintsvc"
+	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 )
 
 // Input configures app container creation.
@@ -12,15 +17,18 @@ type Input struct {
 	CLI paths.CLIOverrides
 }
 
-// App is the application container that wires config, paths, and services.
-type App struct {
+// Bootstrap is the application container that wires config, paths, and services.
+type Bootstrap struct {
 	Config   *config.Config
 	Paths    paths.EffectivePaths
 	Services Services
 }
 
+// App is a compatibility alias for Bootstrap.
+type App = Bootstrap
+
 // New builds the application container from environment and config discovery.
-func New(input Input) (*App, error) {
+func New(input Input) (*Bootstrap, error) {
 	discoveredConfigPath, err := config.DiscoverConfigFile(input.CLI.ConfigFile)
 	if err != nil {
 		return nil, err
@@ -43,48 +51,35 @@ func New(input Input) (*App, error) {
 		return nil, err
 	}
 
-	// Wire the registry parsers using the project package.
-	wireRegistryParsers()
+	registryStore := registry.New(effective.MemoriesHome, func(path string) (*manifest.Manifest, error) {
+		return manifest.ParseMnemonicManifestFromFile(path)
+	}, func(data []byte) (*manifest.PointerFile, error) {
+		return manifest.ParsePointerFile(data)
+	})
 
-	return &App{
+	catalog := &catalogsvc.Service{
+		MemoriesHome: effective.MemoriesHome,
+		StateHome:    effective.StateHome,
+		Registry:     registryStore,
+	}
+
+	return &Bootstrap{
 		Config: cfg,
 		Paths:  effective,
 		Services: Services{
-			ProjectResolver: &FileResolver{
-				MemoriesHome: effective.MemoriesHome,
+			Catalog: catalog,
+			Maint: &maintsvc.Service{
+				Catalog: catalog,
+				RuntimeFactory: func(ctx context.Context, k kb.KnowledgeBase) (maintsvc.Runtime, error) {
+					_ = ctx
+					return NewRuntimeApp(RuntimeInput{Config: cfg, KB: k})
+				},
 			},
 		},
 	}, nil
 }
 
 // Close shuts down app-owned resources.
-func (a *App) Close() error {
+func (b *Bootstrap) Close() error {
 	return nil
-}
-
-func wireRegistryParsers() {
-	registry.DefaultManifestParser = func(path string) (registry.ManifestData, error) {
-		m, err := project.ParseMnemonicManifestFromFile(path)
-		if err != nil {
-			return registry.ManifestData{}, err
-		}
-		typ := "central"
-		if m.IsLocal() {
-			typ = "local"
-		}
-		return registry.ManifestData{
-			ProjectID: m.ProjectID,
-			Name:      m.Name,
-			Slug:      m.Slug,
-			Type:      typ,
-		}, nil
-	}
-
-	registry.DefaultPointerParser = func(data []byte) (string, error) {
-		pf, err := project.ParsePointerFile(data)
-		if err != nil {
-			return "", err
-		}
-		return pf.ManifestPath, nil
-	}
 }

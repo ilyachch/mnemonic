@@ -11,7 +11,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/project"
+	manifestfmt "github.com/ilyachch/mnemonic/internal/format/manifest"
+	"github.com/ilyachch/mnemonic/internal/platform/idgen"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -58,7 +59,7 @@ func main() {
 
 	command, args := mnemonicCommand(repoRoot)
 	if *reindex {
-		if err := runReindex(repoRoot, command, args, *project, env); err != nil {
+		if err = runReindex(repoRoot, command, args, *project, env); err != nil {
 			fatalf("reindex: %v", err)
 		}
 	}
@@ -115,7 +116,6 @@ func main() {
 			run: func() error {
 				return callAndPrint(ctx, session, *timeout, "create_note", map[string]any{
 					"title": alphaTitle,
-					"path":  alphaSlug + ".md",
 					"body":  "Alpha smoke body.",
 					"tags":  []string{"mcp", "smoke"},
 				}, &alpha)
@@ -268,19 +268,19 @@ func prepareSmokeProject() (string, []string, error) {
 	}
 
 	now := time.Now().UTC()
-	manifest := project.NewMnemonicManifest()
-	manifest.ProjectID = project.NewUUID()
+	manifest := manifestfmt.NewMnemonicManifest()
+	manifest.ProjectID = idgen.NewUUID()
 	manifest.Name = "personal"
 	manifest.Slug = "personal"
-	manifest.Type = project.ManifestTypeLocal
+	manifest.Type = manifestfmt.ManifestTypeLocal
 	manifest.MarkdownFormatVersion = 1
 	manifest.CreatedAt = now
 	manifest.UpdatedAt = now
 	manifest.Generator.App = "mnemonic"
-	if err := project.WriteMnemonicManifest(filepath.Join(memoriesDir, "mnemonic.toml"), manifest); err != nil {
+	if err := manifestfmt.WriteMnemonicManifest(filepath.Join(memoriesDir, "mnemonic.toml"), manifest); err != nil {
 		return "", nil, err
 	}
-	if err := project.WritePointerFile(filepath.Join(memoriesHome, "personal.toml"), &project.PointerFile{
+	if err := manifestfmt.WritePointerFile(filepath.Join(memoriesHome, "personal.toml"), &manifestfmt.PointerFile{
 		ManifestPath: filepath.Join(memoriesDir, "mnemonic.toml"),
 	}); err != nil {
 		return "", nil, err
@@ -322,7 +322,7 @@ func callAndPrint(
 		return errors.New("nil result")
 	}
 	if result.IsError {
-		return fmt.Errorf("tool returned error")
+		return errors.New("tool returned error")
 	}
 	if decodeTarget != nil {
 		if err := decodeStructured(result.StructuredContent, decodeTarget); err != nil {
