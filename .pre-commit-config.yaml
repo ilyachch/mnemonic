@@ -12,7 +12,10 @@ repos:
         args: [--maxkb=1024]
       - id: check-merge-conflict
       - id: detect-private-key
-
+  - repo: https://github.com/google/yamlfmt
+    rev: v0.21.0
+    hooks:
+      - id: yamlfmt
   - repo: https://github.com/dnephin/pre-commit-golang
     rev: v0.5.1
     hooks:
@@ -27,7 +30,6 @@ repos:
       - id: go-build
         name: go build
         args: [./...]
-
   - repo: https://github.com/golangci/golangci-lint
     rev: v1.64.8
     hooks:

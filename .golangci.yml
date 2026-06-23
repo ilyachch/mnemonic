@@ -1,30 +1,70 @@
+version: "2"
 run:
+  concurrency: 0
   timeout: 5m
-
-issues:
-  exclude-dirs-use-default: true
-  exclude-dirs:
-    - bin
-    - dist
-    - testdata
-
+  issues-exit-code: 1
+  tests: true
 linters:
-  disable-all: true
   enable:
-    - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-    - typecheck
-    - unused
-
-linters-settings:
-  errcheck:
-    exclude-functions:
-      - (io.Closer).Close
-      - (net.Conn).Close
-      - (*os.File).Close
-      - (database/sql).(*sql.DB).Close
-      - (database/sql).(*sql.Rows).Close
-      - (database/sql).(*sql.Stmt).Close
+    # === Default (already active; we're just noting them here) ===
+    # - errcheck      # Check for unhandled errors
+    - govet # Basic Go static analysis
+    - ineffassign # Useless variable assignments
+    - staticcheck # Mega-pack of bug checks
+    - unused # Dead code detection
+    # === Errors and Resource Leaks (Critical) ===
+    - bodyclose # Checks whether resp.Body is closed in HTTP calls
+    - sqlclosecheck # Checks whether sql.Rows / pgx.Query are closed
+    - errorlint # Checks the correctness of error wrapping (errors.Is/As)
+    - nilerr # Catches bugs where nil is returned instead of an error, or vice versa
+    - rowserrcheck # Checks whether rows.Err() was called after a loop
+    # === Performance ===
+    - makezero # Detects bugs involving `append` on slices created with an incorrect `make()`
+    # - perfsprint    # Replaces the slow `fmt.Sprintf` with `string()` or `strconv` wherever possible
+    - prealloc # Suggests where to pre-allocate memory for slices
+    # === Complexity and Readability (Style) ===
+    - gocyclo # Cyclomatic complexity
+    - gocognit # Cognitive complexity
+    - copyloopvar # Detects issues with copying loop variables (softer in Go 1.22+, but still useful)
+    - misspell # Corrects typos in English words in comments
+    - unconvert # Removes unnecessary type casts (such as int(myInt))
+    - whitespace # Cleans up extra or missing blank lines
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - gocyclo
+          - gocognit
+          - errcheck
+          - dupl
+          - gosec
+      - path: scripts/
+        linters:
+          - gocyclo
+          - gocognit
+          - errcheck
+          - dupl
+          - gosec
+  settings:
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+    errcheck:
+      check-blank: true
+      check-type-assertions: true
+    gocyclo:
+      min-complexity: 15
+    gocognit:
+      min-complexity: 15
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: exported
+issues:
+  max-same-issues: 0
+  max-issues-per-linter: 0

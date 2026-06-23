@@ -1,7 +1,5 @@
 version: 2
-
 project_name: mnemonic
-
 builds:
   - id: mnemonic
     main: ./cmd/mnemonic
@@ -14,9 +12,14 @@ builds:
     goarch:
       - amd64
       - arm64
+    ignore:
+      - goos: darwin
+        goarch: amd64
     ldflags:
       - -s -w -X main.version={{ .Tag }}
-
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
 archives:
   - id: bundles
     ids:
@@ -26,8 +29,16 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - README.md
-      - LICENSE
-
+      - LICENSE*
 checksum:
-  name_template: checksums.txt
+  name_template: "checksums.txt"
   algorithm: sha256
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - Merge pull request
+      - Merge branch
