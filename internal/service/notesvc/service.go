@@ -84,7 +84,7 @@ type ShowResult = markdownstore.ShowResult
 // New constructs the runtime notes service for one knowledge base.
 func New(k kb.KnowledgeBase) *Service {
 	return &Service{
-		Notes: markdownstore.Store{RootDir: k.RootDir, StateDir: k.StateDir},
+		Notes: markdownstore.Store{RootDir: k.RootDir, StateDir: k.StateDir, IndexPath: k.IndexPath},
 		Index: sqliteindex.Store{
 			IndexPath: k.IndexPath,
 			RootDir:   k.RootDir,

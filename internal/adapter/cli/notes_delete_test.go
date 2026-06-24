@@ -40,6 +40,17 @@ func TestNotesDeleteCommandDryRunShowsTrashPath(t *testing.T) {
 	notePath := filepath.Join(projectRoot, ".mnemonic-memories", "personal", "auth-migration.md")
 	require.NoError(t, os.MkdirAll(filepath.Dir(notePath), 0o755))
 	require.NoError(t, os.WriteFile(notePath, rendered, 0o644))
+	seedLocalProjectIndex(t, projectRoot, "550e8400-e29b-41d4-a716-446655440000",
+		seededIndexNote{
+			NoteID:      initial.MnemonicNoteID,
+			Slug:        initial.Slug,
+			Title:       initial.Title,
+			RelPath:     "auth-migration.md",
+			ContentHash: "seeded-auth-migration",
+			CreatedAt:   initial.CreatedAt,
+			UpdatedAt:   initial.UpdatedAt,
+		},
+	)
 
 	result := executeCommand("notes", "delete", "auth-migration", "--project", "personal", "--dry-run", "--json")
 	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
@@ -88,6 +99,17 @@ func TestNotesDeleteCommandMovesNoteToTrash(t *testing.T) {
 	notePath := filepath.Join(projectRoot, ".mnemonic-memories", "personal", "auth-migration.md")
 	require.NoError(t, os.MkdirAll(filepath.Dir(notePath), 0o755))
 	require.NoError(t, os.WriteFile(notePath, rendered, 0o644))
+	seedLocalProjectIndex(t, projectRoot, "550e8400-e29b-41d4-a716-446655440000",
+		seededIndexNote{
+			NoteID:      initial.MnemonicNoteID,
+			Slug:        initial.Slug,
+			Title:       initial.Title,
+			RelPath:     "auth-migration.md",
+			ContentHash: "seeded-auth-migration",
+			CreatedAt:   initial.CreatedAt,
+			UpdatedAt:   initial.UpdatedAt,
+		},
+	)
 
 	result := executeCommand("notes", "delete", "auth-migration", "--project", "personal", "--json")
 	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
@@ -146,6 +168,17 @@ func TestNotesDeleteCommandHardRequiresYes(t *testing.T) {
 	notePath := filepath.Join(projectRoot, ".mnemonic-memories", "personal", "auth-migration.md")
 	require.NoError(t, os.MkdirAll(filepath.Dir(notePath), 0o755))
 	require.NoError(t, os.WriteFile(notePath, rendered, 0o644))
+	seedLocalProjectIndex(t, projectRoot, "550e8400-e29b-41d4-a716-446655440000",
+		seededIndexNote{
+			NoteID:      initial.MnemonicNoteID,
+			Slug:        initial.Slug,
+			Title:       initial.Title,
+			RelPath:     "auth-migration.md",
+			ContentHash: "seeded-auth-migration",
+			CreatedAt:   initial.CreatedAt,
+			UpdatedAt:   initial.UpdatedAt,
+		},
+	)
 
 	result := executeCommand("notes", "delete", "auth-migration", "--project", "personal", "--hard", "--json")
 	require.Error(t, result.Err)
@@ -180,6 +213,17 @@ func TestNotesDeleteCommandHardDeletesWhenConfirmed(t *testing.T) {
 	notePath := filepath.Join(projectRoot, ".mnemonic-memories", "personal", "auth-migration.md")
 	require.NoError(t, os.MkdirAll(filepath.Dir(notePath), 0o755))
 	require.NoError(t, os.WriteFile(notePath, rendered, 0o644))
+	seedLocalProjectIndex(t, projectRoot, "550e8400-e29b-41d4-a716-446655440000",
+		seededIndexNote{
+			NoteID:      initial.MnemonicNoteID,
+			Slug:        initial.Slug,
+			Title:       initial.Title,
+			RelPath:     "auth-migration.md",
+			ContentHash: "seeded-auth-migration",
+			CreatedAt:   initial.CreatedAt,
+			UpdatedAt:   initial.UpdatedAt,
+		},
+	)
 
 	result := executeCommand("notes", "delete", "auth-migration", "--project", "personal", "--hard", "--yes", "--json")
 	require.NoError(t, result.Err, "stderr: %s", result.Stderr)

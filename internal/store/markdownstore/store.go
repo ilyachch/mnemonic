@@ -2,6 +2,7 @@ package markdownstore
 
 import (
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -19,15 +20,18 @@ import (
 	mnemonicfs "github.com/ilyachch/mnemonic/internal/platform/fs"
 	"github.com/ilyachch/mnemonic/internal/platform/idgen"
 	"github.com/ilyachch/mnemonic/internal/platform/lock"
+	_ "modernc.org/sqlite"
 )
 
 const writeLockName = "write"
 const trashTimestampLayout = "20060102T150405Z"
+const sqliteDriverName = "sqlite"
 
 // Store provides root-scoped markdown note persistence and lookup.
 type Store struct {
-	RootDir  string
-	StateDir string
+	RootDir   string
+	StateDir  string
+	IndexPath string
 }
 
 // CreateInput configures note creation.
@@ -196,18 +200,23 @@ func (s Store) Edit(input EditInput) (EditResult, error) {
 	}
 
 	absPath := filepath.Join(root, filepath.FromSlash(resolved.Path))
-	var current []byte
+	currentBytes, err := os.ReadFile(absPath)
+	if err != nil {
+		return EditResult{}, fmt.Errorf("read note: %w", err)
+	}
+
+	edited, err := markdown.ParseNote(currentBytes)
+	if err != nil {
+		return EditResult{}, fmt.Errorf("parse note: %w", err)
+	}
+
 	if input.IfMatch != "" {
-		current, err = os.ReadFile(absPath)
-		if err != nil {
-			return EditResult{}, fmt.Errorf("read note: %w", err)
-		}
-		if HashBytes(current) != input.IfMatch {
+		if HashBytes(currentBytes) != input.IfMatch {
 			return EditResult{}, apperr.Unsafe("content hash mismatch", nil)
 		}
 	}
 
-	if err = applyEditSet(&resolved.Note, input.Set); err != nil {
+	if err = applyEditSet(&edited, input.Set); err != nil {
 		return EditResult{}, err
 	}
 
@@ -216,7 +225,6 @@ func (s Store) Edit(input EditInput) (EditResult, error) {
 		now = clock.NowUTC
 	}
 
-	edited := resolved.Note
 	if input.HasBody {
 		edited.Body = append([]byte(nil), input.Body...)
 	} else {
@@ -384,36 +392,51 @@ func (s Store) Show(selector string) (ShowResult, error) {
 
 // Resolve finds a note using the canonical selector precedence.
 func (s Store) Resolve(selector string) (ResolvedNote, error) {
-	root := s.rootDir()
-	if root == "" {
-		return ResolvedNote{}, errors.New("root directory is required")
-	}
 	if selector == "" {
 		return ResolvedNote{}, apperr.NotFound("note selector is required", nil)
 	}
 
-	notes, err := loadResolvedNotes(root)
+	indexPath := strings.TrimSpace(s.IndexPath)
+	if indexPath == "" {
+		return ResolvedNote{}, errors.New("index path is required")
+	}
+	if _, err := os.Stat(indexPath); err != nil {
+		if os.IsNotExist(err) {
+			return ResolvedNote{}, apperr.NotFound("index missing; run `mnemonic project reindex` before resolving", nil)
+		}
+		return ResolvedNote{}, fmt.Errorf("stat index %q: %w", indexPath, err)
+	}
+
+	db, err := s.openIndexReadonly()
 	if err != nil {
 		return ResolvedNote{}, err
 	}
+	defer func() { _ = db.Close() }()
 
-	stages := []func(resolved resolvedNotes) []ResolvedNote{
-		func(resolved resolvedNotes) []ResolvedNote { return resolved.matchUUID(selector) },
-		func(resolved resolvedNotes) []ResolvedNote { return resolved.matchSlug(selector) },
-		func(resolved resolvedNotes) []ResolvedNote { return resolved.matchPath(selector) },
-		func(resolved resolvedNotes) []ResolvedNote { return resolved.matchTitle(selector) },
-		func(resolved resolvedNotes) []ResolvedNote { return resolved.matchNormalizedTitle(selector) },
+	stages := []func() (ResolvedNote, bool, error){
+		func() (ResolvedNote, bool, error) {
+			return s.lookupIndexedNote(db, `SELECT note_id, slug, title, rel_path FROM notes WHERE note_id = ? LIMIT 2`, selector)
+		},
+		func() (ResolvedNote, bool, error) {
+			return s.lookupIndexedNote(db, `SELECT note_id, slug, title, rel_path FROM notes WHERE slug = ? LIMIT 2`, selector)
+		},
+		func() (ResolvedNote, bool, error) {
+			normalized, err := normalizePathSelector(selector)
+			if err != nil {
+				return ResolvedNote{}, false, err
+			}
+			return s.lookupIndexedNote(db, `SELECT note_id, slug, title, rel_path FROM notes WHERE rel_path = ? LIMIT 2`, normalized)
+		},
+		func() (ResolvedNote, bool, error) { return s.lookupIndexedTitle(db, selector) },
 	}
 
 	for _, stage := range stages {
-		matches := stage(notes)
-		switch len(matches) {
-		case 0:
-			continue
-		case 1:
-			return matches[0], nil
-		default:
-			return ResolvedNote{}, apperr.Ambiguous(fmt.Sprintf("note selector %q matches multiple notes", selector), nil)
+		match, ok, err := stage()
+		if err != nil {
+			return ResolvedNote{}, err
+		}
+		if ok {
+			return match, nil
 		}
 	}
 
@@ -637,99 +660,88 @@ func dedupeTags(tags []string) []string {
 	return out
 }
 
-type resolvedNotes []resolvedNote
-
-type resolvedNote struct {
-	ResolvedNote
-	selectorData selectorData
-}
-
-type selectorData struct {
-	UUID        string
-	Slug        string
-	Path        string
-	Title       string
-	SlugByTitle string
-}
-
-func loadResolvedNotes(root string) (resolvedNotes, error) {
-	paths, err := walkRoot(root)
-	if err != nil {
-		return nil, err
-	}
-
-	notes := make(resolvedNotes, 0, len(paths))
-	for _, relPath := range paths {
-		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relPath)))
-		if err != nil {
-			return nil, fmt.Errorf("read note %q: %w", relPath, err)
-		}
-
-		note, err := markdown.ParseNote(data)
-		if err != nil {
-			return nil, fmt.Errorf("parse note %q: %w", relPath, err)
-		}
-
-		notes = append(notes, resolvedNote{
-			ResolvedNote: ResolvedNote{
-				Note: note,
-				Path: relPath,
-			},
-			selectorData: selectorData{
-				UUID:        note.MnemonicNoteID,
-				Slug:        note.EffectiveSlug(),
-				Path:        relPath,
-				Title:       note.Title,
-				SlugByTitle: normalizedTitleSlug(note.Title),
-			},
-		})
-	}
-
-	return notes, nil
-}
-
-func normalizedTitleSlug(title string) string {
-	slugValue, err := slug.Slugify(title)
-	if err != nil {
-		return ""
-	}
-	return slugValue
-}
-
-func (n resolvedNotes) matchUUID(selector string) []ResolvedNote {
-	return n.match(func(item resolvedNote) bool { return item.selectorData.UUID == selector })
-}
-
-func (n resolvedNotes) matchSlug(selector string) []ResolvedNote {
-	return n.match(func(item resolvedNote) bool { return item.selectorData.Slug == selector })
-}
-
-func (n resolvedNotes) matchPath(selector string) []ResolvedNote {
-	cleaned := filepath.ToSlash(filepath.Clean(selector))
-	if cleaned == "." || strings.HasPrefix(cleaned, "..") || filepath.IsAbs(selector) {
-		return nil
-	}
-	return n.match(func(item resolvedNote) bool { return item.selectorData.Path == cleaned })
-}
-
-func (n resolvedNotes) matchTitle(selector string) []ResolvedNote {
-	return n.match(func(item resolvedNote) bool { return item.selectorData.Title == selector })
-}
-
-func (n resolvedNotes) matchNormalizedTitle(selector string) []ResolvedNote {
-	return n.match(func(item resolvedNote) bool { return item.selectorData.SlugByTitle == selector })
-}
-
-func (n resolvedNotes) match(pred func(resolvedNote) bool) []ResolvedNote {
-	out := make([]ResolvedNote, 0, 1)
-	for _, item := range n {
-		if pred(item) {
-			out = append(out, item.ResolvedNote)
-		}
-	}
-	return out
-}
-
 func (s Store) rootDir() string {
 	return strings.TrimSpace(s.RootDir)
+}
+
+func (s Store) openIndexReadonly() (*sql.DB, error) {
+	indexPath := strings.TrimSpace(s.IndexPath)
+	if indexPath == "" {
+		return nil, errors.New("index path is required")
+	}
+
+	db, err := sql.Open(sqliteDriverName, "file:"+filepath.ToSlash(indexPath)+"?mode=ro")
+	if err != nil {
+		return nil, fmt.Errorf("open index database: %w", err)
+	}
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("ping index database: %w", err)
+	}
+	return db, nil
+}
+
+func (s Store) lookupIndexedNote(db *sql.DB, query string, selector string) (ResolvedNote, bool, error) {
+	rows, err := db.Query(query, selector)
+	if err != nil {
+		return ResolvedNote{}, false, fmt.Errorf("query note %q: %w", selector, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var note ResolvedNote
+	count := 0
+	for rows.Next() {
+		count++
+		if count > 1 {
+			return ResolvedNote{}, false, apperr.Ambiguous(fmt.Sprintf("note selector %q matches multiple notes", selector), nil)
+		}
+		if err := rows.Scan(&note.Note.MnemonicNoteID, &note.Note.Slug, &note.Note.Title, &note.Path); err != nil {
+			return ResolvedNote{}, false, fmt.Errorf("scan note %q: %w", selector, err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return ResolvedNote{}, false, fmt.Errorf("iterate note %q: %w", selector, err)
+	}
+	if count == 0 {
+		return ResolvedNote{}, false, nil
+	}
+	return note, true, nil
+}
+
+func (s Store) lookupIndexedTitle(db *sql.DB, selector string) (ResolvedNote, bool, error) {
+	rows, err := db.Query(`SELECT note_id, slug, title, rel_path FROM notes WHERE title = ? LIMIT 2`, selector)
+	if err != nil {
+		return ResolvedNote{}, false, fmt.Errorf("query note %q: %w", selector, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var note ResolvedNote
+	count := 0
+	for rows.Next() {
+		count++
+		if count > 1 {
+			return ResolvedNote{}, false, apperr.Ambiguous(fmt.Sprintf("note selector %q matches multiple notes", selector), nil)
+		}
+		if err := rows.Scan(&note.Note.MnemonicNoteID, &note.Note.Slug, &note.Note.Title, &note.Path); err != nil {
+			return ResolvedNote{}, false, fmt.Errorf("scan note %q: %w", selector, err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return ResolvedNote{}, false, fmt.Errorf("iterate note %q: %w", selector, err)
+	}
+	if count == 0 {
+		return ResolvedNote{}, false, nil
+	}
+	return note, true, nil
+}
+
+func normalizePathSelector(selector string) (string, error) {
+	cleaned := filepath.Clean(strings.ReplaceAll(selector, "\\", "/"))
+	if cleaned == "." || strings.HasPrefix(cleaned, "..") {
+		return "", apperr.NotFound(fmt.Sprintf("note %q not found", selector), nil)
+	}
+	if filepath.IsAbs(cleaned) {
+		return "", apperr.NotFound(fmt.Sprintf("note %q not found", selector), nil)
+	}
+	return filepath.ToSlash(cleaned), nil
 }

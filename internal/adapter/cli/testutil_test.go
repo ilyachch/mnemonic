@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,7 +13,9 @@ import (
 	manifestfmt "github.com/ilyachch/mnemonic/internal/format/manifest"
 	"github.com/ilyachch/mnemonic/internal/platform/paths"
 	registry "github.com/ilyachch/mnemonic/internal/store/registry"
+	"github.com/ilyachch/mnemonic/internal/store/sqliteindex"
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/require"
 )
 
 type cmdResult struct {
@@ -173,6 +176,48 @@ func resolveMemoriesHome() (string, error) {
 		return "", err
 	}
 	return boot.Paths.MemoriesHome, nil
+}
+
+func seedLocalProjectIndex(t *testing.T, projectRoot, projectID string, notes ...seededIndexNote) {
+	t.Helper()
+
+	idxPath := testIndexPath(projectRoot, projectID)
+	require.NoError(t, os.MkdirAll(filepath.Dir(idxPath), 0o755))
+
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(idxPath)+"?mode=rwc")
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	require.NoError(t, sqliteindex.ApplySchema(db))
+	for _, note := range notes {
+		relPath := note.RelPath
+		if relPath == "" {
+			relPath = note.Slug + ".md"
+		}
+		_, err := db.Exec(
+			`INSERT INTO notes(note_id, project_id, slug, rel_path, title, content_hash, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			note.NoteID,
+			projectID,
+			note.Slug,
+			filepath.ToSlash(relPath),
+			note.Title,
+			note.ContentHash,
+			note.CreatedAt.UTC().Format(time.RFC3339),
+			note.UpdatedAt.UTC().Format(time.RFC3339),
+		)
+		require.NoError(t, err)
+	}
+}
+
+type seededIndexNote struct {
+	NoteID      string
+	Slug        string
+	Title       string
+	RelPath     string
+	ContentHash string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 func testCatalogStore(memoriesHome string) registry.Store {

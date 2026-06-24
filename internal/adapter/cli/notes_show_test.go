@@ -42,6 +42,17 @@ func TestNotesShowCommandReturnsJSONAndHumanOutput(t *testing.T) {
 	notePath := filepath.Join(projectRoot, ".mnemonic-memories", "personal", "auth-migration.md")
 	require.NoError(t, os.MkdirAll(filepath.Dir(notePath), 0o755))
 	require.NoError(t, os.WriteFile(notePath, rendered, 0o644))
+	seedLocalProjectIndex(t, projectRoot, "550e8400-e29b-41d4-a716-446655440000",
+		seededIndexNote{
+			NoteID:      note.MnemonicNoteID,
+			Slug:        note.Slug,
+			Title:       note.Title,
+			RelPath:     "auth-migration.md",
+			ContentHash: "seeded-auth-migration",
+			CreatedAt:   note.CreatedAt,
+			UpdatedAt:   note.UpdatedAt,
+		},
+	)
 
 	jsonResult := executeCommand("notes", "show", "auth-migration", "--project", "personal", "--json")
 	require.NoError(t, jsonResult.Err, "stderr: %s", jsonResult.Stderr)
@@ -73,6 +84,7 @@ func TestNotesShowCommandMissingSelector(t *testing.T) {
 	projectRoot := testutil.CleanEnvForTest(t)
 
 	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
+	seedLocalProjectIndex(t, projectRoot, "550e8400-e29b-41d4-a716-446655440000")
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 

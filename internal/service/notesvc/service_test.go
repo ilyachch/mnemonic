@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
+	"github.com/ilyachch/mnemonic/internal/format/markdown"
 	"github.com/ilyachch/mnemonic/internal/store/markdownstore"
 	"github.com/ilyachch/mnemonic/internal/store/sqliteindex"
 	"github.com/ilyachch/mnemonic/internal/testutil"
@@ -26,6 +27,7 @@ func TestServiceRebuildsIndexForCreateEditDelete(t *testing.T) {
 	})
 	require.Equal(t, root, svc.Notes.RootDir)
 	require.Equal(t, stateDir, svc.Notes.StateDir)
+	require.Equal(t, filepath.Join(stateDir, "index.sqlite"), svc.Notes.IndexPath)
 	require.Equal(t, stateDir, svc.Index.StateDir)
 
 	created, err := svc.Create(CreateInput{
@@ -100,7 +102,7 @@ func TestServiceReturnsPartialSuccessWhenIndexRebuildFails(t *testing.T) {
 	stateDir := t.TempDir()
 	indexPath := filepath.Join(stateDir, "index.sqlite")
 	svc := &Service{
-		Notes: markdownstore.Store{RootDir: root, StateDir: stateDir},
+		Notes: markdownstore.Store{RootDir: root, StateDir: stateDir, IndexPath: indexPath},
 		Index: sqliteindex.Store{IndexPath: indexPath, StateDir: stateDir, KBID: "kb-1"},
 	}
 	svc.Index.RootDir = ""
@@ -115,6 +117,8 @@ func TestServiceReturnsPartialSuccessWhenIndexRebuildFails(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "stale", created.IndexStatus)
 	require.NotEmpty(t, created.IndexError)
+
+	seedServiceIndexFromFile(t, indexPath, filepath.Join(root, created.Path))
 
 	edited, err := svc.Edit(EditInput{
 		Selector: created.Slug,
@@ -149,4 +153,27 @@ func assertIndexNoteCount(t *testing.T, store sqliteindex.Store, want int) {
 	var got int
 	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM notes`).Scan(&got))
 	require.Equal(t, want, got)
+}
+
+func seedServiceIndexFromFile(t *testing.T, indexPath, path string) {
+	t.Helper()
+
+	store := sqliteindex.Store{IndexPath: indexPath}
+	db, err := store.Open()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	require.NoError(t, sqliteindex.ApplySchema(db))
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	note, err := markdown.ParseNote(data)
+	require.NoError(t, err)
+
+	_, err = db.Exec(
+		`INSERT INTO notes(note_id, project_id, slug, rel_path, title, content_hash, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		note.MnemonicNoteID, "kb-1", note.EffectiveSlug(), filepath.Base(path), note.Title, "hash-"+note.MnemonicNoteID,
+		note.CreatedAt.UTC().Format(time.RFC3339), note.UpdatedAt.UTC().Format(time.RFC3339),
+	)
+	require.NoError(t, err)
 }
