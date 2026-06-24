@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/ilyachch/mnemonic/internal/format/markdown"
+	"github.com/ilyachch/mnemonic/internal/platform/parallel"
 	"github.com/ilyachch/mnemonic/internal/store/markdownstore"
 )
 
@@ -54,25 +56,28 @@ type linkRow struct {
 
 // ScanNotes collects markdown notes from a project root.
 func ScanNotes(root string) ([]NoteDoc, []error, error) {
-	var docs []NoteDoc
-	var errs []error
-
 	paths, err := (markdownstore.Store{RootDir: root}).Walk()
 	if err != nil {
 		return nil, nil, err
 	}
-	for _, relPath := range paths {
-		if filepath.Base(relPath) == "mnemonic.toml" {
-			continue
-		}
-		doc, skipErr := scanOneNote(root, relPath)
-		if skipErr != nil {
-			errs = append(errs, skipErr)
-			continue
-		}
-		docs = append(docs, doc)
+	if len(paths) == 0 {
+		return nil, nil, nil
 	}
-	return docs, errs, nil
+
+	scanned, errs := parallel.MapIndexed(paths, runtime.GOMAXPROCS(0), func(_ int, relPath string) (NoteDoc, error) {
+		return scanOneNote(root, relPath)
+	})
+
+	docs := make([]NoteDoc, 0, len(paths))
+	outErrs := make([]error, 0)
+	for i := range paths {
+		if errs[i] != nil {
+			outErrs = append(outErrs, errs[i])
+			continue
+		}
+		docs = append(docs, scanned[i])
+	}
+	return docs, outErrs, nil
 }
 
 func scanOneNote(root, relPath string) (NoteDoc, error) {

@@ -87,6 +87,11 @@ Wrap failures in `apperr.Error` values to ensure the CLI exits with the appropri
 
 ## How to Extend the Application
 
+### Making any changes
+
+1. After changes run `go test ./...` to ensure all tests pass.
+2. Run `golangci-lint run` to check for linting issues.
+
 ### Adding a New CLI Command
 
 1. Locate the target area under `internal/adapter/cli/`.
