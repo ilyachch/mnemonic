@@ -209,14 +209,6 @@ func noteTime() time.Time {
 	return time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
 }
 
-func writeNote(t *testing.T, root, relPath string, note markdown.Note) {
-	t.Helper()
-
-	rendered, err := markdown.RenderNote(note)
-	require.NoError(t, err)
-	writeTestFile(t, filepath.Join(root, relPath), rendered)
-}
-
 func writeTestFile(t *testing.T, path string, content []byte) {
 	t.Helper()
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
