@@ -2,9 +2,12 @@ package markdownstore
 
 import (
 	"database/sql"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"testing"
 	"time"
 
@@ -205,11 +208,143 @@ func TestStoreListAndWalkIgnoreTrash(t *testing.T) {
 	assert.Equal(t, HashBytes(rendered), got[0].ContentHash)
 }
 
+func TestStoreListPreservesPathOrder(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+	root := t.TempDir()
+	store := Store{RootDir: root, StateDir: t.TempDir()}
+
+	noteA := renderedListTestNote(t, "a-id", "Alpha", "alpha", noteTime())
+	noteB := renderedListTestNote(t, "b-id", "Bravo", "bravo", noteTime())
+	writeTestFile(t, filepath.Join(root, "b.md"), noteB)
+	writeTestFile(t, filepath.Join(root, "a.md"), noteA)
+
+	got, err := store.List()
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, []string{"a.md", "b.md"}, []string{got[0].Path, got[1].Path})
+}
+
+func TestStoreListReturnsParseError(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+	root := t.TempDir()
+	store := Store{RootDir: root, StateDir: t.TempDir()}
+
+	writeTestFile(t, filepath.Join(root, "good.md"), renderedListTestNote(t, "good-id", "Good", "good", noteTime()))
+	writeTestFile(t, filepath.Join(root, "bad.md"), []byte("---\nslug: broken\n"))
+
+	_, err := store.List()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bad.md")
+}
+
+func renderedListTestNote(t testing.TB, noteID, title, slug string, now time.Time) []byte {
+	t.Helper()
+
+	rendered, err := markdown.RenderNote(markdown.Note{
+		MnemonicNoteID: noteID,
+		Title:          title,
+		Slug:           slug,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		Body:           []byte("# " + title + "\n"),
+	})
+	require.NoError(t, err)
+	return rendered
+}
+
+var benchmarkListNotes []NoteSummary
+
+func BenchmarkStoreListSequentialVsParallel(b *testing.B) {
+	for _, size := range []int{100, 1000, 10000} {
+		b.Run(strconv.Itoa(size), func(b *testing.B) {
+			b.StopTimer()
+			root := b.TempDir()
+			store := Store{RootDir: root, StateDir: b.TempDir()}
+			seedListBenchmarkVault(b, root, size)
+			b.StartTimer()
+
+			b.Run("sequential", func(b *testing.B) {
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					notes, err := listSequential(store)
+					require.NoError(b, err)
+					benchmarkListNotes = notes
+				}
+			})
+
+			b.Run("parallel", func(b *testing.B) {
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					notes, err := store.List()
+					require.NoError(b, err)
+					benchmarkListNotes = notes
+				}
+			})
+		})
+	}
+}
+
+func listSequential(store Store) ([]NoteSummary, error) {
+	root := store.rootDir()
+	if root == "" {
+		return nil, errors.New("root directory is required")
+	}
+
+	paths, err := store.Walk()
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(paths)
+
+	notes := make([]NoteSummary, 0, len(paths))
+	for _, relPath := range paths {
+		absPath := filepath.Join(root, filepath.FromSlash(relPath))
+		data, err := os.ReadFile(absPath)
+		if err != nil {
+			return nil, fmt.Errorf("read note %q: %w", relPath, err)
+		}
+
+		note, err := markdown.ParseNote(data)
+		if err != nil {
+			return nil, fmt.Errorf("parse note %q: %w", relPath, err)
+		}
+		if note.MnemonicNoteID == "" {
+			return nil, fmt.Errorf("note %q is missing mnemonic_note_id", relPath)
+		}
+		if note.UpdatedAt.IsZero() {
+			return nil, fmt.Errorf("note %q is missing updated_at", relPath)
+		}
+
+		notes = append(notes, NoteSummary{
+			NoteID:      note.MnemonicNoteID,
+			Slug:        note.EffectiveSlug(),
+			Title:       note.Title,
+			Path:        relPath,
+			UpdatedAt:   note.UpdatedAt.UTC().Format(time.RFC3339),
+			ContentHash: HashBytes(data),
+		})
+	}
+
+	return notes, nil
+}
+
+func seedListBenchmarkVault(b testing.TB, root string, size int) {
+	b.Helper()
+
+	now := noteTime()
+	for i := 0; i < size; i++ {
+		path := filepath.Join(root, fmt.Sprintf("%05d.md", i))
+		writeTestFile(b, path, renderedListTestNote(b, fmt.Sprintf("note-%05d", i), fmt.Sprintf("Note %05d", i), fmt.Sprintf("note-%05d", i), now))
+	}
+}
+
 func noteTime() time.Time {
 	return time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
 }
 
-func writeTestFile(t *testing.T, path string, content []byte) {
+func writeTestFile(t testing.TB, path string, content []byte) {
 	t.Helper()
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 	require.NoError(t, os.WriteFile(path, content, 0o644))

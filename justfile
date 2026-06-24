@@ -2,13 +2,8 @@ set shell := ["bash", "-uc"]
 
 default: check
 
-fmt:
-    go fmt ./...
-
-vet:
-    go vet ./...
-
-lint: fmt vet
+lint:
+    golangci-lint run
 
 test-unit:
     go test ./...

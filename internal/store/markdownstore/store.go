@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ import (
 	mnemonicfs "github.com/ilyachch/mnemonic/internal/platform/fs"
 	"github.com/ilyachch/mnemonic/internal/platform/idgen"
 	"github.com/ilyachch/mnemonic/internal/platform/lock"
+	"github.com/ilyachch/mnemonic/internal/platform/parallel"
 	_ "modernc.org/sqlite"
 )
 
@@ -331,34 +333,39 @@ func (s Store) List() ([]NoteSummary, error) {
 	}
 	sort.Strings(paths)
 
-	notes := make([]NoteSummary, 0, len(paths))
-	for _, relPath := range paths {
+	summaries, errs := parallel.MapIndexed(paths, runtime.GOMAXPROCS(0), func(_ int, relPath string) (NoteSummary, error) {
 		absPath := filepath.Join(root, filepath.FromSlash(relPath))
 		data, err := os.ReadFile(absPath)
 		if err != nil {
-			return nil, fmt.Errorf("read note %q: %w", relPath, err)
+			return NoteSummary{}, fmt.Errorf("read note %q: %w", relPath, err)
 		}
 
 		note, err := markdown.ParseNote(data)
 		if err != nil {
-			return nil, fmt.Errorf("parse note %q: %w", relPath, err)
+			return NoteSummary{}, fmt.Errorf("parse note %q: %w", relPath, err)
 		}
 		if note.MnemonicNoteID == "" {
-			return nil, fmt.Errorf("note %q is missing mnemonic_note_id", relPath)
+			return NoteSummary{}, fmt.Errorf("note %q is missing mnemonic_note_id", relPath)
 		}
 		if note.UpdatedAt.IsZero() {
-			return nil, fmt.Errorf("note %q is missing updated_at", relPath)
+			return NoteSummary{}, fmt.Errorf("note %q is missing updated_at", relPath)
 		}
 
-		notes = append(notes, NoteSummary{
+		return NoteSummary{
 			NoteID:      note.MnemonicNoteID,
 			Slug:        note.EffectiveSlug(),
 			Title:       note.Title,
 			Path:        relPath,
 			UpdatedAt:   note.UpdatedAt.UTC().Format(time.RFC3339),
 			ContentHash: HashBytes(data),
-		})
+		}, nil
+	})
+	if err := parallel.FirstError(errs); err != nil {
+		return nil, err
 	}
+
+	notes := make([]NoteSummary, 0, len(paths))
+	notes = append(notes, summaries...)
 
 	return notes, nil
 }
