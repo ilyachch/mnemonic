@@ -56,18 +56,57 @@ mnemonic config show
 version = 1
 
 [paths]
-# Optional path override for project storage. Defaults to ~/.mnemonic
+# Absolute or home-relative path to store central projects.
+# Defaults to ~/.mnemonic if left empty.
 memories_home = "~/.mnemonic"
 
 [notes]
-# Options: "trash" (moves notes to .trash directory), "delete" (not supported by default)
+# Note deletion behavior. Supported values: "trash"
 delete_behavior = "trash"
 trash_dir_name = ".trash"
 
 [index]
+# Enables/disables full-text search, WAL mode, and locks busy timeouts
 fts = true
 wal = true
 busy_timeout_ms = 5000
+
+[output]
+# Formats JSON outputs with indentation when using CLI flags
+json_pretty = true
+
+[logging]
+level = "info"
+```
+
+### Configuration Schema (`mnemonic.toml`):
+
+```toml
+version = 1
+project_id = "550e8400-e29b-41d4-a716-446655440000" # Project UUID
+name = "My Personal Wiki"
+slug = "personal"
+type = "local" # Use "local" or omit/leave empty for central projects
+markdown_format_version = 1
+
+# Optional description for the project, which will be injected into tools descriptions.
+description = "..."
+
+# Optional custom instructions, which will be injected into mcp server instructions.
+custom_instructions = "..."
+
+created_at = 2024-11-20T12:00:00Z
+updated_at = 2024-11-21T15:30:00Z
+
+[layout]
+# File globs to index as notes
+notes_glob = ["**/*.md"]
+# Paths to exclude from index operations
+ignore = ["mnemonic.toml", ".trash/**"]
+
+[generator]
+app = "mnemonic"
+app_version = "v0.1.0"
 ```
 
 ---

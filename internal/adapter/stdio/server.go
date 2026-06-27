@@ -51,6 +51,8 @@ func NewServer(k kb.KnowledgeBase, services Dependencies, readOnly bool) (*Serve
 	}, nil
 }
 
+const defaultGlobalInstructions = "You are connected to mnemonic, a local-first knowledge base and search engine. Use the available MCP tools to read, search, create, edit, and manage notes in the selected project. Be concise and keep answers grounded in the project's notes."
+
 // Run starts the stdio adapter on the provided MCP transport.
 func (s *Server) Run(ctx context.Context, transport sdkmcp.Transport) error {
 	if s == nil {
@@ -64,7 +66,8 @@ func (s *Server) BuildSDKServer() *sdkmcp.Server {
 	sdkServer := sdkmcp.NewServer(
 		&sdkmcp.Implementation{Name: "mnemonic", Version: buildinfo.Version()},
 		&sdkmcp.ServerOptions{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Instructions: buildGlobalInstructions(s.KB.CustomInstructions, s.KB.Description),
+			Logger:       slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Capabilities: &sdkmcp.ServerCapabilities{
 				Tools: &sdkmcp.ToolCapabilities{ListChanged: true},
 			},
@@ -73,4 +76,16 @@ func (s *Server) BuildSDKServer() *sdkmcp.Server {
 
 	RegisterAll(sdkServer, s.Services, s.KB.Description, s.ReadOnly)
 	return sdkServer
+}
+
+func buildGlobalInstructions(customInstructions, description string) string {
+	parts := make([]string, 0, 3)
+	if trimmed := strings.TrimSpace(customInstructions); trimmed != "" {
+		parts = append(parts, trimmed)
+	}
+	if trimmed := strings.TrimSpace(description); trimmed != "" {
+		parts = append(parts, trimmed)
+	}
+	parts = append(parts, defaultGlobalInstructions)
+	return strings.Join(parts, "\n\n")
 }

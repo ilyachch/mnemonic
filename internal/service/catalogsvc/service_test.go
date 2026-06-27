@@ -42,6 +42,7 @@ func TestResolveBuildsKnowledgeBase(t *testing.T) {
 	manifest.Name = "Demo"
 	manifest.Slug = slug
 	manifest.Description = "Catalog description"
+	manifest.CustomInstructions = "Catalog instructions"
 	manifest.MarkdownFormatVersion = 1
 	manifest.CreatedAt = time.Now().UTC()
 	manifest.UpdatedAt = manifest.CreatedAt
@@ -56,6 +57,7 @@ func TestResolveBuildsKnowledgeBase(t *testing.T) {
 	require.Equal(t, slug, resolved.Slug)
 	require.Equal(t, "central", resolved.Kind)
 	require.Equal(t, "Catalog description", resolved.Description)
+	require.Equal(t, "Catalog instructions", resolved.CustomInstructions)
 	require.Equal(t, projectDir, resolved.RootDir)
 	require.Equal(t, projectDir, resolved.RepoRootDir)
 	require.Equal(t, filepath.Join(projectDir, "mnemonic.toml"), resolved.ManifestPath)
@@ -63,24 +65,78 @@ func TestResolveBuildsKnowledgeBase(t *testing.T) {
 	require.Equal(t, filepath.Join(stateHome, "mnemonic", "projects", manifest.ProjectID, "index.sqlite"), resolved.IndexPath)
 }
 
-func TestKnowledgeBaseFromEntryUsesEntryDescriptionWithoutReadingManifest(t *testing.T) {
+func TestKnowledgeBaseFromEntryPrefersEntryMetadataAndFallsBackToManifest(t *testing.T) {
 	svc := Service{MemoriesHome: t.TempDir(), StateHome: t.TempDir()}
-	manifestPath := filepath.Join(t.TempDir(), "missing", "mnemonic.toml")
+	manifestDir := t.TempDir()
+	manifestPath := filepath.Join(manifestDir, "mnemonic.toml")
+	manifest := manifestfmt.NewMnemonicManifest()
+	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440099"
+	manifest.Name = "Manifest Name"
+	manifest.Slug = "demo"
+	manifest.Description = "Manifest description"
+	manifest.CustomInstructions = "Manifest instructions"
+	manifest.MarkdownFormatVersion = 1
+	manifest.CreatedAt = time.Now().UTC()
+	manifest.UpdatedAt = manifest.CreatedAt
+	require.NoError(t, manifestfmt.WriteMnemonicManifest(manifestPath, manifest))
 
-	resolved, err := svc.knowledgeBaseFromEntry(registry.Entry{
-		ProjectID:    "550e8400-e29b-41d4-a716-446655440099",
-		Name:         "Demo",
-		Slug:         "demo",
-		Type:         "central",
-		Description:  "Entry description",
-		ManifestPath: manifestPath,
-	})
-	require.NoError(t, err)
-	require.Equal(t, "Entry description", resolved.Description)
-	require.Equal(t, "Demo", resolved.Name)
-	require.Equal(t, "demo", resolved.Slug)
-	require.Equal(t, "central", resolved.Kind)
-	require.Equal(t, manifestPath, resolved.ManifestPath)
+	tests := []struct {
+		name              string
+		entryDescription  string
+		entryInstructions string
+		wantDescription   string
+		wantInstructions  string
+	}{
+		{
+			name:              "uses entry metadata when present",
+			entryDescription:  "Entry description",
+			entryInstructions: "Entry instructions",
+			wantDescription:   "Entry description",
+			wantInstructions:  "Entry instructions",
+		},
+		{
+			name:              "falls back when description missing",
+			entryDescription:  "",
+			entryInstructions: "Entry instructions",
+			wantDescription:   "Manifest description",
+			wantInstructions:  "Entry instructions",
+		},
+		{
+			name:              "falls back when custom instructions missing",
+			entryDescription:  "Entry description",
+			entryInstructions: "",
+			wantDescription:   "Entry description",
+			wantInstructions:  "Manifest instructions",
+		},
+		{
+			name:              "falls back when both missing",
+			entryDescription:  "",
+			entryInstructions: "",
+			wantDescription:   "Manifest description",
+			wantInstructions:  "Manifest instructions",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resolved, err := svc.knowledgeBaseFromEntry(registry.Entry{
+				ProjectID:          "550e8400-e29b-41d4-a716-446655440099",
+				Name:               "Demo",
+				Slug:               "demo",
+				Type:               "central",
+				Description:        tc.entryDescription,
+				CustomInstructions: tc.entryInstructions,
+				ManifestPath:       manifestPath,
+			})
+			require.NoError(t, err)
+			require.Equal(t, tc.wantDescription, resolved.Description)
+			require.Equal(t, tc.wantInstructions, resolved.CustomInstructions)
+			require.Equal(t, "Demo", resolved.Name)
+			require.Equal(t, "demo", resolved.Slug)
+			require.Equal(t, "central", resolved.Kind)
+			require.Equal(t, manifestPath, resolved.ManifestPath)
+		})
+	}
 }
 
 func TestInitCreatesCentralProjectAndIndex(t *testing.T) {

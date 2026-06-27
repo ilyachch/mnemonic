@@ -49,15 +49,17 @@ func newWebFixture(t *testing.T, readOnly bool) *webFixture {
 
 	runtime, err := app.NewRuntimeApp(app.RuntimeInput{
 		KB: kb.KnowledgeBase{
-			ID:           projectID,
-			Name:         "Demo",
-			Slug:         slug,
-			Kind:         "central",
-			RootDir:      projectRoot,
-			RepoRootDir:  memoriesHome,
-			ManifestPath: filepath.Join(projectRoot, "mnemonic.toml"),
-			StateDir:     filepath.Join(root, ".state", "mnemonic", "projects", projectID),
-			IndexPath:    filepath.Join(root, ".state", "mnemonic", "projects", projectID, "index.sqlite"),
+			ID:                 projectID,
+			Name:               "Demo",
+			Slug:               slug,
+			Kind:               "central",
+			Description:        "Fixture description",
+			CustomInstructions: "Fixture instructions",
+			RootDir:            projectRoot,
+			RepoRootDir:        memoriesHome,
+			ManifestPath:       filepath.Join(projectRoot, "mnemonic.toml"),
+			StateDir:           filepath.Join(root, ".state", "mnemonic", "projects", projectID),
+			IndexPath:          filepath.Join(root, ".state", "mnemonic", "projects", projectID, "index.sqlite"),
 		},
 	})
 	require.NoError(t, err)
@@ -177,6 +179,25 @@ func TestServerReadOnlyOmitsWriteTools(t *testing.T) {
 		names = append(names, tool.Name)
 	}
 	require.Equal(t, []string{"doctor", "list_backlinks", "list_notes", "list_tags", "read_note", "search_notes"}, names)
+}
+
+func TestServerInitializeIncludesGlobalInstructions(t *testing.T) {
+	f := newWebFixture(t, false)
+	defer func() { _ = f.server.Close() }()
+
+	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+	serverSession, err := f.server.sdkServer.Connect(context.Background(), serverTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = serverSession.Close() }()
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "client", Version: "0.0.1"}, nil)
+	clientSession, err := client.Connect(context.Background(), clientTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = clientSession.Close() }()
+
+	result := clientSession.InitializeResult()
+	require.NotNil(t, result)
+	require.Equal(t, "Fixture instructions\n\nFixture description\n\nYou are connected to mnemonic, a local-first knowledge base and search engine. Use the available MCP tools to read, search, create, edit, and manage notes in the selected project. Be concise and keep answers grounded in the project's notes.", result.Instructions)
 }
 
 func TestServerRejectsLegacySlugRoutes(t *testing.T) {

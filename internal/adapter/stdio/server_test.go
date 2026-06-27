@@ -50,15 +50,17 @@ func newStdioFixture(t *testing.T, readOnly bool) *stdioFixture {
 
 	runtime, err := app.NewRuntimeApp(app.RuntimeInput{
 		KB: kb.KnowledgeBase{
-			ID:           projectID,
-			Name:         "Demo",
-			Slug:         slug,
-			Kind:         "central",
-			RootDir:      projectRoot,
-			RepoRootDir:  memoriesHome,
-			ManifestPath: filepath.Join(projectRoot, "mnemonic.toml"),
-			StateDir:     filepath.Join(root, ".state", "mnemonic", "projects", projectID),
-			IndexPath:    filepath.Join(root, ".state", "mnemonic", "projects", projectID, "index.sqlite"),
+			ID:                 projectID,
+			Name:               "Demo",
+			Slug:               slug,
+			Kind:               "central",
+			Description:        "Fixture description",
+			CustomInstructions: "Fixture instructions",
+			RootDir:            projectRoot,
+			RepoRootDir:        memoriesHome,
+			ManifestPath:       filepath.Join(projectRoot, "mnemonic.toml"),
+			StateDir:           filepath.Join(root, ".state", "mnemonic", "projects", projectID),
+			IndexPath:          filepath.Join(root, ".state", "mnemonic", "projects", projectID, "index.sqlite"),
 		},
 	})
 	require.NoError(t, err)
@@ -136,6 +138,30 @@ func TestBuildSDKServer_NonNil(t *testing.T) {
 	f := newStdioFixture(t, false)
 	s := f.sdkServer()
 	require.NotNil(t, s)
+}
+
+func TestBuildSDKServer_InitializeIncludesGlobalInstructions(t *testing.T) {
+	f := newStdioFixture(t, false)
+	s := f.sdkServer()
+	require.NotNil(t, s)
+
+	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ss, err := s.Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	defer ss.Close()
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "test", Version: "v1"}, nil)
+	cs, err := client.Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	defer cs.Close()
+
+	result := cs.InitializeResult()
+	require.NotNil(t, result)
+	require.Equal(t, buildGlobalInstructions(f.server.KB.CustomInstructions, f.server.KB.Description), result.Instructions)
 }
 
 func TestBuildSDKServer_ReadOnlyMode_HasReadOnlyTools(t *testing.T) {
