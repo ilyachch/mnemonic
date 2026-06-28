@@ -7,11 +7,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var notesBacklinksCmd = &cobra.Command{
-	Use:   "backlinks SELECTOR",
-	Short: "Show backlinks for a note",
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
+func newNotesBacklinksCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "backlinks SELECTOR",
+		Short: "Show backlinks for a note",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
 		runtime, err := runtimeAppForSelectedProject(cmd)
 		if err != nil {
 			return err
@@ -35,6 +36,7 @@ var notesBacklinksCmd = &cobra.Command{
 		human := fmt.Sprintf("%d links\n", len(output.Links))
 		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, output)
 	},
+	}
 }
 
 type notesBacklinksOutput struct {

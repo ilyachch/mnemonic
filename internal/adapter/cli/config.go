@@ -10,18 +10,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var configCmd = &cobra.Command{
-	Use:   "config",
-	Short: "Inspect configuration",
-	Run: func(cmd *cobra.Command, args []string) {
-		_ = cmd.Help()
-	},
+func newConfigCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "config",
+		Short: "Inspect configuration",
+		Run: func(cmd *cobra.Command, args []string) {
+			_ = cmd.Help()
+		},
+	}
 }
 
-var configShowCmd = &cobra.Command{
-	Use:   "show",
-	Short: "Show effective config and paths",
-	RunE: func(cmd *cobra.Command, args []string) error {
+func newConfigShowCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show",
+		Short: "Show effective config and paths",
+		RunE: func(cmd *cobra.Command, args []string) error {
 		discoveredConfigPath, err := config.DiscoverConfigFile("")
 		if err != nil {
 			return err
@@ -69,6 +72,7 @@ var configShowCmd = &cobra.Command{
 
 		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, data)
 	},
+	}
 }
 
 type configShowOutput struct {

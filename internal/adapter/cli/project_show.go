@@ -6,12 +6,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var projectShowCmd = &cobra.Command{
-	Use:               "show SLUG",
-	Short:             "Show a registered project",
-	Args:              cobra.ExactArgs(1),
-	ValidArgsFunction: completeProjectNames,
-	RunE: func(cmd *cobra.Command, args []string) error {
+func newProjectShowCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:               "show SLUG",
+		Short:             "Show a registered project",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeProjectNames,
+		RunE: func(cmd *cobra.Command, args []string) error {
 		container, err := bootstrapFromContext(commandContext(cmd))
 		if err != nil {
 			return err
@@ -38,6 +39,7 @@ var projectShowCmd = &cobra.Command{
 		human := fmt.Sprintf("%s %s\n", project.ProjectID, project.Name)
 		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, project)
 	},
+	}
 }
 
 type projectShowOutput struct {

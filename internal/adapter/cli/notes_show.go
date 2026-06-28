@@ -6,11 +6,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var notesShowCmd = &cobra.Command{
-	Use:   "show SELECTOR",
-	Short: "Show a note",
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
+func newNotesShowCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show SELECTOR",
+		Short: "Show a note",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
 		runtime, err := runtimeAppForSelectedProject(cmd)
 		if err != nil {
 			return err
@@ -35,6 +36,7 @@ var notesShowCmd = &cobra.Command{
 		}
 		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), string(resolved.RawMarkdown), output)
 	},
+	}
 }
 
 type notesShowOutput struct {

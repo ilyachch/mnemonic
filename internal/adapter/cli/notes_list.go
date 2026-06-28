@@ -7,18 +7,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var notesCmd = &cobra.Command{
-	Use:   "notes",
-	Short: "Manage notes",
-	Run: func(cmd *cobra.Command, args []string) {
-		_ = cmd.Help()
-	},
+func newNotesCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "notes",
+		Short: "Manage notes",
+		Run: func(cmd *cobra.Command, args []string) {
+			_ = cmd.Help()
+		},
+	}
 }
 
-var notesListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List notes",
-	RunE: func(cmd *cobra.Command, args []string) error {
+func newNotesListCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List notes",
+		RunE: func(cmd *cobra.Command, args []string) error {
 		runtime, err := runtimeAppForSelectedProject(cmd)
 		if err != nil {
 			return err
@@ -33,6 +36,7 @@ var notesListCmd = &cobra.Command{
 		human := fmt.Sprintf("%d notes\n", len(list))
 		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, output)
 	},
+	}
 }
 
 type notesListOutput struct {

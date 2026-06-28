@@ -7,18 +7,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var tagsCmd = &cobra.Command{
-	Use:   "tags",
-	Short: "Manage tags",
-	Run: func(cmd *cobra.Command, args []string) {
-		_ = cmd.Help()
-	},
+func newTagsCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "tags",
+		Short: "Manage tags",
+		Run: func(cmd *cobra.Command, args []string) {
+			_ = cmd.Help()
+		},
+	}
 }
 
-var tagsListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List tags",
-	RunE: func(cmd *cobra.Command, args []string) error {
+func newTagsListCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List tags",
+		RunE: func(cmd *cobra.Command, args []string) error {
 		runtime, err := runtimeAppForSelectedProject(cmd)
 		if err != nil {
 			return err
@@ -44,6 +47,7 @@ var tagsListCmd = &cobra.Command{
 		human := formatTagsListHuman(output.Tags)
 		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, output)
 	},
+	}
 }
 
 type tagsListOutput struct {
