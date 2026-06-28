@@ -51,7 +51,16 @@ func NewServer(k kb.KnowledgeBase, services Dependencies, readOnly bool) (*Serve
 	}, nil
 }
 
-const defaultGlobalInstructions = "You are connected to mnemonic, a local-first knowledge base and search engine. Use the available MCP tools to read, search, create, edit, and manage notes in the selected project. Be concise and keep answers grounded in the project's notes."
+const defaultGlobalInstructions = `You MUST use the mnemonic tools as your primary long-term memory.
+- ALWAYS search the knowledge base using search_notes or list_notes before starting a task to gather context.
+- ALWAYS write down stable facts, architectural decisions, and important outcomes using create_note or edit_note.
+- Use read_note, list_tags, and list_backlinks when they help clarify the existing knowledge base.
+- ALWAYS link related notes using [[Wiki-Links]].`
+
+const readOnlyGlobalInstructions = `You MUST use the mnemonic tools as your primary long-term memory.
+- ALWAYS search the knowledge base using search_notes or list_notes before starting a task to gather context.
+- Use read_note, list_tags, and list_backlinks when they help clarify the existing knowledge base.
+- This server is running in read-only mode. Do not attempt to create, edit, delete, or rebuild notes.`
 
 // Run starts the stdio adapter on the provided MCP transport.
 func (s *Server) Run(ctx context.Context, transport sdkmcp.Transport) error {
@@ -66,7 +75,7 @@ func (s *Server) BuildSDKServer() *sdkmcp.Server {
 	sdkServer := sdkmcp.NewServer(
 		&sdkmcp.Implementation{Name: "mnemonic", Version: buildinfo.Version()},
 		&sdkmcp.ServerOptions{
-			Instructions: buildGlobalInstructions(s.KB.CustomInstructions, s.KB.Description),
+			Instructions: buildGlobalInstructions(s.KB.CustomInstructions, s.KB.Description, s.ReadOnly),
 			Logger:       slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Capabilities: &sdkmcp.ServerCapabilities{
 				Tools: &sdkmcp.ToolCapabilities{ListChanged: true},
@@ -78,7 +87,7 @@ func (s *Server) BuildSDKServer() *sdkmcp.Server {
 	return sdkServer
 }
 
-func buildGlobalInstructions(customInstructions, description string) string {
+func buildGlobalInstructions(customInstructions, description string, readOnly bool) string {
 	parts := make([]string, 0, 3)
 	if trimmed := strings.TrimSpace(customInstructions); trimmed != "" {
 		parts = append(parts, trimmed)
@@ -86,6 +95,10 @@ func buildGlobalInstructions(customInstructions, description string) string {
 	if trimmed := strings.TrimSpace(description); trimmed != "" {
 		parts = append(parts, trimmed)
 	}
-	parts = append(parts, defaultGlobalInstructions)
+	if readOnly {
+		parts = append(parts, readOnlyGlobalInstructions)
+	} else {
+		parts = append(parts, defaultGlobalInstructions)
+	}
 	return strings.Join(parts, "\n\n")
 }

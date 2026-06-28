@@ -197,7 +197,26 @@ func TestServerInitializeIncludesGlobalInstructions(t *testing.T) {
 
 	result := clientSession.InitializeResult()
 	require.NotNil(t, result)
-	require.Equal(t, "Fixture instructions\n\nFixture description\n\nYou are connected to mnemonic, a local-first knowledge base and search engine. Use the available MCP tools to read, search, create, edit, and manage notes in the selected project. Be concise and keep answers grounded in the project's notes.", result.Instructions)
+	require.Equal(t, "Fixture instructions\n\nFixture description\n\nYou MUST use the mnemonic tools as your primary long-term memory.\n- ALWAYS search the knowledge base using search_notes or list_notes before starting a task to gather context.\n- ALWAYS write down stable facts, architectural decisions, and important outcomes using create_note or edit_note.\n- Use read_note, list_tags, and list_backlinks when they help clarify the existing knowledge base.\n- ALWAYS link related notes using [[Wiki-Links]].", result.Instructions)
+}
+
+func TestServerInitializeIncludesReadOnlyGlobalInstructions(t *testing.T) {
+	f := newWebFixture(t, true)
+	defer func() { _ = f.server.Close() }()
+
+	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+	serverSession, err := f.server.sdkServer.Connect(context.Background(), serverTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = serverSession.Close() }()
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "client", Version: "0.0.1"}, nil)
+	clientSession, err := client.Connect(context.Background(), clientTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = clientSession.Close() }()
+
+	result := clientSession.InitializeResult()
+	require.NotNil(t, result)
+	require.Equal(t, "Fixture instructions\n\nFixture description\n\nYou MUST use the mnemonic tools as your primary long-term memory.\n- ALWAYS search the knowledge base using search_notes or list_notes before starting a task to gather context.\n- Use read_note, list_tags, and list_backlinks when they help clarify the existing knowledge base.\n- This server is running in read-only mode. Do not attempt to create, edit, delete, or rebuild notes.", result.Instructions)
 }
 
 func TestServerRejectsLegacySlugRoutes(t *testing.T) {

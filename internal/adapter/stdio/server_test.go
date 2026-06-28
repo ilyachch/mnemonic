@@ -161,7 +161,31 @@ func TestBuildSDKServer_InitializeIncludesGlobalInstructions(t *testing.T) {
 
 	result := cs.InitializeResult()
 	require.NotNil(t, result)
-	require.Equal(t, buildGlobalInstructions(f.server.KB.CustomInstructions, f.server.KB.Description), result.Instructions)
+	require.Equal(t, buildGlobalInstructions(f.server.KB.CustomInstructions, f.server.KB.Description, false), result.Instructions)
+}
+
+func TestBuildSDKServer_InitializeIncludesReadOnlyInstructions(t *testing.T) {
+	f := newStdioFixture(t, true)
+	s := f.sdkServer()
+	require.NotNil(t, s)
+
+	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ss, err := s.Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	defer ss.Close()
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "test", Version: "v1"}, nil)
+	cs, err := client.Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	defer cs.Close()
+
+	result := cs.InitializeResult()
+	require.NotNil(t, result)
+	require.Equal(t, buildGlobalInstructions(f.server.KB.CustomInstructions, f.server.KB.Description, true), result.Instructions)
 }
 
 func TestBuildSDKServer_ReadOnlyMode_HasReadOnlyTools(t *testing.T) {
