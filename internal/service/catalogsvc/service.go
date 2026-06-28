@@ -56,12 +56,14 @@ type ListItem struct {
 
 // ShowResult mirrors the project show payload.
 type ShowResult struct {
-	ProjectID string             `json:"project_id"`
-	Name      string             `json:"name"`
-	Slug      string             `json:"slug"`
-	Type      string             `json:"type"`
-	StateHome string             `json:"state_home"`
-	Location  ShowLocationResult `json:"location"`
+	ProjectID          string             `json:"project_id"`
+	Name               string             `json:"name"`
+	Slug               string             `json:"slug"`
+	Type               string             `json:"type"`
+	Description        string             `json:"description"`
+	CustomInstructions string             `json:"custom_instructions"`
+	StateHome          string             `json:"state_home"`
+	Location           ShowLocationResult `json:"location"`
 }
 
 // ShowLocationResult describes the resolved project location.
@@ -221,11 +223,13 @@ func (s Service) Show(selector string) (ShowResult, error) {
 	}
 
 	return ShowResult{
-		ProjectID: resolved.ID,
-		Name:      resolved.Name,
-		Slug:      resolved.Slug,
-		Type:      resolved.Kind,
-		StateHome: resolved.StateDir,
+		ProjectID:          resolved.ID,
+		Name:               resolved.Name,
+		Slug:               resolved.Slug,
+		Type:               resolved.Kind,
+		Description:        resolved.Description,
+		CustomInstructions: resolved.CustomInstructions,
+		StateHome:          resolved.StateDir,
 		Location: ShowLocationResult{
 			MemoriesAbs: resolved.RootDir,
 			ManifestAbs: resolved.ManifestPath,
@@ -411,16 +415,17 @@ func (s Service) knowledgeBaseFromEntry(entry registry.Entry) (kb.KnowledgeBase,
 	}
 	stateDir := s.statePath(resolved.ProjectID)
 	return kb.KnowledgeBase{
-		ID:           resolved.ProjectID,
-		Name:         resolved.Name,
-		Slug:         resolved.Slug,
-		Kind:         resolved.Type,
-		Description:  resolved.Description,
-		RootDir:      resolved.MemoriesAbs,
-		RepoRootDir:  resolved.RepoRootAbs,
-		ManifestPath: resolved.ManifestPath,
-		StateDir:     stateDir,
-		IndexPath:    filepath.Join(stateDir, "index.sqlite"),
+		ID:                 resolved.ProjectID,
+		Name:               resolved.Name,
+		Slug:               resolved.Slug,
+		Kind:               resolved.Type,
+		Description:        resolved.Description,
+		CustomInstructions: resolved.CustomInstructions,
+		RootDir:            resolved.MemoriesAbs,
+		RepoRootDir:        resolved.RepoRootAbs,
+		ManifestPath:       resolved.ManifestPath,
+		StateDir:           stateDir,
+		IndexPath:          filepath.Join(stateDir, "index.sqlite"),
 	}, nil
 }
 
@@ -484,7 +489,7 @@ func (s Service) enrichFromManifest(resolved *registry.Entry) {
 	if needsManifest {
 		s.fillEntryFromManifest(resolved)
 	} else {
-		s.fillDescriptionOnly(resolved)
+		s.fillMetadataOnly(resolved)
 	}
 }
 
@@ -508,15 +513,23 @@ func (s Service) fillEntryFromManifest(resolved *registry.Entry) {
 	if strings.TrimSpace(resolved.Description) == "" {
 		resolved.Description = manifest.Description
 	}
+	if strings.TrimSpace(resolved.CustomInstructions) == "" {
+		resolved.CustomInstructions = manifest.CustomInstructions
+	}
 }
 
-func (s Service) fillDescriptionOnly(resolved *registry.Entry) {
-	if strings.TrimSpace(resolved.Description) != "" {
+func (s Service) fillMetadataOnly(resolved *registry.Entry) {
+	if strings.TrimSpace(resolved.Description) != "" && strings.TrimSpace(resolved.CustomInstructions) != "" {
 		return
 	}
 	manifest, err := manifestfmt.ParseMnemonicManifestFromFile(resolved.ManifestPath)
 	if err == nil {
-		resolved.Description = manifest.Description
+		if strings.TrimSpace(resolved.Description) == "" {
+			resolved.Description = manifest.Description
+		}
+		if strings.TrimSpace(resolved.CustomInstructions) == "" {
+			resolved.CustomInstructions = manifest.CustomInstructions
+		}
 	}
 }
 
@@ -645,6 +658,7 @@ func buildInitManifest(projectID, name, slugValue, kind, description string, now
 	m.Slug = slugValue
 	m.MarkdownFormatVersion = 1
 	m.Description = description
+	m.CustomInstructions = ""
 	m.CreatedAt = now
 	m.UpdatedAt = now
 	m.Generator.App = "mnemonic"

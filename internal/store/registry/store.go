@@ -12,14 +12,15 @@ import (
 
 // Entry describes a resolved project from the file-based registry.
 type Entry struct {
-	ProjectID    string
-	Name         string
-	Slug         string
-	Type         string // "central" or "local"
-	Description  string
-	ManifestPath string
-	MemoriesAbs  string
-	RepoRootAbs  string
+	ProjectID          string
+	Name               string
+	Slug               string
+	Type               string // "central" or "local"
+	Description        string
+	CustomInstructions string
+	ManifestPath       string
+	MemoriesAbs        string
+	RepoRootAbs        string
 }
 
 // ErrNotFound is returned when a project slug is not found.
@@ -104,7 +105,8 @@ func (s Store) scanDirectory(name string, results *[]Entry, issues *[]Issue) {
 	}
 	*results = append(*results, Entry{
 		ProjectID: manifestData.ProjectID, Name: manifestData.Name, Slug: slug, Type: "central",
-		Description: manifestData.Description, ManifestPath: manifestPath, MemoriesAbs: memoriesAbs, RepoRootAbs: memoriesAbs,
+		Description: manifestData.Description, CustomInstructions: manifestData.CustomInstructions,
+		ManifestPath: manifestPath, MemoriesAbs: memoriesAbs, RepoRootAbs: memoriesAbs,
 	})
 }
 
@@ -143,8 +145,9 @@ func (s Store) scanPointer(name string, results *[]Entry, issues *[]Issue) {
 	repoRootAbs := filepath.Dir(filepath.Dir(pointerFile.ManifestPath))
 	*results = append(*results, Entry{
 		ProjectID: manifestData.ProjectID, Name: manifestData.Name, Slug: slug, Type: "local",
-		Description: manifestData.Description, ManifestPath: pointerFile.ManifestPath,
-		MemoriesAbs: memoriesAbs, RepoRootAbs: repoRootAbs,
+		Description: manifestData.Description, CustomInstructions: manifestData.CustomInstructions,
+		ManifestPath: pointerFile.ManifestPath,
+		MemoriesAbs:  memoriesAbs, RepoRootAbs: repoRootAbs,
 	})
 }
 

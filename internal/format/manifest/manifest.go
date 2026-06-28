@@ -26,7 +26,8 @@ type Manifest struct {
 	Slug                  string         `toml:"slug"`
 	Type                  ManifestType   `toml:"type"`
 	MarkdownFormatVersion int            `toml:"markdown_format_version"`
-	Description           string         `toml:"description,omitempty"`
+	Description           string         `toml:"description"`
+	CustomInstructions    string         `toml:"custom_instructions"`
 	CreatedAt             time.Time      `toml:"created_at"`
 	UpdatedAt             time.Time      `toml:"updated_at"`
 	Layout                ManifestLayout `toml:"layout"`
@@ -62,7 +63,8 @@ type manifestTOML struct {
 	Slug                  string         `toml:"slug"`
 	Type                  ManifestType   `toml:"type"`
 	MarkdownFormatVersion int            `toml:"markdown_format_version"`
-	Description           string         `toml:"description,omitempty"`
+	Description           string         `toml:"description"`
+	CustomInstructions    string         `toml:"custom_instructions"`
 	CreatedAt             tomlTime       `toml:"created_at"`
 	UpdatedAt             tomlTime       `toml:"updated_at"`
 	Layout                ManifestLayout `toml:"layout"`
@@ -167,6 +169,7 @@ func (m *Manifest) MarshalTOML() ([]byte, error) {
 		Type:                  copy.Type,
 		MarkdownFormatVersion: copy.MarkdownFormatVersion,
 		Description:           copy.Description,
+		CustomInstructions:    copy.CustomInstructions,
 		CreatedAt:             newTOMLTime(copy.CreatedAt),
 		UpdatedAt:             newTOMLTime(copy.UpdatedAt),
 		Layout:                copy.Layout,
@@ -211,6 +214,7 @@ func ParseMnemonicManifest(data []byte) (*Manifest, error) {
 		Type:                  raw.Type,
 		MarkdownFormatVersion: raw.MarkdownFormatVersion,
 		Description:           raw.Description,
+		CustomInstructions:    raw.CustomInstructions,
 		CreatedAt:             raw.CreatedAt.Time(),
 		UpdatedAt:             raw.UpdatedAt.Time(),
 		Layout:                raw.Layout,

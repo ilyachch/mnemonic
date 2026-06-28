@@ -49,15 +49,17 @@ func newWebFixture(t *testing.T, readOnly bool) *webFixture {
 
 	runtime, err := app.NewRuntimeApp(app.RuntimeInput{
 		KB: kb.KnowledgeBase{
-			ID:           projectID,
-			Name:         "Demo",
-			Slug:         slug,
-			Kind:         "central",
-			RootDir:      projectRoot,
-			RepoRootDir:  memoriesHome,
-			ManifestPath: filepath.Join(projectRoot, "mnemonic.toml"),
-			StateDir:     filepath.Join(root, ".state", "mnemonic", "projects", projectID),
-			IndexPath:    filepath.Join(root, ".state", "mnemonic", "projects", projectID, "index.sqlite"),
+			ID:                 projectID,
+			Name:               "Demo",
+			Slug:               slug,
+			Kind:               "central",
+			Description:        "Fixture description",
+			CustomInstructions: "Fixture instructions",
+			RootDir:            projectRoot,
+			RepoRootDir:        memoriesHome,
+			ManifestPath:       filepath.Join(projectRoot, "mnemonic.toml"),
+			StateDir:           filepath.Join(root, ".state", "mnemonic", "projects", projectID),
+			IndexPath:          filepath.Join(root, ".state", "mnemonic", "projects", projectID, "index.sqlite"),
 		},
 	})
 	require.NoError(t, err)
@@ -177,6 +179,44 @@ func TestServerReadOnlyOmitsWriteTools(t *testing.T) {
 		names = append(names, tool.Name)
 	}
 	require.Equal(t, []string{"doctor", "list_backlinks", "list_notes", "list_tags", "read_note", "search_notes"}, names)
+}
+
+func TestServerInitializeIncludesGlobalInstructions(t *testing.T) {
+	f := newWebFixture(t, false)
+	defer func() { _ = f.server.Close() }()
+
+	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+	serverSession, err := f.server.sdkServer.Connect(context.Background(), serverTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = serverSession.Close() }()
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "client", Version: "0.0.1"}, nil)
+	clientSession, err := client.Connect(context.Background(), clientTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = clientSession.Close() }()
+
+	result := clientSession.InitializeResult()
+	require.NotNil(t, result)
+	require.Equal(t, "You MUST use the mnemonic tools as your primary long-term memory.\n- ALWAYS search the knowledge base using search_notes or list_notes before starting a task to gather context.\n- ALWAYS write down stable facts, architectural decisions, and important outcomes using create_note or edit_note.\n- Use read_note, list_tags, and list_backlinks when they help clarify the existing knowledge base.\n- ALWAYS link related notes using [[Wiki-Links]].\n\nProject Description:\nFixture description\n\nCustom Instructions:\nFixture instructions", result.Instructions)
+}
+
+func TestServerInitializeIncludesReadOnlyGlobalInstructions(t *testing.T) {
+	f := newWebFixture(t, true)
+	defer func() { _ = f.server.Close() }()
+
+	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+	serverSession, err := f.server.sdkServer.Connect(context.Background(), serverTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = serverSession.Close() }()
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "client", Version: "0.0.1"}, nil)
+	clientSession, err := client.Connect(context.Background(), clientTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = clientSession.Close() }()
+
+	result := clientSession.InitializeResult()
+	require.NotNil(t, result)
+	require.Equal(t, "You MUST use the mnemonic tools as your primary long-term memory.\n- ALWAYS search the knowledge base using search_notes or list_notes before starting a task to gather context.\n- Use read_note, list_tags, and list_backlinks when they help clarify the existing knowledge base.\n- This server is running in read-only mode. Do not attempt to create, edit, delete, or rebuild notes.\n\nProject Description:\nFixture description\n\nCustom Instructions:\nFixture instructions", result.Instructions)
 }
 
 func TestServerRejectsLegacySlugRoutes(t *testing.T) {

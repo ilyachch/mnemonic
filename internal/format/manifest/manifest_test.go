@@ -24,6 +24,7 @@ func validManifest() *Manifest {
 		Type:                  ManifestTypeLocal,
 		MarkdownFormatVersion: 1,
 		Description:           "A test project",
+		CustomInstructions:    "Follow the house style.",
 		CreatedAt:             fixedTime(10, 0),
 		UpdatedAt:             fixedTime(10, 0),
 		Layout: ManifestLayout{
@@ -231,11 +232,30 @@ func TestMarshalTOML_RoundTrip(t *testing.T) {
 	assert.Equal(t, original.Type, parsed.Type)
 	assert.Equal(t, original.MarkdownFormatVersion, parsed.MarkdownFormatVersion)
 	assert.Equal(t, original.Description, parsed.Description)
+	assert.Equal(t, original.CustomInstructions, parsed.CustomInstructions)
 	assert.Equal(t, original.Generator.App, parsed.Generator.App)
 	assert.Equal(t, original.Generator.AppVersion, parsed.Generator.AppVersion)
 	// Times should match within the second (RFC3339 precision)
 	assert.WithinDuration(t, original.CreatedAt, parsed.CreatedAt, time.Second)
 	assert.WithinDuration(t, original.UpdatedAt, parsed.UpdatedAt, time.Second)
+}
+
+func TestMarshalTOML_EmitsEmptyOptionalStrings(t *testing.T) {
+	m := validManifest()
+	m.Description = ""
+	m.CustomInstructions = ""
+
+	data, err := m.MarshalTOML()
+	require.NoError(t, err)
+
+	var raw map[string]any
+	require.NoError(t, toml.Unmarshal(data, &raw))
+	_, ok := raw["description"]
+	require.True(t, ok)
+	_, ok = raw["custom_instructions"]
+	require.True(t, ok)
+	assert.Equal(t, "", raw["description"])
+	assert.Equal(t, "", raw["custom_instructions"])
 }
 
 func TestMarshalTOML_InvalidManifest(t *testing.T) {
@@ -288,6 +308,7 @@ slug = "full-project"
 type = "local"
 markdown_format_version = 1
 description = "A fully specified project"
+custom_instructions = "Always use short answers."
 created_at = "2026-06-23T10:00:00Z"
 updated_at = "2026-06-23T10:00:00Z"
 
@@ -305,6 +326,7 @@ app_version = "2.0.0"
 	assert.Equal(t, "full-project", m.Slug)
 	assert.Equal(t, ManifestTypeLocal, m.Type)
 	assert.Equal(t, "A fully specified project", m.Description)
+	assert.Equal(t, "Always use short answers.", m.CustomInstructions)
 	assert.Equal(t, []string{"docs/*.md", "blog/*.md"}, m.Layout.NotesGlob)
 	assert.Equal(t, []string{"secret.md", ".trash/**"}, m.Layout.Ignore)
 	assert.Equal(t, "mnemonic", m.Generator.App)

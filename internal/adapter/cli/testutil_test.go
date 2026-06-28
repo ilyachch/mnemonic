@@ -118,6 +118,8 @@ func writeCentralProjectFixture(t *testing.T, memoriesHome, slug, projectID stri
 	manifest.ProjectID = projectID
 	manifest.Name = slug
 	manifest.Slug = slug
+	manifest.Description = "Central description"
+	manifest.CustomInstructions = "Central instructions"
 	manifest.MarkdownFormatVersion = 1
 	manifest.CreatedAt = createdAt
 	manifest.UpdatedAt = createdAt

@@ -50,15 +50,17 @@ func newStdioFixture(t *testing.T, readOnly bool) *stdioFixture {
 
 	runtime, err := app.NewRuntimeApp(app.RuntimeInput{
 		KB: kb.KnowledgeBase{
-			ID:           projectID,
-			Name:         "Demo",
-			Slug:         slug,
-			Kind:         "central",
-			RootDir:      projectRoot,
-			RepoRootDir:  memoriesHome,
-			ManifestPath: filepath.Join(projectRoot, "mnemonic.toml"),
-			StateDir:     filepath.Join(root, ".state", "mnemonic", "projects", projectID),
-			IndexPath:    filepath.Join(root, ".state", "mnemonic", "projects", projectID, "index.sqlite"),
+			ID:                 projectID,
+			Name:               "Demo",
+			Slug:               slug,
+			Kind:               "central",
+			Description:        "Fixture description",
+			CustomInstructions: "Fixture instructions",
+			RootDir:            projectRoot,
+			RepoRootDir:        memoriesHome,
+			ManifestPath:       filepath.Join(projectRoot, "mnemonic.toml"),
+			StateDir:           filepath.Join(root, ".state", "mnemonic", "projects", projectID),
+			IndexPath:          filepath.Join(root, ".state", "mnemonic", "projects", projectID, "index.sqlite"),
 		},
 	})
 	require.NoError(t, err)
@@ -136,6 +138,62 @@ func TestBuildSDKServer_NonNil(t *testing.T) {
 	f := newStdioFixture(t, false)
 	s := f.sdkServer()
 	require.NotNil(t, s)
+}
+
+func TestBuildGlobalInstructions_FormatsBlocksByMode(t *testing.T) {
+	full := buildGlobalInstructions("Custom guidance", "Project context", false)
+	require.Equal(t, "You MUST use the mnemonic tools as your primary long-term memory.\n- ALWAYS search the knowledge base using search_notes or list_notes before starting a task to gather context.\n- ALWAYS write down stable facts, architectural decisions, and important outcomes using create_note or edit_note.\n- Use read_note, list_tags, and list_backlinks when they help clarify the existing knowledge base.\n- ALWAYS link related notes using [[Wiki-Links]].\n\nProject Description:\nProject context\n\nCustom Instructions:\nCustom guidance", full)
+
+	readOnly := buildGlobalInstructions("Custom guidance", "Project context", true)
+	require.Equal(t, "You MUST use the mnemonic tools as your primary long-term memory.\n- ALWAYS search the knowledge base using search_notes or list_notes before starting a task to gather context.\n- Use read_note, list_tags, and list_backlinks when they help clarify the existing knowledge base.\n- This server is running in read-only mode. Do not attempt to create, edit, delete, or rebuild notes.\n\nProject Description:\nProject context\n\nCustom Instructions:\nCustom guidance", readOnly)
+}
+
+func TestBuildSDKServer_InitializeIncludesGlobalInstructions(t *testing.T) {
+	f := newStdioFixture(t, false)
+	s := f.sdkServer()
+	require.NotNil(t, s)
+
+	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ss, err := s.Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	defer ss.Close()
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "test", Version: "v1"}, nil)
+	cs, err := client.Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	defer cs.Close()
+
+	result := cs.InitializeResult()
+	require.NotNil(t, result)
+	require.Equal(t, buildGlobalInstructions(f.server.KB.CustomInstructions, f.server.KB.Description, false), result.Instructions)
+}
+
+func TestBuildSDKServer_InitializeIncludesReadOnlyInstructions(t *testing.T) {
+	f := newStdioFixture(t, true)
+	s := f.sdkServer()
+	require.NotNil(t, s)
+
+	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ss, err := s.Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	defer ss.Close()
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "test", Version: "v1"}, nil)
+	cs, err := client.Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	defer cs.Close()
+
+	result := cs.InitializeResult()
+	require.NotNil(t, result)
+	require.Equal(t, buildGlobalInstructions(f.server.KB.CustomInstructions, f.server.KB.Description, true), result.Instructions)
 }
 
 func TestBuildSDKServer_ReadOnlyMode_HasReadOnlyTools(t *testing.T) {
