@@ -4,10 +4,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var projectRemoveCmd = &cobra.Command{
-	Use:   "remove SLUG",
-	Short: "Remove a project",
-	Long: `By default, removes the registry entry while keeping markdown notes intact.
+func newProjectRemoveCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "remove SLUG",
+		Short: "Remove a project",
+		Long: `By default, removes the registry entry while keeping markdown notes intact.
 
   remove SLUG
       Delete the registry entry (pointer file or manifest).
@@ -16,9 +17,9 @@ var projectRemoveCmd = &cobra.Command{
       Delete the registry entry and all markdown notes.
 
 Index and lock files are always cleaned up.`,
-	Args:              cobra.ExactArgs(1),
-	ValidArgsFunction: completeProjectNames,
-	RunE: func(cmd *cobra.Command, args []string) error {
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeProjectNames,
+		RunE: func(cmd *cobra.Command, args []string) error {
 		wipe, err := cmd.Flags().GetBool("wipe")
 		if err != nil {
 			return err
@@ -45,6 +46,9 @@ Index and lock files are always cleaned up.`,
 		human := result.Slug + " removed\n"
 		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, output)
 	},
+	}
+	cmd.Flags().Bool("wipe", false, "also remove all markdown notes")
+	return cmd
 }
 
 type projectRemoveOutput struct {

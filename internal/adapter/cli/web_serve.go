@@ -17,11 +17,12 @@ var (
 	webServeListenAndServe = webServeListenAndServeReal
 )
 
-var webServeCmd = &cobra.Command{
-	Use:          "serve",
-	Short:        "Serve MCP over HTTP/SSE",
-	SilenceUsage: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
+func newWebServeCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "serve",
+		Short:        "Serve MCP over HTTP/SSE",
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
 		runtime, err := resolveRuntimeApp(cmd)
 		if err != nil {
 			return err
@@ -58,6 +59,11 @@ var webServeCmd = &cobra.Command{
 		}
 		return nil
 	},
+	}
+	cmd.Flags().String("port", "", "listen port for the web server")
+	cmd.Flags().String("addr", "", "listen address for the web server")
+	_ = cmd.Flags().MarkHidden("addr")
+	return cmd
 }
 
 func normalizeWebListenAddr(portFlag string) string {

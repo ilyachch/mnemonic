@@ -9,51 +9,57 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var projectReindexCmd = &cobra.Command{
-	Use:               "reindex [PROJECT]",
-	Short:             "Rebuild project indexes",
-	Args:              cobra.MaximumNArgs(1),
-	ValidArgsFunction: completeProjectNames,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		all, err := cmd.Flags().GetBool("all")
+func newProjectReindexCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:               "reindex [PROJECT]",
+		Short:             "Rebuild project indexes",
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeProjectNames,
+		RunE:              runProjectReindex,
+	}
+	cmd.Flags().Bool("all", false, "reindex all active projects")
+	return cmd
+}
+
+func runProjectReindex(cmd *cobra.Command, args []string) error {
+	all, err := cmd.Flags().GetBool("all")
+	if err != nil {
+		return err
+	}
+
+	selector, err := resolveProjectSelector(cmd, args, all)
+	if err != nil {
+		return err
+	}
+
+	container, err := bootstrapFromContext(commandContext(cmd))
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case all:
+		if container.Services.Maint == nil {
+			return errors.New("maintenance service is not configured")
+		}
+		result, err := container.Services.Maint.ReindexAll(commandContext(cmd))
 		if err != nil {
 			return err
 		}
-
-		selector, err := resolveProjectSelector(cmd, args, all)
+		if err := PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), fmt.Sprintf("%d projects reindexed\n", result.Indexed), result); err != nil {
+			return err
+		}
+		if result.Failed > 0 {
+			return apperr.Internal(fmt.Sprintf("%d project(s) failed", result.Failed), nil)
+		}
+		return nil
+	default:
+		result, err := reindexSingleProject(commandContext(cmd), selector)
 		if err != nil {
 			return err
 		}
-
-		container, err := bootstrapFromContext(commandContext(cmd))
-		if err != nil {
-			return err
-		}
-
-		switch {
-		case all:
-			if container.Services.Maint == nil {
-				return errors.New("maintenance service is not configured")
-			}
-			result, err := container.Services.Maint.ReindexAll(commandContext(cmd))
-			if err != nil {
-				return err
-			}
-			if err := PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), fmt.Sprintf("%d projects reindexed\n", result.Indexed), result); err != nil {
-				return err
-			}
-			if result.Failed > 0 {
-				return apperr.Internal(fmt.Sprintf("%d project(s) failed", result.Failed), nil)
-			}
-			return nil
-		default:
-			result, err := reindexSingleProject(commandContext(cmd), selector)
-			if err != nil {
-				return err
-			}
-			return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), result.ProjectID+" reindexed\n", result)
-		}
-	},
+		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), result.ProjectID+" reindexed\n", result)
+	}
 }
 
 type projectReindexProjectResult struct {

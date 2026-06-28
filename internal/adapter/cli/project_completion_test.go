@@ -25,8 +25,16 @@ func TestCompleteProjectNamesReturnsActiveSlugMatches(t *testing.T) {
 }
 
 func TestProjectCommandsHaveProjectCompletion(t *testing.T) {
-	require.NotNil(t, projectShowCmd.ValidArgsFunction, "project show missing ValidArgsFunction")
-	require.NotNil(t, projectRemoveCmd.ValidArgsFunction, "project remove missing ValidArgsFunction")
-	require.NotNil(t, projectReindexCmd.ValidArgsFunction, "project reindex missing ValidArgsFunction")
-	require.NotNil(t, projectDoctorCmd.ValidArgsFunction, "project doctor missing ValidArgsFunction")
+	root := newTestRoot(t)
+
+	for _, path := range [][]string{
+		{"project", "show"},
+		{"project", "remove"},
+		{"project", "reindex"},
+		{"project", "doctor"},
+	} {
+		cmd, _, err := root.Find(path)
+		require.NoErrorf(t, err, "missing command %v", path)
+		require.NotNilf(t, cmd.ValidArgsFunction, "%s missing ValidArgsFunction", path)
+	}
 }

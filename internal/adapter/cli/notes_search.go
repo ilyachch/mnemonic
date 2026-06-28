@@ -8,11 +8,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var notesSearchCmd = &cobra.Command{
-	Use:   "search QUERY",
-	Short: "Search notes",
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
+func newNotesSearchCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "search QUERY",
+		Short: "Search notes",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
 		limit, err := cmd.Flags().GetInt("limit")
 		if err != nil {
 			return err
@@ -44,6 +45,10 @@ var notesSearchCmd = &cobra.Command{
 		human := formatNotesSearchHuman(hits)
 		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, output)
 	},
+	}
+	cmd.Flags().Int("limit", 20, "maximum number of results")
+	cmd.Flags().String("tag", "", "filter by tag")
+	return cmd
 }
 
 type notesSearchOutput struct {

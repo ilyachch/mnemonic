@@ -1,6 +1,7 @@
 package paths
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -14,12 +15,13 @@ func TestGetMnemonicPaths(t *testing.T) {
 		paths, err := GetMnemonicPaths()
 		require.NoError(t, err)
 
+		xdg := expectedDefaultXDGPaths(t, "/myhome")
 		want := MnemonicPaths{
-			ConfigHome:   "/myhome/.config",
-			DataHome:     "/myhome/.local/share",
-			StateHome:    "/myhome/.local/state",
-			CacheHome:    "/myhome/.cache",
-			MemoriesHome: "/myhome/.mnemonic",
+			ConfigHome:   xdg.ConfigHome,
+			DataHome:     xdg.DataHome,
+			StateHome:    xdg.StateHome,
+			CacheHome:    xdg.CacheHome,
+			MemoriesHome: filepath.Join("/myhome", ".mnemonic"),
 		}
 		require.Empty(t, cmp.Diff(want, paths))
 	})

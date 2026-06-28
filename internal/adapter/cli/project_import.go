@@ -9,11 +9,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var projectImportCmd = &cobra.Command{
-	Use:   "import [PATH]",
-	Short: "Import a project from a path",
-	Args:  cobra.RangeArgs(0, 1),
-	RunE: func(cmd *cobra.Command, args []string) error {
+func newProjectImportCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "import [PATH]",
+		Short: "Import a project from a path",
+		Args:  cobra.RangeArgs(0, 1),
+		RunE: func(cmd *cobra.Command, args []string) error {
 		pathArg := "."
 		if len(args) == 1 {
 			pathArg = args[0]
@@ -51,6 +52,9 @@ var projectImportCmd = &cobra.Command{
 		}
 		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, output)
 	},
+	}
+	cmd.Flags().Bool("dry-run", false, "Show what would be imported without making changes")
+	return cmd
 }
 
 func wrapImportError(err error) error {

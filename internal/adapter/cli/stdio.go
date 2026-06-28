@@ -10,36 +10,46 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var stdioCmd = &cobra.Command{
-	Use:          "stdio",
-	Short:        "Run the MCP stdio adapter",
-	SilenceUsage: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		runtime, err := runtimeAppForSelectedProject(cmd)
-		if err != nil {
-			return err
-		}
-
-		server, err := stdio.NewServer(runtime.KB, stdio.Dependencies{
-			Notes:  runtime.Services.Notes,
-			Search: runtime.Services.Search,
-			Index:  runtime.Services.Index,
-		}, stdioReadOnlyEnabled(cmd))
-		if err != nil {
-			return err
-		}
-
-		return stdioRun(server, commandContext(cmd), &mcp.StdioTransport{})
-	},
+func newStdioCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "stdio",
+		Short:        "Run the MCP stdio adapter",
+		SilenceUsage: true,
+		RunE:         runStdioAdapter,
+	}
+	cmd.Flags().Bool("read-only", false, "run the MCP server without write tools")
+	return cmd
 }
 
-var mcpCmd = &cobra.Command{
-	Use:          "mcp",
-	Short:        "Run the MCP stdio adapter",
-	Hidden:       true,
-	Deprecated:   "use `stdio` instead",
-	SilenceUsage: true,
-	RunE:         stdioCmd.RunE,
+func newMCPCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "mcp",
+		Short:        "Run the MCP stdio adapter",
+		Hidden:       true,
+		Deprecated:   "use `stdio` instead",
+		SilenceUsage: true,
+		RunE:         runStdioAdapter,
+	}
+	cmd.Flags().Bool("read-only", false, "run the MCP server without write tools")
+	return cmd
+}
+
+func runStdioAdapter(cmd *cobra.Command, args []string) error {
+	runtime, err := runtimeAppForSelectedProject(cmd)
+	if err != nil {
+		return err
+	}
+
+	server, err := stdio.NewServer(runtime.KB, stdio.Dependencies{
+		Notes:  runtime.Services.Notes,
+		Search: runtime.Services.Search,
+		Index:  runtime.Services.Index,
+	}, stdioReadOnlyEnabled(cmd))
+	if err != nil {
+		return err
+	}
+
+	return stdioRun(server, commandContext(cmd), &mcp.StdioTransport{})
 }
 
 var stdioRun = stdioRunReal

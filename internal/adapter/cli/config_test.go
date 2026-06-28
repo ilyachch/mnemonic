@@ -51,9 +51,9 @@ func TestConfigShowCommandJSONDefaults(t *testing.T) {
 func TestConfigShowCommandLoadsConfigFile(t *testing.T) {
 	tmpHome := testutil.CleanEnvForTest(t)
 	tmpConfig := filepath.Join(tmpHome, "config")
-	t.Setenv("XDG_DATA_HOME", "")
-	t.Setenv("XDG_STATE_HOME", "")
-	t.Setenv("XDG_CACHE_HOME", "")
+	tmpData := filepath.Join(tmpHome, "data")
+	tmpState := filepath.Join(tmpHome, "state")
+	tmpCache := filepath.Join(tmpHome, "cache")
 
 	configPath := filepath.Join(tmpConfig, "mnemonic", "config.toml")
 	err := os.MkdirAll(filepath.Dir(configPath), 0o755)
@@ -70,9 +70,9 @@ func TestConfigShowCommandLoadsConfigFile(t *testing.T) {
 
 	want := configShowJSON{
 		ConfigHome:   tmpConfig,
-		DataHome:     filepath.Join(tmpHome, ".local", "share"),
-		StateHome:    filepath.Join(tmpHome, ".local", "state"),
-		CacheHome:    filepath.Join(tmpHome, ".cache"),
+		DataHome:     tmpData,
+		StateHome:    tmpState,
+		CacheHome:    tmpCache,
 		MemoriesHome: filepath.Join(tmpHome, "from-config"),
 		ConfigFile:   configPath,
 	}
@@ -84,9 +84,6 @@ func TestConfigShowCommandLoadsConfigFile(t *testing.T) {
 func TestConfigShowCommandRejectsMissingVersionWithExitTwo(t *testing.T) {
 	tmpHome := testutil.CleanEnvForTest(t)
 	tmpConfig := filepath.Join(tmpHome, "config")
-	t.Setenv("XDG_DATA_HOME", "")
-	t.Setenv("XDG_STATE_HOME", "")
-	t.Setenv("XDG_CACHE_HOME", "")
 
 	configPath := filepath.Join(tmpConfig, "mnemonic", "config.toml")
 	err := os.MkdirAll(filepath.Dir(configPath), 0o755)
@@ -103,9 +100,6 @@ func TestConfigShowCommandRejectsMissingVersionWithExitTwo(t *testing.T) {
 func TestConfigShowCommandRejectsUnsupportedVersionWithExitTwo(t *testing.T) {
 	tmpHome := testutil.CleanEnvForTest(t)
 	tmpConfig := filepath.Join(tmpHome, "config")
-	t.Setenv("XDG_DATA_HOME", "")
-	t.Setenv("XDG_STATE_HOME", "")
-	t.Setenv("XDG_CACHE_HOME", "")
 
 	configPath := filepath.Join(tmpConfig, "mnemonic", "config.toml")
 	err := os.MkdirAll(filepath.Dir(configPath), 0o755)

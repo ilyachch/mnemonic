@@ -8,18 +8,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var projectCmd = &cobra.Command{
-	Use:   "project",
-	Short: "Manage projects",
-	Run: func(cmd *cobra.Command, args []string) {
-		_ = cmd.Help()
-	},
+func newProjectCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "project",
+		Short: "Manage projects",
+		Run: func(cmd *cobra.Command, args []string) {
+			_ = cmd.Help()
+		},
+	}
 }
 
-var projectListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List registered projects",
-	RunE: func(cmd *cobra.Command, args []string) error {
+func newProjectListCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List registered projects",
+		RunE: func(cmd *cobra.Command, args []string) error {
 		container, err := bootstrapFromContext(commandContext(cmd))
 		if err != nil {
 			return err
@@ -50,6 +53,7 @@ var projectListCmd = &cobra.Command{
 		human := formatProjectListHuman(output.Projects)
 		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, output)
 	},
+	}
 }
 
 type projectListOutput struct {
