@@ -4,6 +4,7 @@ go 1.26.4
 
 require (
 	github.com/adrg/frontmatter v0.2.0
+	github.com/adrg/xdg v0.5.3
 	github.com/gofrs/flock v0.13.0
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0

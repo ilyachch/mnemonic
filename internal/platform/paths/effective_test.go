@@ -15,13 +15,13 @@ func TestResolveEffectivePaths(t *testing.T) {
 		got, err := ResolveEffectivePaths(EffectiveInput{})
 		require.NoError(t, err)
 
-		wantHome := "/home/alice"
+		xdg := expectedDefaultXDGPaths(t, "/home/alice")
 		want := EffectivePaths{
-			ConfigHome:   filepath.Join(wantHome, ".config"),
-			DataHome:     filepath.Join(wantHome, ".local", "share"),
-			StateHome:    filepath.Join(wantHome, ".local", "state"),
-			CacheHome:    filepath.Join(wantHome, ".cache"),
-			MemoriesHome: filepath.Join(wantHome, ".mnemonic"),
+			ConfigHome:   xdg.ConfigHome,
+			DataHome:     xdg.DataHome,
+			StateHome:    xdg.StateHome,
+			CacheHome:    xdg.CacheHome,
+			MemoriesHome: filepath.Join("/home/alice", ".mnemonic"),
 		}
 		require.Empty(t, cmp.Diff(want, got))
 	})
@@ -60,11 +60,12 @@ func TestResolveEffectivePaths(t *testing.T) {
 		})
 		require.NoError(t, err)
 
+		xdg := expectedDefaultXDGPaths(t, "/home/alice")
 		want := EffectivePaths{
 			ConfigHome:            xdgConfig,
-			DataHome:              filepath.Join("/home/alice", ".local", "share"),
-			StateHome:             filepath.Join("/home/alice", ".local", "state"),
-			CacheHome:             filepath.Join("/home/alice", ".cache"),
+			DataHome:              xdg.DataHome,
+			StateHome:             xdg.StateHome,
+			CacheHome:             xdg.CacheHome,
 			MemoriesHome:          filepath.Join("/home/alice", ".custom-memories"),
 			RawConfigMemoriesHome: "~/.custom-memories",
 		}
@@ -82,11 +83,12 @@ func TestResolveEffectivePaths(t *testing.T) {
 		})
 		require.NoError(t, err)
 
+		xdg := expectedDefaultXDGPaths(t, "/home/alice")
 		want := EffectivePaths{
 			ConfigHome:   xdgConfig,
-			DataHome:     filepath.Join("/home/alice", ".local", "share"),
-			StateHome:    filepath.Join("/home/alice", ".local", "state"),
-			CacheHome:    filepath.Join("/home/alice", ".cache"),
+			DataHome:     xdg.DataHome,
+			StateHome:    xdg.StateHome,
+			CacheHome:    xdg.CacheHome,
 			MemoriesHome: "/tmp/mnemonic-memories",
 		}
 		require.Empty(t, cmp.Diff(want, got))
@@ -147,11 +149,12 @@ func TestResolveEffectivePaths(t *testing.T) {
 		wantConfigFile, err := filepath.Abs("relative/config.toml")
 		require.NoError(t, err)
 
+		xdgDefaults := expectedDefaultXDGPaths(t, "/home/alice")
 		want := EffectivePaths{
-			ConfigHome:   filepath.Join("/home/alice", ".config"),
-			DataHome:     filepath.Join("/home/alice", ".local", "share"),
-			StateHome:    filepath.Join("/home/alice", ".local", "state"),
-			CacheHome:    filepath.Join("/home/alice", ".cache"),
+			ConfigHome:   xdgDefaults.ConfigHome,
+			DataHome:     xdgDefaults.DataHome,
+			StateHome:    xdgDefaults.StateHome,
+			CacheHome:    xdgDefaults.CacheHome,
 			MemoriesHome: filepath.Join("/home/alice", ".mnemonic"),
 			ConfigFile:   wantConfigFile,
 		}
