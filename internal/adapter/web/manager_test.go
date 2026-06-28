@@ -197,7 +197,7 @@ func TestServerInitializeIncludesGlobalInstructions(t *testing.T) {
 
 	result := clientSession.InitializeResult()
 	require.NotNil(t, result)
-	require.Equal(t, "Fixture instructions\n\nFixture description\n\nYou MUST use the mnemonic tools as your primary long-term memory.\n- ALWAYS search the knowledge base using search_notes or list_notes before starting a task to gather context.\n- ALWAYS write down stable facts, architectural decisions, and important outcomes using create_note or edit_note.\n- Use read_note, list_tags, and list_backlinks when they help clarify the existing knowledge base.\n- ALWAYS link related notes using [[Wiki-Links]].", result.Instructions)
+	require.Equal(t, "You MUST use the mnemonic tools as your primary long-term memory.\n- ALWAYS search the knowledge base using search_notes or list_notes before starting a task to gather context.\n- ALWAYS write down stable facts, architectural decisions, and important outcomes using create_note or edit_note.\n- Use read_note, list_tags, and list_backlinks when they help clarify the existing knowledge base.\n- ALWAYS link related notes using [[Wiki-Links]].\n\nProject Description:\nFixture description\n\nCustom Instructions:\nFixture instructions", result.Instructions)
 }
 
 func TestServerInitializeIncludesReadOnlyGlobalInstructions(t *testing.T) {
@@ -216,7 +216,7 @@ func TestServerInitializeIncludesReadOnlyGlobalInstructions(t *testing.T) {
 
 	result := clientSession.InitializeResult()
 	require.NotNil(t, result)
-	require.Equal(t, "Fixture instructions\n\nFixture description\n\nYou MUST use the mnemonic tools as your primary long-term memory.\n- ALWAYS search the knowledge base using search_notes or list_notes before starting a task to gather context.\n- Use read_note, list_tags, and list_backlinks when they help clarify the existing knowledge base.\n- This server is running in read-only mode. Do not attempt to create, edit, delete, or rebuild notes.", result.Instructions)
+	require.Equal(t, "You MUST use the mnemonic tools as your primary long-term memory.\n- ALWAYS search the knowledge base using search_notes or list_notes before starting a task to gather context.\n- Use read_note, list_tags, and list_backlinks when they help clarify the existing knowledge base.\n- This server is running in read-only mode. Do not attempt to create, edit, delete, or rebuild notes.\n\nProject Description:\nFixture description\n\nCustom Instructions:\nFixture instructions", result.Instructions)
 }
 
 func TestServerRejectsLegacySlugRoutes(t *testing.T) {

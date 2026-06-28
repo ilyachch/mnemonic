@@ -10,12 +10,14 @@ import (
 )
 
 type projectShowJSON struct {
-	ProjectID string `json:"project_id"`
-	Name      string `json:"name"`
-	Slug      string `json:"slug"`
-	Type      string `json:"type"`
-	StateHome string `json:"state_home"`
-	Location  struct {
+	ProjectID          string `json:"project_id"`
+	Name               string `json:"name"`
+	Slug               string `json:"slug"`
+	Type               string `json:"type"`
+	Description        string `json:"description"`
+	CustomInstructions string `json:"custom_instructions"`
+	StateHome          string `json:"state_home"`
+	Location           struct {
 		MemoriesAbs string `json:"memories_abs"`
 		ManifestAbs string `json:"manifest_abs"`
 		RepoRootAbs string `json:"repo_root_abs"`
@@ -41,6 +43,8 @@ func TestProjectShowCommandFindsProject(t *testing.T) {
 	require.Equal(t, "backend", got.Name)
 	require.Equal(t, "backend", got.Slug)
 	require.Equal(t, "central", got.Type)
+	require.Equal(t, "Central description", got.Description)
+	require.Equal(t, "Central instructions", got.CustomInstructions)
 }
 
 func TestProjectShowCommandMissingProject(t *testing.T) {

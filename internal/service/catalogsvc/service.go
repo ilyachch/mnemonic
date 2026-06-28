@@ -56,12 +56,14 @@ type ListItem struct {
 
 // ShowResult mirrors the project show payload.
 type ShowResult struct {
-	ProjectID string             `json:"project_id"`
-	Name      string             `json:"name"`
-	Slug      string             `json:"slug"`
-	Type      string             `json:"type"`
-	StateHome string             `json:"state_home"`
-	Location  ShowLocationResult `json:"location"`
+	ProjectID          string             `json:"project_id"`
+	Name               string             `json:"name"`
+	Slug               string             `json:"slug"`
+	Type               string             `json:"type"`
+	Description        string             `json:"description"`
+	CustomInstructions string             `json:"custom_instructions"`
+	StateHome          string             `json:"state_home"`
+	Location           ShowLocationResult `json:"location"`
 }
 
 // ShowLocationResult describes the resolved project location.
@@ -221,11 +223,13 @@ func (s Service) Show(selector string) (ShowResult, error) {
 	}
 
 	return ShowResult{
-		ProjectID: resolved.ID,
-		Name:      resolved.Name,
-		Slug:      resolved.Slug,
-		Type:      resolved.Kind,
-		StateHome: resolved.StateDir,
+		ProjectID:          resolved.ID,
+		Name:               resolved.Name,
+		Slug:               resolved.Slug,
+		Type:               resolved.Kind,
+		Description:        resolved.Description,
+		CustomInstructions: resolved.CustomInstructions,
+		StateHome:          resolved.StateDir,
 		Location: ShowLocationResult{
 			MemoriesAbs: resolved.RootDir,
 			ManifestAbs: resolved.ManifestPath,
@@ -485,7 +489,7 @@ func (s Service) enrichFromManifest(resolved *registry.Entry) {
 	if needsManifest {
 		s.fillEntryFromManifest(resolved)
 	} else {
-		s.fillDescriptionOnly(resolved)
+		s.fillMetadataOnly(resolved)
 	}
 }
 
@@ -514,7 +518,7 @@ func (s Service) fillEntryFromManifest(resolved *registry.Entry) {
 	}
 }
 
-func (s Service) fillDescriptionOnly(resolved *registry.Entry) {
+func (s Service) fillMetadataOnly(resolved *registry.Entry) {
 	if strings.TrimSpace(resolved.Description) != "" && strings.TrimSpace(resolved.CustomInstructions) != "" {
 		return
 	}

@@ -22,11 +22,13 @@ var projectShowCmd = &cobra.Command{
 		}
 
 		project := projectShowOutput{
-			ProjectID: result.ProjectID,
-			Name:      result.Name,
-			Slug:      result.Slug,
-			Type:      result.Type,
-			StateHome: result.StateHome,
+			ProjectID:          result.ProjectID,
+			Name:               result.Name,
+			Slug:               result.Slug,
+			Type:               result.Type,
+			Description:        result.Description,
+			CustomInstructions: result.CustomInstructions,
+			StateHome:          result.StateHome,
 			Location: projectLocationOutput{
 				MemoriesAbs: result.Location.MemoriesAbs,
 				ManifestAbs: result.Location.ManifestAbs,
@@ -39,12 +41,14 @@ var projectShowCmd = &cobra.Command{
 }
 
 type projectShowOutput struct {
-	ProjectID string                `json:"project_id"`
-	Name      string                `json:"name"`
-	Slug      string                `json:"slug"`
-	Type      string                `json:"type"`
-	StateHome string                `json:"state_home"`
-	Location  projectLocationOutput `json:"location"`
+	ProjectID          string                `json:"project_id"`
+	Name               string                `json:"name"`
+	Slug               string                `json:"slug"`
+	Type               string                `json:"type"`
+	Description        string                `json:"description"`
+	CustomInstructions string                `json:"custom_instructions"`
+	StateHome          string                `json:"state_home"`
+	Location           projectLocationOutput `json:"location"`
 }
 
 type projectLocationOutput struct {

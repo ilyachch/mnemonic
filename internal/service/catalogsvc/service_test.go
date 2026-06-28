@@ -305,6 +305,8 @@ func TestListAndShowShapeRegistryData(t *testing.T) {
 	centralManifest.ProjectID = "550e8400-e29b-41d4-a716-446655440001"
 	centralManifest.Name = "Backend"
 	centralManifest.Slug = centralSlug
+	centralManifest.Description = "Central description"
+	centralManifest.CustomInstructions = "Central instructions"
 	centralManifest.MarkdownFormatVersion = 1
 	centralManifest.CreatedAt = time.Now().UTC()
 	centralManifest.UpdatedAt = centralManifest.CreatedAt
@@ -319,6 +321,8 @@ func TestListAndShowShapeRegistryData(t *testing.T) {
 	localManifest.Name = "Personal"
 	localManifest.Slug = localSlug
 	localManifest.Type = manifestfmt.ManifestTypeLocal
+	localManifest.Description = "Local description"
+	localManifest.CustomInstructions = "Local instructions"
 	localManifest.MarkdownFormatVersion = 1
 	localManifest.CreatedAt = time.Now().UTC()
 	localManifest.UpdatedAt = localManifest.CreatedAt
@@ -355,6 +359,8 @@ func TestListAndShowShapeRegistryData(t *testing.T) {
 	require.Equal(t, "Backend", shown.Name)
 	require.Equal(t, centralSlug, shown.Slug)
 	require.Equal(t, "central", shown.Type)
+	require.Equal(t, "Central description", shown.Description)
+	require.Equal(t, "Central instructions", shown.CustomInstructions)
 	require.Equal(t, filepath.Join(stateHome, "mnemonic", "projects", centralManifest.ProjectID), shown.StateHome)
 	require.Equal(t, centralDir, shown.Location.MemoriesAbs)
 	require.Equal(t, filepath.Join(centralDir, "mnemonic.toml"), shown.Location.ManifestAbs)

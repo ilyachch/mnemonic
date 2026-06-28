@@ -89,16 +89,16 @@ func (s *Server) BuildSDKServer() *sdkmcp.Server {
 
 func buildGlobalInstructions(customInstructions, description string, readOnly bool) string {
 	parts := make([]string, 0, 3)
-	if trimmed := strings.TrimSpace(customInstructions); trimmed != "" {
-		parts = append(parts, trimmed)
-	}
-	if trimmed := strings.TrimSpace(description); trimmed != "" {
-		parts = append(parts, trimmed)
-	}
 	if readOnly {
 		parts = append(parts, readOnlyGlobalInstructions)
 	} else {
 		parts = append(parts, defaultGlobalInstructions)
+	}
+	if trimmed := strings.TrimSpace(description); trimmed != "" {
+		parts = append(parts, "Project Description:\n"+trimmed)
+	}
+	if trimmed := strings.TrimSpace(customInstructions); trimmed != "" {
+		parts = append(parts, "Custom Instructions:\n"+trimmed)
 	}
 	return strings.Join(parts, "\n\n")
 }
