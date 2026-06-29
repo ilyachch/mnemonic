@@ -4,6 +4,18 @@ LD_FLAGS_STR := "-s -w -X main.version=" + VERSION
 
 default: check
 
+[private]
+_mkdir_tmp:
+    mkdir -p .tmp
+
+[private]
+_mkdir_dist:
+    mkdir -p ./dist
+
+[private]
+_mkdir_bin:
+    mkdir -p ./bin/linux ./bin/macos
+
 lint:
     golangci-lint run
 
@@ -20,32 +32,28 @@ test: test-unit test-race test-integration
 
 check: lint test
 
-build-linux:
-    mkdir -p ./bin/linux
+build-linux: _mkdir_bin
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="{{ LD_FLAGS_STR }}" -o ./bin/linux/mnemonic ./cmd/mnemonic
 
-build-macos:
-    mkdir -p ./bin/macos
+build-macos: _mkdir_bin
     CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="{{ LD_FLAGS_STR }}" -o ./bin/macos/mnemonic ./cmd/mnemonic
 
 build: clean build-linux build-macos
 
-archive-linux: build-linux
-    mkdir -p ./dist
+archive-linux: _mkdir_dist build-linux
     tar -czf ./dist/mnemonic_{{ VERSION }}_linux_amd64.tar.gz README.md LICENSE* -C ./bin/linux mnemonic
 
-archive-macos: build-macos
-    mkdir -p ./dist
+archive-macos: _mkdir_dist build-macos
     tar -czf ./dist/mnemonic_{{ VERSION }}_darwin_arm64.tar.gz README.md LICENSE* -C ./bin/macos mnemonic
 
 archive: archive-linux archive-macos
 
 prepare-packages: build archive
 
-build-linux-debug:
+build-linux-debug: _mkdir_bin
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -gcflags="all=-N -l" -o ./bin/linux/mnemonic_linux_amd64_debug ./cmd/mnemonic
 
-build-macos-debug:
+build-macos-debug: _mkdir_bin
     CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -gcflags="all=-N -l" -o ./bin/macos/mnemonic_darwin_arm64_debug ./cmd/mnemonic
 
 build-debug: build-linux-debug build-macos-debug
@@ -54,7 +62,7 @@ install:
     go install ./cmd/mnemonic
 
 clean:
-    rm -rf ./bin ./.tmp
+    rm -rf ./bin ./.tmp ./dist
     rm -f ./coverage.out ./coverage.html
 
 [private]
@@ -96,14 +104,15 @@ coverage-check threshold="70.0": _run-coverage
     echo ""
     echo "SUCCESS: Code coverage (${TOTAL_COVERAGE}%) meets the minimum threshold (${MIN_COVERAGE}%)."
 
-collect-content:
+
+collect-content: _mkdir_tmp
     collect_content . --skip-empty --format md --sort dirs-first --ext ".go" > .tmp/mnemonic.md
 
-collect-content-no-tests:
+collect-content-no-tests: _mkdir_tmp
     collect_content . --skip-empty --format md --sort dirs-first --ext ".go" --exclude "*_test.go" > .tmp/mnemonic_no_tests.md
 
-collect-content-mds:
+collect-content-mds: _mkdir_tmp
     collect_content . --skip-empty --format md --sort dirs-first --ext ".md" --exclude "testdata" > .tmp/mnemonic_mds.md
 
-collect-open-issues:
+collect-open-issues: _mkdir_tmp
     gh issue list --state open --json number,title,body | jq -r '.[] | "#\(.number) \(.title)\n\(.body | split("\n") | join("\n"))\n"' > .tmp/open_issues.md
