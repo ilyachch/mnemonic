@@ -567,11 +567,15 @@ func (s Store) Hydrate(input HydrateInput) (HydrateResult, error) {
 		return HydrateResult{}, err
 	}
 
-	guard, err := acquireWriteLock(root, s.StateDir)
-	if err != nil {
-		return HydrateResult{}, err
+	// Dry-run only reads files, so it does not need the write lock. Real
+	// mutations are guarded by the lock below.
+	if !input.DryRun {
+		guard, err := acquireWriteLock(root, s.StateDir)
+		if err != nil {
+			return HydrateResult{}, err
+		}
+		defer func() { _ = guard.Release() }()
 	}
-	defer func() { _ = guard.Release() }()
 
 	result := HydrateResult{DryRun: input.DryRun}
 	for _, relPath := range relPaths {

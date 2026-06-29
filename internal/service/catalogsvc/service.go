@@ -17,6 +17,7 @@ import (
 	"github.com/ilyachch/mnemonic/internal/platform/idgen"
 	"github.com/ilyachch/mnemonic/internal/platform/paths"
 	"github.com/ilyachch/mnemonic/internal/service/indexsvc"
+	"github.com/ilyachch/mnemonic/internal/store/markdownstore"
 	registry "github.com/ilyachch/mnemonic/internal/store/registry"
 )
 
@@ -91,14 +92,32 @@ type ImportInput struct {
 
 // ImportResult mirrors the project import result.
 type ImportResult struct {
-	Path        string
-	Imported    int
-	CopiedFiles int
-	Indexed     int
-	IndexStatus string
-	IndexErrors []ImportIndexError
-	Candidates  []ImportCandidate
-	DryRun      bool
+	Path            string
+	Imported        int
+	CopiedFiles     int
+	Indexed         int
+	IndexStatus     string
+	IndexErrors     []ImportIndexError
+	Candidates      []ImportCandidate
+	DryRun          bool
+	ManifestCreated bool
+	Hydrated        []markdownstore.HydratedNote
+	Skipped         []string
+}
+
+// AddInput mirrors the project add input.
+type AddInput struct {
+	Path string
+}
+
+// AddResult mirrors the project add result.
+type AddResult struct {
+	Path        string        `json:"path"`
+	Slug        string        `json:"slug"`
+	ProjectID   string        `json:"project_id"`
+	Indexed     int           `json:"indexed"`
+	IndexStatus string        `json:"index_status"`
+	IndexError  string        `json:"index_error,omitempty"`
 }
 
 // ImportIndexError describes one imported project whose index rebuild failed.
@@ -238,13 +257,177 @@ func (s Service) Show(selector string) (ShowResult, error) {
 	}, nil
 }
 
-// Import imports a project into the registry.
+// Import imports a raw directory of markdown notes into the mnemonic
+// ecosystem. When mnemonic.toml is missing it is generated in-place; all
+// notes lacking canonical frontmatter are hydrated; the project is
+// registered via a pointer file and the search index is rebuilt.
 func (s Service) Import(ctx context.Context, input ImportInput) (ImportResult, error) {
-	result, err := importProject(input, s.MemoriesHome)
+	resolvedPath, err := resolveImportPath(input)
 	if err != nil {
 		return ImportResult{}, err
 	}
+
+	manifestPath := filepath.Join(resolvedPath, "mnemonic.toml")
+	manifest, manifestCreated, err := ensureManifest(manifestPath, resolvedPath, input.DryRun)
+	if err != nil {
+		return ImportResult{}, err
+	}
+
+	candidate := ImportCandidate{
+		ProjectID:       manifest.ProjectID,
+		Name:            manifest.Name,
+		Slug:            manifest.Slug,
+		Kind:            kindFromManifest(manifest),
+		MemoriesPath:    resolvedPath,
+		MnemonicFileAbs: manifestPath,
+		RepoRootAbs:     resolvedPath,
+		ManifestAbs:     manifestPath,
+	}
+
+	result := ImportResult{
+		Path:            resolvedPath,
+		Imported:        1,
+		CopiedFiles:     0,
+		Indexed:         0,
+		IndexErrors:     []ImportIndexError{},
+		Candidates:      []ImportCandidate{candidate},
+		DryRun:          input.DryRun,
+		ManifestCreated: manifestCreated,
+	}
+
+	hydrateResult, err := markdownstore.Store{RootDir: resolvedPath, StateDir: s.statePath(manifest.ProjectID)}.Hydrate(markdownstore.HydrateInput{
+		DryRun: input.DryRun,
+	})
+	if err != nil {
+		return ImportResult{}, err
+	}
+	result.Hydrated = hydrateResult.Hydrated
+	result.Skipped = hydrateResult.Skipped
+
+	if input.DryRun {
+		result.IndexStatus = "skipped"
+		return result, nil
+	}
+
+	if err := s.registerPointer(memoriesHomePointerPath(s.MemoriesHome, manifest.Slug), manifestPath); err != nil {
+		return ImportResult{}, err
+	}
+
 	return s.finalizeImportIndexStatus(ctx, result), nil
+}
+
+// Add registers an existing structured project (one that already contains a
+// valid mnemonic.toml) and rebuilds its search index.
+func (s Service) Add(ctx context.Context, input AddInput) (AddResult, error) {
+	resolvedPath, err := resolveAddPath(input)
+	if err != nil {
+		return AddResult{}, err
+	}
+
+	manifestPath := filepath.Join(resolvedPath, "mnemonic.toml")
+	if _, statErr := os.Stat(manifestPath); statErr != nil {
+		if os.IsNotExist(statErr) {
+			return AddResult{}, fmt.Errorf("mnemonic.toml not found at %s", resolvedPath)
+		}
+		return AddResult{}, fmt.Errorf("stat mnemonic.toml: %w", statErr)
+	}
+
+	manifest, err := manifestfmt.ParseMnemonicManifestFile(manifestPath)
+	if err != nil {
+		return AddResult{}, err
+	}
+
+	if registerErr := s.registerPointer(memoriesHomePointerPath(s.MemoriesHome, manifest.Slug), manifestPath); registerErr != nil {
+		return AddResult{}, registerErr
+	}
+
+	result := AddResult{
+		Path:        resolvedPath,
+		Slug:        manifest.Slug,
+		ProjectID:   manifest.ProjectID,
+		IndexStatus: "skipped",
+	}
+
+	resolved, err := s.Resolve(manifest.Slug)
+	if err != nil {
+		result.IndexError = err.Error()
+		return result, nil //nolint:nilerr // partial success: IndexError communicates the failure
+	}
+	if _, err := indexsvc.New(resolved).Rebuild(ctx); err != nil {
+		result.IndexStatus = "stale"
+		result.IndexError = err.Error()
+		return result, nil //nolint:nilerr // partial success: IndexError communicates the failure
+	}
+	result.Indexed = 1
+	result.IndexStatus = "ok"
+	return result, nil
+}
+
+// ensureManifest parses the manifest at manifestPath, generating one in-place
+// when it is missing. The boolean reports whether a new manifest was created.
+// When dryRun is true a missing manifest is generated in memory only — it is
+// not written to disk — so callers can preview the would-be project metadata.
+func ensureManifest(manifestPath, resolvedPath string, dryRun bool) (*manifestfmt.Manifest, bool, error) {
+	if _, statErr := os.Stat(manifestPath); statErr == nil {
+		manifest, parseErr := manifestfmt.ParseMnemonicManifestFile(manifestPath)
+		if parseErr != nil {
+			return nil, false, parseErr
+		}
+		return manifest, false, nil
+	} else if !os.IsNotExist(statErr) {
+		return nil, false, fmt.Errorf("stat mnemonic.toml: %w", statErr)
+	}
+
+	projectID := idgen.NewUUID()
+	name := filepath.Base(resolvedPath)
+	slugValue, err := slug.Slugify(name)
+	if err != nil {
+		return nil, false, err
+	}
+	manifest := buildInitManifest(projectID, name, slugValue, string(manifestfmt.ManifestTypeLocal), "", clock.NowUTC())
+	if !dryRun {
+		if err := manifestfmt.WriteMnemonicManifest(manifestPath, manifest); err != nil {
+			return nil, false, err
+		}
+	}
+	return manifest, true, nil
+}
+
+// registerPointer writes the pointer file at pointerPath unless it already
+// exists, returning an Ambiguous-style error on conflict.
+func (s Service) registerPointer(pointerPath, manifestPath string) error {
+	if _, err := os.Stat(pointerPath); err == nil {
+		return fmt.Errorf("project slug %q already exists", strings.TrimSuffix(filepath.Base(pointerPath), ".toml"))
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat pointer file: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(pointerPath), 0o755); err != nil {
+		return fmt.Errorf("create pointer directory: %w", err)
+	}
+	return manifestfmt.WritePointerFile(pointerPath, &manifestfmt.PointerFile{ManifestPath: manifestPath})
+}
+
+// memoriesHomePointerPath returns the pointer file path for a slug.
+func memoriesHomePointerPath(memoriesHome, slugValue string) string {
+	return filepath.Join(memoriesHome, slugValue+".toml")
+}
+
+func resolveAddPath(input AddInput) (string, error) {
+	path := input.Path
+	if path == "" {
+		path = "."
+	}
+	absPath, err := paths.NormalizeAbsolutePath(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve add path: %w", err)
+	}
+	if _, err := os.Stat(absPath); err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("add path %q not found", path)
+		}
+		return "", fmt.Errorf("stat add path %s: %w", absPath, err)
+	}
+	return absPath, nil
 }
 
 func (s Service) finalizeImportIndexStatus(ctx context.Context, result ImportResult) ImportResult {
@@ -666,66 +849,6 @@ func buildInitManifest(projectID, name, slugValue, kind, description string, now
 		m.Type = manifestfmt.ManifestType(kind)
 	}
 	return m
-}
-
-func importProject(input ImportInput, memoriesHome string) (ImportResult, error) {
-	resolvedPath, err := resolveImportPath(input)
-	if err != nil {
-		return ImportResult{}, err
-	}
-
-	manifestPath := filepath.Join(resolvedPath, "mnemonic.toml")
-	if _, err = os.Stat(manifestPath); err != nil {
-		if os.IsNotExist(err) {
-			return ImportResult{}, fmt.Errorf("mnemonic.toml not found at %s", resolvedPath)
-		}
-		return ImportResult{}, fmt.Errorf("stat mnemonic.toml: %w", err)
-	}
-
-	manifest, err := manifestfmt.ParseMnemonicManifestFile(manifestPath)
-	if err != nil {
-		return ImportResult{}, err
-	}
-
-	candidate := ImportCandidate{
-		ProjectID:       manifest.ProjectID,
-		Name:            manifest.Name,
-		Slug:            manifest.Slug,
-		Kind:            kindFromManifest(manifest),
-		MemoriesPath:    resolvedPath,
-		MnemonicFileAbs: manifestPath,
-		RepoRootAbs:     resolvedPath,
-		ManifestAbs:     manifestPath,
-	}
-
-	result := ImportResult{
-		Path:        resolvedPath,
-		Imported:    1,
-		CopiedFiles: 0,
-		Indexed:     0,
-		Candidates:  []ImportCandidate{candidate},
-		DryRun:      input.DryRun,
-	}
-	if input.DryRun {
-		return result, nil
-	}
-
-	pointerPath := filepath.Join(memoriesHome, manifest.Slug+".toml")
-	if _, err := os.Stat(pointerPath); err == nil {
-		return ImportResult{}, fmt.Errorf("project slug %q already exists", manifest.Slug)
-	} else if !os.IsNotExist(err) {
-		return ImportResult{}, fmt.Errorf("stat pointer file: %w", err)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(pointerPath), 0o755); err != nil {
-		return ImportResult{}, fmt.Errorf("create pointer directory: %w", err)
-	}
-
-	if err := manifestfmt.WritePointerFile(pointerPath, &manifestfmt.PointerFile{ManifestPath: manifestPath}); err != nil {
-		return ImportResult{}, err
-	}
-
-	return result, nil
 }
 
 func resolveImportPath(input ImportInput) (string, error) {
