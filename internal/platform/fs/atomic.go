@@ -5,33 +5,6 @@ import (
 	"path/filepath"
 )
 
-var (
-	createTempFile = os.CreateTemp
-	renameFile     = os.Rename
-	removeFile     = os.Remove
-	syncFile       = func(f *os.File) error { return f.Sync() }
-	syncDir        = func(path string) error {
-		dir, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = dir.Close() }()
-
-		return dir.Sync()
-	}
-	writeAll = func(f *os.File, data []byte) error {
-		for len(data) > 0 {
-			n, err := f.Write(data)
-			if err != nil {
-				return err
-			}
-			data = data[n:]
-		}
-
-		return nil
-	}
-)
-
 // AtomicWriteFile writes data to path by staging it in a temp file in the same
 // directory, syncing it, and then atomically replacing the target.
 func AtomicWriteFile(path string, data []byte, perm os.FileMode) (err error) {
@@ -40,7 +13,7 @@ func AtomicWriteFile(path string, data []byte, perm os.FileMode) (err error) {
 		return err
 	}
 
-	tmp, err := createTempFile(dir, filepath.Base(path)+".*.tmp")
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".*.tmp")
 	if err != nil {
 		return err
 	}
@@ -49,7 +22,7 @@ func AtomicWriteFile(path string, data []byte, perm os.FileMode) (err error) {
 	defer func() {
 		if err != nil {
 			_ = tmp.Close()
-			_ = removeFile(tmpPath)
+			_ = os.Remove(tmpPath)
 		}
 	}()
 
@@ -59,13 +32,13 @@ func AtomicWriteFile(path string, data []byte, perm os.FileMode) (err error) {
 	if err = writeAll(tmp, data); err != nil {
 		return err
 	}
-	if err = syncFile(tmp); err != nil {
+	if err = tmp.Sync(); err != nil {
 		return err
 	}
 	if err = tmp.Close(); err != nil {
 		return err
 	}
-	if err = renameFile(tmpPath, path); err != nil {
+	if err = os.Rename(tmpPath, path); err != nil {
 		return err
 	}
 	if err = syncDir(dir); err != nil {
@@ -73,4 +46,29 @@ func AtomicWriteFile(path string, data []byte, perm os.FileMode) (err error) {
 	}
 
 	return nil
+}
+
+// writeAll writes the entirety of data to f, retrying on short writes.
+func writeAll(f *os.File, data []byte) error {
+	for len(data) > 0 {
+		n, err := f.Write(data)
+		if err != nil {
+			return err
+		}
+		data = data[n:]
+	}
+
+	return nil
+}
+
+// syncDir fsyncs the directory at path so that directory entries (renames)
+// are persisted to disk.
+func syncDir(path string) error {
+	dir, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dir.Close() }()
+
+	return dir.Sync()
 }
