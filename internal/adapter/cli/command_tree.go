@@ -19,6 +19,7 @@ func buildCommandTree() []*cobra.Command {
 	notes.AddCommand(newNotesShowCommand())
 
 	project := newProjectCommand()
+	project.AddCommand(newProjectAddCommand())
 	project.AddCommand(newProjectDoctorCommand())
 	project.AddCommand(newProjectImportCommand())
 	project.AddCommand(newProjectInitCommand())
@@ -26,6 +27,7 @@ func buildCommandTree() []*cobra.Command {
 	project.AddCommand(newProjectReindexCommand())
 	project.AddCommand(newProjectRemoveCommand())
 	project.AddCommand(newProjectShowCommand())
+	project.AddCommand(newProjectSyncCommand())
 
 	tags := newTagsCommand()
 	tags.AddCommand(newTagsListCommand())
