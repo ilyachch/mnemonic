@@ -112,12 +112,12 @@ type AddInput struct {
 
 // AddResult mirrors the project add result.
 type AddResult struct {
-	Path        string        `json:"path"`
-	Slug        string        `json:"slug"`
-	ProjectID   string        `json:"project_id"`
-	Indexed     int           `json:"indexed"`
-	IndexStatus string        `json:"index_status"`
-	IndexError  string        `json:"index_error,omitempty"`
+	Path        string `json:"path"`
+	Slug        string `json:"slug"`
+	ProjectID   string `json:"project_id"`
+	Indexed     int    `json:"indexed"`
+	IndexStatus string `json:"index_status"`
+	IndexError  string `json:"index_error,omitempty"`
 }
 
 // ImportIndexError describes one imported project whose index rebuild failed.

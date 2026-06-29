@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ilyachch/mnemonic/internal/format/markdown"
 	manifestfmt "github.com/ilyachch/mnemonic/internal/format/manifest"
+	"github.com/ilyachch/mnemonic/internal/format/markdown"
 	"github.com/ilyachch/mnemonic/internal/platform/clock"
 	"github.com/ilyachch/mnemonic/internal/testutil"
 	"github.com/stretchr/testify/require"
