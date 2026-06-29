@@ -1,133 +1,132 @@
-# Mnemonic Developer Agent Guide
+# Mnemonic Developer Guide
 
-This document is intended for AI coding assistants and developers working on modifying, extending, or maintaining the `mnemonic` codebase. It outlines the architectural design, directory layout, coding standards, and common modification recipes.
+This document is intended for developers and automated design systems working on modifying, extending, or maintaining the `mnemonic` codebase. It describes architectural decisions, directory structure, coding standards, and rules for making changes.
 
 ---
 
 ## Architecture Overview
 
-The codebase is structured around a Ports and Adapters (Hexagonal) architecture, separating business logic from CLI interaction, MCP transport layers, and file-based storage formats.
+The codebase is organized around the principles of ports and adapters (hexagonal architecture), which isolates the core business logic from the CLI interface, MCP transport layers, and physical document storage.
 
 ### Directory Structure
 
 ```
 .
-├── cmd/mnemonic/             # Entrypoint: bootstraps application and executes CLI
+├── cmd/mnemonic/             # Entry point: container initialization and CLI launch
 ├── internal/
 │   ├── adapter/
-│   │   ├── cli/             # CLI command tree and validation (Cobra)
-│   │   ├── stdio/           # MCP stdio server adapter & tool registrations
-│   │   └── web/             # MCP HTTP/SSE server implementation
-│   ├── app/                 # Dependency injection and runtime container wiring
-│   ├── apperr/              # Structured error classification and exit codes
+│   │   ├── cli/             # Cobra command tree, flag validation, and output formatting
+│   │   ├── stdio/           # MCP stdio server adapter and tool registration
+│   │   └── web/             # HTTP/SSE MCP server implementation
+│   ├── app/                 # Dependency injection, initialization of global and runtime containers
+│   ├── apperr/              # Structured application errors and process exit codes
 │   ├── domain/
-│   │   ├── kb/              # Runtime knowledge base representation
-│   │   └── slug/            # Core slugification algorithms
+│   │   ├── kb/              # Runtime model representing the active knowledge base
+│   │   └── slug/            # Algorithms for generating symbolic identifiers (slugs)
 │   ├── format/
 │   │   ├── manifest/        # TOML schemas for mnemonic.toml and pointer files
-│   │   └── markdown/        # Goldmark-based AST parsers for notes, tags, and relations
-│   ├── platform/            # Infrastructure-agnostic packages (fs, clock, lock, paths)
-│   ├── service/             # Orchestration layers (catalogsvc, indexsvc, maintsvc, notesvc)
+│   │   └── markdown/        # Goldmark AST parsers for notes, tags, and relations
+│   ├── platform/            # Infrastructure components (filesystem, clock, locks, paths)
+│   ├── service/             # Service layers (catalogsvc, indexsvc, maintsvc, notesvc, searchsvc)
 │   └── store/
-│       ├── markdownstore/   # Core write operations and physical note management
-│       ├── registry/        # Pointer-to-manifest project lookups
-│       └── sqliteindex/     # SQLite database connection, schema, and queries
-└── scripts/                 # System diagnostic and smoke-testing scripts
+│       ├── markdownstore/   # Physical markdown file management, read/write operations
+│       ├── registry/        # File-based project registry (central and local)
+│       └── sqliteindex/     # Connection, schema, and queries for the SQLite index database
+└── scripts/                 # Diagnostic scripts and smoke tests
 ```
 
 ---
 
-## Critical Lifecycle & Wiring Flow
+## Lifecycle and Component Binding
 
-1. **Bootstrapping (`app.Bootstrap`):**
-   Configured in `internal/app/app.go`. Resolves user configurations, handles default path fallbacks, and initializes structural storage objects such as `registry.Store` and the parent `catalogsvc.Service`.
-2. **Project Runtime (`app.RuntimeApp`):**
-   When a project is targeted (via CLI or MCP), `Bootstrap.Runtime()` resolves the path configuration and returns a project-specific container containing `notesvc`, `searchsvc`, and `indexsvc` connected to the active project path.
+1. **Initialization (`app.Bootstrap`):**
+   Implemented in `internal/app/app.go`. This step resolves the user's configuration, calculates default paths, and initializes the project registry store (`registry.Store`) and the catalog service (`catalogsvc.Service`).
+2. **Runtime Container (`app.RuntimeApp`):**
+   When accessing a specific project, the `b.Runtime()` method returns an isolated `RuntimeApp` container. This container holds the `notesvc`, `searchsvc`, and `indexsvc` services configured to operate within the selected project directory.
 
 ---
 
-## Core Development Standards
+## Coding Standards and Invariants
 
-AI assistants must adhere to the following implementation details:
+When making changes, you must strictly adhere to the following requirements:
 
 ### 1. Deterministic Time and Identifiers
 
-Do **not** use `time.Now()` or external random UUID generators directly in domain models or service writes.
+Direct usage of `time.Now()` or external UUID generators within services or domain models is prohibited.
 
-- Always retrieve time and UUIDs through the platform interfaces to support predictable unit testing.
-- Use `clock.NowUTC()` or dependency-injected clock functions.
-- Generate UUIDs via `idgen.NewUUID()`.
-- Refer to `internal/platform/clock/clock.go` for details.
+- Use time and UUID generation interfaces to ensure testability.
+- Retrieve the current time using `clock.NowUTC()`.
+- Generate UUIDs using `idgen.NewUUID()`.
+- Interface definitions can be found in `internal/platform/clock/clock.go`.
 
-### 2. Error Classification & Exit Codes
+### 2. Error Classification and Exit Codes
 
-Wrap failures in `apperr.Error` values to ensure the CLI exits with the appropriate status code.
+Errors must be wrapped in the `apperr.Error` struct to return the correct exit codes in the CLI.
 
-- Prefer helper builders such as `apperr.CLIUsage()`, `apperr.NotFound()`, `apperr.Unsafe()`, or `apperr.Corrupted()`.
-- Avoid naked panic statements; let errors bubble back to adapter boundary execution runs.
+- Use the helper constructors: `apperr.CLIUsage()`, `apperr.NotFound()`, `apperr.Unsafe()`, `apperr.Corrupted()`.
+- Avoid direct calls to `panic()`; errors should be handled at the adapter boundaries.
 
-### 3. Safe File Modification
+### 3. Safe File Writes
 
-- Use `internal/platform/fs/atomic.go` for writing markdown documents or metadata.
-- Mutating files directly via `os.WriteFile` bypasses the staging-and-atomic-swap lifecycle, which can lead to file corruption on crashes.
+- Writing Markdown files and metadata must be performed via calls to `internal/platform/fs/atomic.go`.
+- Direct writing via `os.WriteFile` without a temporary buffer and a `Sync()` call on the parent directory is prohibited, as it can lead to file corruption if the system terminates abruptly.
 
-### 4. Lock Acquisition Invariants
+### 4. Locking Invariants
 
-- Modifications to Markdown notes (`Store.Create`, `Store.Edit`, `Store.Delete`) require acquiring the write lock via `internal/platform/lock`.
-- Rebuilding indices requires acquiring `rebuildLockPath` under the active state directory.
-- Always release locks using deferred guards.
+- Any mutation of notes in the storage requires acquiring an exclusive write lock via `internal/platform/lock` with the name `write`.
+- Rebuilding the search index requires acquiring the `reindex.lock` in the active project's state directory.
+- Releasing locks must always be handled in a `defer` block.
 
 ### 5. Pure Go SQLite Driver
 
-- This project uses `modernc.org/sqlite` instead of `cgo`-dependent drivers.
-- Ensure SQL dialect-specific operations are fully compatible with sqlite3 specifications.
-- Connection setup is defined in `internal/store/sqliteindex/store.go` (`openDB`).
+- The project uses the `modernc.org/sqlite` driver to avoid CGO dependencies.
+- All SQL queries must remain compatible with the SQLite3 specification.
 
 ---
 
-## How to Extend the Application
+## Guidelines for Extending Code
 
-### Making any changes
+### Running Tests and Linters
 
-1. After changes run `go test ./...` to ensure all tests pass.
-2. Run `golangci-lint run` to check for linting issues.
+1. After making changes, run the full test suite: `go test ./...`.
+2. Check the code style using the linter: `golangci-lint run`.
 
 ### Adding a New CLI Command
 
-1. Locate the target area under `internal/adapter/cli/`.
-2. Define your new command variable:
+1. Create a command file in `internal/adapter/cli/`.
+2. Define the `cobra.Command` structure:
    ```go
    var myNewCmd = &cobra.Command{
        Use:   "my-command [ARGS]",
        Short: "Brief description",
        RunE: func(cmd *cobra.Command, args []string) error {
-           // Execute logic
+           // Processing logic
            return nil
        },
    }
    ```
-3. Register the command within `buildCommandTree()` in `command_tree.go` and configure any required flags on the clone copy inside that file.
+3. Register the command within `buildCommandTree()` inside `command_tree.go`.
 
 ### Adding a New MCP Tool
 
-1. Define input and output parameter structures in `internal/adapter/stdio/tools.go`.
-2. Register the tool function under either `RegisterReadOnly` or `RegisterWrite`:
+1. Describe the input and output parameter structures in `internal/adapter/stdio/tools.go`.
+2. Register the tool depending on its impact on state (read or write):
    ```go
    func RegisterMyNewTool(server *sdkmcp.Server, deps Dependencies) {
        sdkmcp.AddTool(server, &sdkmcp.Tool{
            Name:        "my_new_tool",
-           Description: "Instructions for the LLM",
+           Description: "Purpose description for the AI model",
        }, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input MyInput) (*sdkmcp.CallToolResult, MyOutput, error) {
-           // Connect to runtime services through deps
+           // Invocation logic for internal services from deps
            return nil, MyOutput{}, nil
        })
    }
    ```
 
-### Modifying Markdown Parsing Logic
+### Modifying Markdown Parsing
 
-If you need to change how elements (tags, links, observations) are extracted from markdown files:
+If you need to change how tags, links, or observations are extracted:
 
-1. Do not place layout detection code inside raw stores or services.
-2. Modify or add parser interfaces inside the `internal/format/markdown/` package.
-3. Test processing outputs against AST configurations in isolation using Goldmark nodes.
+1. Document parsing logic must not reside in the storage or service layers.
+2. Apply changes within the `internal/format/markdown/` package.
+3. Test Goldmark AST node manipulation in isolation within the package's respective test files.

@@ -1,4 +1,7 @@
 set shell := ["bash", "-uc"]
+VERSION := "dev"
+GO_LDFLAGS := "-s -w -X main.version={{ VERSION }}"
+GO_FLAGS := "-trimpath"
 
 default: check
 
@@ -19,12 +22,28 @@ test: test-unit test-race test-integration
 check: lint test
 
 build-linux:
-    GOOS=linux GOARCH=amd64 go build -o ./bin/linux/mnemonic ./cmd/mnemonic
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build {{ GO_FLAGS }} -ldflags={{ GO_LDFLAGS }} -o ./bin/linux/mnemonic ./cmd/mnemonic
 
 build-macos:
-    GOOS=darwin GOARCH=arm64 go build -o ./bin/macos/mnemonic ./cmd/mnemonic
+    CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build {{ GO_FLAGS }} -ldflags={{ GO_LDFLAGS }} -o ./bin/macos/mnemonic ./cmd/mnemonic
 
 build: clean build-linux build-macos
+
+archive-linux: build-linux
+    tar -czf ./bin/linux/mnemonic_{{ VERSION }}_linux_amd64.tar.gz -C ./bin/linux mnemonic README.md LICENSE* 2>/dev/null || tar -czf ./bin/linux/mnemonic_{{ VERSION }}_linux_amd64.tar.gz -C ./bin/linux mnemonic
+
+archive-macos: build-macos
+    tar -czf ./bin/macos/mnemonic_{{ VERSION }}_darwin_arm64.tar.gz -C ./bin/macos mnemonic README.md LICENSE* 2>/dev/null || tar -czf ./bin/macos/mnemonic_{{ VERSION }}_darwin_arm64.tar.gz -C ./bin/macos mnemonic
+
+archive: archive-linux archive-macos
+
+build-linux-debug:
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -gcflags="all=-N -l" -o ./bin/linux/mnemonic_linux_amd64_debug ./cmd/mnemonic
+
+build-macos-debug:
+    CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -gcflags="all=-N -l" -o ./bin/macos/mnemonic_darwin_arm64_debug ./cmd/mnemonic
+
+build-debug: build-linux-debug build-macos-debug
 
 install:
     go install ./cmd/mnemonic

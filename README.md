@@ -1,26 +1,26 @@
 # mnemonic
 
-`mnemonic` is a local-first personal knowledge base and search engine. It operates as a Command Line Interface (CLI) tool and a Model Context Protocol (MCP) server, allowing you to manage, link, and search Markdown-formatted notes.
+`mnemonic` is a local-first personal knowledge base and search engine. Operating as a Command Line Interface (CLI) and a Model Context Protocol (MCP) server, it allows you to organize, link, and search Markdown-formatted notes.
 
-The application indexes documents into a local SQLite database utilizing FTS5 (Full-Text Search) for queries, extracts structured inline data, tracks explicit backlinks, and provides both standard stdio-based and SSE-based MCP interfaces for LLM integrations.
+The application indexes documents into a local SQLite database, using FTS5 (Full-Text Search) virtual tables to rank results via the BM25 algorithm. It extracts structured inline metadata, tracks backlinks, and exposes MCP interfaces (via both stdio and SSE) for integration with external AI assistants and compatible clients.
 
 ---
 
 ## Features
 
-- **Local-First Architecture:** Keeps your data stored in plain text Markdown files and standard SQLite databases under your user directory.
-- **Two Project Configurations:**
-  - **Central:** Maintained directly under the configured home path.
-  - **Local:** Pointers mapping a custom folder (such as a Git repository) containing a `mnemonic.toml` file to the registry.
-- **Extracted Structural Metadata:**
-  - Standard YAML Frontmatter parsing (`mnemonic_note_id`, `slug`, `tags`, etc.).
-  - Inline hashtag detection (`#tag`).
-  - Bullet-point observations with explicit categorizations: `- [category] content`.
-  - Classic Wiki-link syntax `[[Target Note]]` or aliased links `[[Target Note|Alias]]`.
-  - Explicit dependency declaration blocks via `## Relations` headers.
-- **SQLite FTS5 Search Index:** Indexes title, tags, bodies, and observations to run fast local search.
-- **Model Context Protocol (MCP) Support:** Provides tools for AI models to safely read, search, append to, and manage notes.
-- **SSE Web Server:** Exposes the MCP server over HTTP SSE endpoints with Bearer Token authorization options.
+- **Local-first Architecture:** Data is stored as plain Markdown files and standard SQLite databases inside the user's workspace.
+- **Dual Project Configurations:**
+  - **Central:** Stored directly within the configured home directory for notes.
+  - **Local:** Pointer files linking arbitrary directories (such as a Git repository) containing a `mnemonic.toml` file to the global registry.
+- **Metadata and Relationship Extraction:**
+  - Parses standard YAML Frontmatter (`mnemonic_note_id`, `slug`, `tags`, etc.).
+  - Detects inline hashtags (`#tag`).
+  - Parses bulleted lists of observations with explicit categorization: `- [category] content`.
+  - Supports wikilink syntax `[[Target Note]]` or aliased links `[[Target Note|Alias]]`.
+  - Parses explicitly declared relationships under a `## Relations` heading.
+- **SQLite FTS5 Search Index:** Indexes titles, tags, content, and observations for fast local searches.
+- **Model Context Protocol (MCP) Support:** Provides tools for safely reading, searching, updating, and managing notes from compatible MCP clients.
+- **SSE Server:** Exposes the MCP API over HTTP SSE transport with optional Bearer token authentication.
 
 ---
 
@@ -38,16 +38,16 @@ go install ./cmd/mnemonic
 
 ## Configuration and Paths
 
-`mnemonic` adheres to the XDG Base Directory Specification. You can discover your system-specific paths by running:
+`mnemonic` adheres to the XDG Base Directory Specification. You can inspect the active paths on your system using:
 
 ```bash
 mnemonic config show
 ```
 
-### Precedence for Config File Search:
+### Configuration File Lookup Order:
 
-1. `--config-file` CLI override flag.
-2. `MNEMONIC_CONFIG_FILE` environment variable.
+1. CLI flag `--config-file`.
+2. Environment variable `MNEMONIC_CONFIG_FILE`.
 3. `$XDG_CONFIG_HOME/mnemonic/config.toml` (typically `~/.config/mnemonic/config.toml`).
 
 ### Configuration Schema (`config.toml`):
@@ -56,23 +56,23 @@ mnemonic config show
 version = 1
 
 [paths]
-# Absolute or home-relative path to store central projects.
-# Defaults to ~/.mnemonic if left empty.
+# Absolute or relative path to store central projects.
+# If empty, defaults to ~/.mnemonic.
 memories_home = "~/.mnemonic"
 
 [notes]
-# Note deletion behavior. Supported values: "trash"
+# Note deletion behavior. Supported: "trash"
 delete_behavior = "trash"
 trash_dir_name = ".trash"
 
 [index]
-# Enables/disables full-text search, WAL mode, and locks busy timeouts
+# Enable/disable full-text search, WAL mode, and database busy timeout
 fts = true
 wal = true
 busy_timeout_ms = 5000
 
 [output]
-# Formats JSON outputs with indentation when using CLI flags
+# JSON formatting output settings in the CLI
 json_pretty = true
 
 [logging]
@@ -86,22 +86,22 @@ version = 1
 project_id = "550e8400-e29b-41d4-a716-446655440000" # Project UUID
 name = "My Personal Wiki"
 slug = "personal"
-type = "local" # Use "local" or omit/leave empty for central projects
+type = "local" # Use "local" or omit for central projects
 markdown_format_version = 1
 
-# Optional description for the project, which will be injected into tools descriptions.
+# Optional project description for MCP tool context
 description = "..."
 
-# Optional custom instructions, which will be injected into mcp server instructions.
+# Optional custom instructions for the MCP server
 custom_instructions = "..."
 
 created_at = 2024-11-20T12:00:00Z
 updated_at = 2024-11-21T15:30:00Z
 
 [layout]
-# File globs to index as notes
+# File globs to include in indexing
 notes_glob = ["**/*.md"]
-# Paths to exclude from index operations
+# Paths excluded from indexing
 ignore = ["mnemonic.toml", ".trash/**"]
 
 [generator]
@@ -111,29 +111,29 @@ app_version = "v0.1.0"
 
 ---
 
-## Getting Started
+## Quick Start
 
 ### 1. Initialize a Project
 
-You can initialize a project globally (central) or inside your current working directory (local).
+You can initialize a project globally (central) or within your current working directory (local).
 
 ```bash
-# Central project (saved in ~/.mnemonic/personal)
+# Central project (saved to ~/.mnemonic/personal)
 mnemonic project init personal --description "My personal thoughts and logs"
 
-# Local project (stored in current directory, registers a pointer)
+# Local project (in current directory, registers a pointer)
 mnemonic project init my-repo --local
 ```
 
-### 2. Add or Edit Notes
+### 2. Create and Edit Notes
 
-To create a note with the CLI:
+Create a note via the CLI:
 
 ```bash
 mnemonic notes create --title "My First Note" --tag "project" --tag "draft"
 ```
 
-To edit an existing note (resolving by ID, title, path, or slug):
+Edit a note (query by ID, title, path, or slug):
 
 ```bash
 mnemonic notes edit "my-first-note" --append "\n- [todo] complete the setup instructions."
@@ -144,17 +144,17 @@ mnemonic notes edit "my-first-note" --append "\n- [todo] complete the setup inst
 Query your knowledge base:
 
 ```bash
-# Full text search
+# Full-text search
 mnemonic notes search "todo instructions"
 
-# Filter by tag
+# Filter search results by tag
 mnemonic notes search "complete" --tag "project"
 
-# List tags
+# List all tags
 mnemonic tags list
 ```
 
-Show raw file content or structural representations:
+Display the contents of a note:
 
 ```bash
 mnemonic notes show "my-first-note"
@@ -164,19 +164,19 @@ mnemonic notes show "my-first-note"
 
 ## Model Context Protocol (MCP) Integration
 
-`mnemonic` can be used as an MCP host to supply your local knowledge base directly to LLMs (such as Cursor, Windsurf, or Claude Desktop).
+`mnemonic` can run as an MCP host to expose your local knowledge base to compatible AI assistants and clients.
 
-### Command-line Stdio Adapter
+### Stdio Protocol
 
-Run the stdio adapter inside your client configuration:
+Run the stdio adapter inside your MCP client configuration:
 
 ```bash
 mnemonic stdio --project personal
 ```
 
-#### Claude Desktop Configuration Example
+#### Example Client Configuration
 
-Add the following to your `claude_desktop_config.json`:
+Add the following config to your compatible MCP client settings file (usually in JSON format):
 
 ```json
 {
@@ -189,22 +189,22 @@ Add the following to your `claude_desktop_config.json`:
 }
 ```
 
-### HTTP/SSE Server
+### HTTP/SSE Web Server
 
-Expose the MCP API over SSE endpoints.
+Access the MCP API over SSE endpoints.
 
 ```bash
 export MNEMONIC_PROJECT_TOKEN="your-secure-token"
 mnemonic web serve --port 8080
 ```
 
-This serves:
+The server handles:
 
-- `GET /sse` (Initial SSE connection)
-- `POST /messages` (MCP protocol messaging endpoint)
+- `GET /sse` (initial SSE connection establishment)
+- `POST /messages` (MCP protocol message delivery)
 
-Using standard Bearer Authorization if `MNEMONIC_PROJECT_TOKEN` is declared.
+If `MNEMONIC_PROJECT_TOKEN` is set, requests require a Bearer authorization token.
 
-### Read-Only Constraints
+### Read-Only Mode
 
-Add the `--read-only` flag (or set the `MNEMONIC_READ_ONLY=true` environment variable) to run the server with only diagnostic and querying tools enabled, protecting files from write mutations.
+Using the `--read-only` flag (or setting the environment variable `MNEMONIC_READ_ONLY=true`) launches the server with diagnostics and read tools only, preventing any modifications to note files.
