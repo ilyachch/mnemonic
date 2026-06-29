@@ -470,10 +470,13 @@ func walkRoot(root string) ([]string, error) {
 		if err != nil {
 			return fmt.Errorf("rel %q: %w", path, err)
 		}
+		// Skip hidden directories (those whose name starts with ".") such as
+		// .git, .obsidian, .vscode, and the .trash directory. This keeps the
+		// walk focused on user-authored markdown content.
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), ".") {
+			return filepath.SkipDir
+		}
 		if !shouldIncludeEntry(entry, filepath.ToSlash(rel)) {
-			if entry.IsDir() && entry.Name() == ".trash" {
-				return filepath.SkipDir
-			}
 			return nil
 		}
 		notes = append(notes, filepath.ToSlash(rel))
@@ -505,6 +508,255 @@ func shouldIncludeEntry(entry fs.DirEntry, rel string) bool {
 func HashBytes(content []byte) string {
 	sum := sha256.Sum256(content)
 	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// HydrateInput configures metadata hydration for raw markdown notes.
+type HydrateInput struct {
+	// Files is an optional list of project-relative paths to hydrate. When
+	// empty, the entire store root is walked.
+	Files []string
+	// DryRun reports what would change without writing to disk.
+	DryRun bool
+	// Now overrides the current time used for timestamps when a file's mtime
+	// is unavailable. Defaults to clock.NowUTC when nil.
+	Now func() time.Time
+	// UUID overrides the note ID generator. Defaults to idgen.NewUUID when nil.
+	UUID func() string
+}
+
+// HydratedNote describes one note that received missing metadata.
+type HydratedNote struct {
+	Path   string `json:"path"`
+	NoteID string `json:"note_id"`
+	Title  string `json:"title"`
+	Slug   string `json:"slug"`
+}
+
+// HydrateResult describes the outcome of a hydration pass.
+type HydrateResult struct {
+	Hydrated []HydratedNote `json:"hydrated"`
+	Skipped  []string       `json:"skipped"`
+	DryRun   bool           `json:"dry_run"`
+}
+
+// Hydrate scans markdown notes and fills in missing canonical frontmatter
+// fields (mnemonic_note_id, title, slug, created_at, updated_at) for any note
+// that lacks a mnemonic_note_id. Notes that already have a mnemonic_note_id
+// are left untouched and reported in Skipped.
+//
+// When Files is empty the whole store root is walked; otherwise only the
+// supplied project-relative paths are processed. All file mutations use
+// AtomicWriteFile and are guarded by the project write lock.
+func (s Store) Hydrate(input HydrateInput) (HydrateResult, error) {
+	root := s.rootDir()
+	if root == "" {
+		return HydrateResult{}, errors.New("root directory is required")
+	}
+
+	now := input.Now
+	if now == nil {
+		now = clock.NowUTC
+	}
+	uuidFn := input.UUID
+	if uuidFn == nil {
+		uuidFn = idgen.NewUUID
+	}
+
+	relPaths, err := s.resolveHydrateTargets(root, input.Files)
+	if err != nil {
+		return HydrateResult{}, err
+	}
+
+	guard, err := acquireWriteLock(root, s.StateDir)
+	if err != nil {
+		return HydrateResult{}, err
+	}
+	defer func() { _ = guard.Release() }()
+
+	result := HydrateResult{DryRun: input.DryRun}
+	for _, relPath := range relPaths {
+		entry, skip, err := s.hydrateOne(root, relPath, input.DryRun, now, uuidFn)
+		if err != nil {
+			return HydrateResult{}, err
+		}
+		if skip {
+			result.Skipped = append(result.Skipped, relPath)
+			continue
+		}
+		result.Hydrated = append(result.Hydrated, entry)
+	}
+
+	return result, nil
+}
+
+// hydrateOne processes a single note file: reads, parses, and either reports
+// it as skipped (when it already has a mnemonic_note_id) or hydrates missing
+// metadata and writes it back (unless dry-run).
+func (s Store) hydrateOne(root, relPath string, dryRun bool, now func() time.Time, uuidFn func() string) (HydratedNote, bool, error) {
+	absPath := filepath.Join(root, filepath.FromSlash(relPath))
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return HydratedNote{}, false, fmt.Errorf("read note %q: %w", relPath, err)
+	}
+
+	note, err := markdown.ParseNote(data)
+	if err != nil {
+		return HydratedNote{}, false, fmt.Errorf("parse note %q: %w", relPath, err)
+	}
+
+	if note.MnemonicNoteID != "" {
+		return HydratedNote{}, true, nil
+	}
+
+	hydrated, err := s.hydrateNote(relPath, absPath, note, now, uuidFn)
+	if err != nil {
+		return HydratedNote{}, false, fmt.Errorf("hydrate note %q: %w", relPath, err)
+	}
+
+	if !dryRun {
+		rendered, err := markdown.RenderNote(hydrated.note)
+		if err != nil {
+			return HydratedNote{}, false, fmt.Errorf("render note %q: %w", relPath, err)
+		}
+		if err := mnemonicfs.AtomicWriteFile(absPath, rendered, 0o644); err != nil {
+			return HydratedNote{}, false, fmt.Errorf("write note %q: %w", relPath, err)
+		}
+	}
+
+	return HydratedNote{
+		Path:   relPath,
+		NoteID: hydrated.note.MnemonicNoteID,
+		Title:  hydrated.note.Title,
+		Slug:   hydrated.note.EffectiveSlug(),
+	}, false, nil
+}
+
+// resolveHydrateTargets returns the project-relative paths to process. When
+// explicit files are supplied they are validated and cleaned; otherwise the
+// whole root is walked.
+func (s Store) resolveHydrateTargets(root string, files []string) ([]string, error) {
+	if len(files) == 0 {
+		return s.Walk()
+	}
+
+	relPaths := make([]string, 0, len(files))
+	for _, file := range files {
+		rel, err := resolveFileWithinRoot(root, file)
+		if err != nil {
+			return nil, err
+		}
+		relPaths = append(relPaths, rel)
+	}
+	return relPaths, nil
+}
+
+// resolveFileWithinRoot converts an arbitrary (absolute or relative) path into
+// a project-relative path and rejects anything outside the store root.
+func resolveFileWithinRoot(root, file string) (string, error) {
+	if file == "" {
+		return "", apperr.CLIUsage("file path is required", nil)
+	}
+
+	absPath := file
+	if !filepath.IsAbs(absPath) {
+		absPath = filepath.Join(root, file)
+	}
+	absClean, err := filepath.Abs(filepath.Clean(absPath))
+	if err != nil {
+		return "", apperr.CLIUsage(fmt.Sprintf("resolve file path %q: %v", file, err), nil)
+	}
+
+	rootClean, err := filepath.Abs(filepath.Clean(root))
+	if err != nil {
+		return "", apperr.CLIUsage(fmt.Sprintf("resolve root %q: %v", root, err), nil)
+	}
+
+	rel, err := filepath.Rel(rootClean, absClean)
+	if err != nil {
+		return "", apperr.CLIUsage(fmt.Sprintf("file %q is not within project root", file), nil)
+	}
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", apperr.CLIUsage(fmt.Sprintf("file %q is outside project root", file), nil)
+	}
+
+	if !strings.HasSuffix(rel, ".md") {
+		return "", apperr.CLIUsage(fmt.Sprintf("file %q is not a markdown file", file), nil)
+	}
+	return filepath.ToSlash(rel), nil
+}
+
+// hydratedNote carries the in-memory note after hydration.
+type hydratedNote struct {
+	note markdown.Note
+}
+
+// hydrateNote fills missing canonical fields on a parsed note using the
+// supplied time and UUID providers. It never overwrites fields that already
+// carry a value.
+func (s Store) hydrateNote(relPath, absPath string, note markdown.Note, now func() time.Time, uuidFn func() string) (hydratedNote, error) {
+	if note.MnemonicNoteID == "" {
+		note.MnemonicNoteID = uuidFn()
+	}
+
+	if note.Title == "" {
+		note.Title = deriveNoteTitle(note.Body, relPath)
+	}
+
+	if note.EffectiveSlug() == "" {
+		slugValue, err := slug.Slugify(note.Title)
+		if err != nil || slugValue == "" {
+			slugValue = slugFromBaseName(relPath)
+		}
+		note.Slug = slugValue
+	}
+
+	mtime := fileMtime(absPath, now)
+	if note.CreatedAt.IsZero() {
+		note.CreatedAt = mtime
+	}
+	if note.UpdatedAt.IsZero() {
+		note.UpdatedAt = mtime
+	}
+
+	return hydratedNote{note: note}, nil
+}
+
+// deriveNoteTitle resolves a title from the note body's first H1 heading,
+// falling back to the file's base name (without extension) when no heading
+// is present.
+func deriveNoteTitle(body []byte, relPath string) string {
+	if title := markdown.ExtractH1Title(body); title != "" {
+		return title
+	}
+	return strings.TrimSuffix(filepath.Base(relPath), ".md")
+}
+
+// slugFromBaseName produces a best-effort slug from a file's base name by
+// stripping the extension and lowercasing. Used when Slugify rejects the
+// title (e.g. non-ASCII input).
+func slugFromBaseName(relPath string) string {
+	base := strings.TrimSuffix(filepath.Base(relPath), ".md")
+	base = strings.ToLower(base)
+	var b strings.Builder
+	for _, r := range base {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('-')
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
+// fileMtime returns the file's modification time in UTC, falling back to the
+// supplied now() provider when the stat fails or the time is zero.
+func fileMtime(absPath string, now func() time.Time) time.Time {
+	info, err := os.Stat(absPath)
+	if err != nil || info.ModTime().IsZero() {
+		return now().UTC()
+	}
+	return info.ModTime().UTC()
 }
 
 type TrashPathInput struct {
