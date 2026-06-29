@@ -272,8 +272,8 @@ project_id = "550e8400-e29b-41d4-a716-446655440000"
 name = "My Project"
 slug = "my-project"
 markdown_format_version = 1
-created_at = "2026-06-23T10:00:00Z"
-updated_at = "2026-06-23T10:00:00Z"
+created_at = 2026-06-23T10:00:00Z
+updated_at = 2026-06-23T10:00:00Z
 `
 	m, err := ParseMnemonicManifest([]byte(tomlData))
 	require.NoError(t, err)
@@ -287,8 +287,8 @@ project_id = "550e8400-e29b-41d4-a716-446655440000"
 name = "My Project"
 slug = "my-project"
 markdown_format_version = 1
-created_at = "2026-06-23T10:00:00Z"
-updated_at = "2026-06-23T10:00:00Z"
+created_at = 2026-06-23T10:00:00Z
+updated_at = 2026-06-23T10:00:00Z
 unknown_field = "should fail"
 `
 	_, err := ParseMnemonicManifest([]byte(tomlData))
@@ -309,8 +309,8 @@ type = "local"
 markdown_format_version = 1
 description = "A fully specified project"
 custom_instructions = "Always use short answers."
-created_at = "2026-06-23T10:00:00Z"
-updated_at = "2026-06-23T10:00:00Z"
+created_at = 2026-06-23T10:00:00Z
+updated_at = 2026-06-23T10:00:00Z
 
 [layout]
 notes_glob = ["docs/*.md", "blog/*.md"]
@@ -438,36 +438,6 @@ func TestWritePointerFile_Nil(t *testing.T) {
 	path := filepath.Join(tmp, "pointer.toml")
 
 	err := WritePointerFile(path, nil)
-	require.Error(t, err)
-}
-
-// ── tomlTime helpers ───────────────────────────────────────────────────
-
-func TestTOMLTime_MarshalText(t *testing.T) {
-	ts := fixedTime(14, 30)
-	tt := newTOMLTime(ts)
-	data, err := tt.MarshalText()
-	require.NoError(t, err)
-	assert.Equal(t, "2026-06-23T14:30:00Z", string(data))
-}
-
-func TestTOMLTime_UnmarshalText(t *testing.T) {
-	var tt tomlTime
-	err := tt.UnmarshalText([]byte("2026-06-23T14:30:00Z"))
-	require.NoError(t, err)
-	assert.Equal(t, fixedTime(14, 30), tt.Time())
-}
-
-func TestTOMLTime_UnmarshalText_Empty(t *testing.T) {
-	var tt tomlTime
-	err := tt.UnmarshalText([]byte(""))
-	require.NoError(t, err)
-	assert.True(t, tt.Time().IsZero())
-}
-
-func TestTOMLTime_UnmarshalText_Invalid(t *testing.T) {
-	var tt tomlTime
-	err := tt.UnmarshalText([]byte("not-a-date"))
 	require.Error(t, err)
 }
 

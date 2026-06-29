@@ -65,8 +65,8 @@ type manifestTOML struct {
 	MarkdownFormatVersion int            `toml:"markdown_format_version"`
 	Description           string         `toml:"description"`
 	CustomInstructions    string         `toml:"custom_instructions"`
-	CreatedAt             tomlTime       `toml:"created_at"`
-	UpdatedAt             tomlTime       `toml:"updated_at"`
+	CreatedAt             time.Time      `toml:"created_at"`
+	UpdatedAt             time.Time      `toml:"updated_at"`
 	Layout                ManifestLayout `toml:"layout"`
 	Generator             Generator      `toml:"generator"`
 }
@@ -170,8 +170,8 @@ func (m *Manifest) MarshalTOML() ([]byte, error) {
 		MarkdownFormatVersion: copy.MarkdownFormatVersion,
 		Description:           copy.Description,
 		CustomInstructions:    copy.CustomInstructions,
-		CreatedAt:             newTOMLTime(copy.CreatedAt),
-		UpdatedAt:             newTOMLTime(copy.UpdatedAt),
+		CreatedAt:             copy.CreatedAt.UTC(),
+		UpdatedAt:             copy.UpdatedAt.UTC(),
 		Layout:                copy.Layout,
 		Generator:             copy.Generator,
 	}
@@ -215,8 +215,8 @@ func ParseMnemonicManifest(data []byte) (*Manifest, error) {
 		MarkdownFormatVersion: raw.MarkdownFormatVersion,
 		Description:           raw.Description,
 		CustomInstructions:    raw.CustomInstructions,
-		CreatedAt:             raw.CreatedAt.Time(),
-		UpdatedAt:             raw.UpdatedAt.Time(),
+		CreatedAt:             raw.CreatedAt,
+		UpdatedAt:             raw.UpdatedAt,
 		Layout:                raw.Layout,
 		Generator:             raw.Generator,
 	}
@@ -262,27 +262,4 @@ func WritePointerFile(path string, pf *PointerFile) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)
-}
-
-type tomlTime time.Time
-
-func newTOMLTime(ts time.Time) tomlTime { return tomlTime(ts.UTC()) }
-
-func (t tomlTime) Time() time.Time { return time.Time(t) }
-
-func (t tomlTime) MarshalText() ([]byte, error) {
-	return []byte(time.Time(t).UTC().Format(time.RFC3339)), nil
-}
-
-func (t *tomlTime) UnmarshalText(text []byte) error {
-	if len(text) == 0 {
-		*t = tomlTime{}
-		return nil
-	}
-	ts, err := time.Parse(time.RFC3339, string(text))
-	if err != nil {
-		return err
-	}
-	*t = tomlTime(ts.UTC())
-	return nil
 }
