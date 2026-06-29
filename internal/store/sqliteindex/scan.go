@@ -1,9 +1,7 @@
 package sqliteindex
 
 import (
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -102,7 +100,7 @@ func scanOneNote(root, relPath string) (NoteDoc, error) {
 		Frontmatter:  note.Frontmatter,
 		BodyMarkdown: string(note.Body),
 		BodyText:     string(note.Body),
-		ContentHash:  hashNoteBytes(data),
+		ContentHash:  markdownstore.HashBytes(data),
 		FileMTimeNS:  st.ModTime().UnixNano(),
 		FileSize:     st.Size(),
 	}
@@ -123,7 +121,7 @@ func populateNoteDocData(info *NoteDoc, note markdown.Note, data []byte) {
 			Category:    ob.Category,
 			Content:     ob.Content,
 			LineStart:   ob.LineStart,
-			ContentHash: hashString(ob.Category + "\n" + ob.Content),
+			ContentHash: markdownstore.HashBytes([]byte(ob.Category + "\n" + ob.Content)),
 		})
 		info.Tags = append(info.Tags, tagRow{Source: "observation", Value: ob.Category})
 	}
@@ -141,11 +139,6 @@ func populateNoteDocData(info *NoteDoc, note markdown.Note, data []byte) {
 			Source: string(rel.Source), Line: rel.Line,
 		})
 	}
-}
-
-func hashNoteBytes(content []byte) string {
-	sum := sha256.Sum256(content)
-	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
 func normalizeTitleSlug(s string) string {

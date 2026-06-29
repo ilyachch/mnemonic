@@ -1,9 +1,7 @@
 package sqliteindex
 
 import (
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
+	"github.com/ilyachch/mnemonic/internal/store/markdownstore"
 )
 
 // RebuildResult summarizes a rebuild.
@@ -144,7 +143,7 @@ func insertNoteDoc(db *sql.DB, doc NoteDoc, kbid string) error {
 	}
 	for _, ob := range doc.Observations {
 		_, _ = db.Exec(`INSERT INTO observations(observation_id, note_id, kind, value) VALUES (?, ?, ?, ?)`,
-			hashString(doc.NoteID+ob.Content), doc.NoteID, ob.Category, ob.Content)
+			markdownstore.HashBytes([]byte(doc.NoteID+ob.Content)), doc.NoteID, ob.Category, ob.Content)
 	}
 	return nil
 }
@@ -157,7 +156,7 @@ func insertDocLinks(db *sql.DB, doc NoteDoc, docs []NoteDoc, seenNorm map[string
 			toID.String = resolved
 		}
 		_, _ = db.Exec(`INSERT INTO links(link_id, note_id, to_note_id, target, relation_type, source_line) VALUES (?, ?, ?, ?, ?, ?)`,
-			hashString(doc.NoteID+link.RawTarget+link.Source+strconv.Itoa(link.Line)), doc.NoteID, toID, link.RawTarget, link.RelationType, link.Line)
+			markdownstore.HashBytes([]byte(doc.NoteID+link.RawTarget+link.Source+strconv.Itoa(link.Line))), doc.NoteID, toID, link.RawTarget, link.RelationType, link.Line)
 	}
 }
 
@@ -177,11 +176,6 @@ func resolveLinkTarget(docs []NoteDoc, norms map[string]int, target string) (str
 		}
 	}
 	return "", false
-}
-
-func hashString(s string) string {
-	sum := sha256.Sum256([]byte(s))
-	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
 func quickCheckFile(path string) error {
