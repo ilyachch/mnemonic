@@ -112,7 +112,7 @@ collect-content-no-tests: _mkdir_tmp
     collect_content . --skip-empty --format md --sort dirs-first --ext ".go" --exclude "*_test.go" > ./tmp/mnemonic_no_tests.md
 
 collect-content-mds: _mkdir_tmp
-    collect_content . --skip-empty --format md --sort dirs-first --ext ".md" --exclude "testdata" > ./tmp/mnemonic_mds.md
+    collect_content . --skip-empty --format md --sort dirs-first --ext ".md" --exclude "testdata" "tmp" > ./tmp/mnemonic_mds.md
 
 collect-open-issues: _mkdir_tmp
     gh issue list --state open --json number,title,body | jq -r '.[] | "#\(.number) \(.title)\n\(.body | split("\n") | join("\n"))\n"' > ./tmp/open_issues.md
