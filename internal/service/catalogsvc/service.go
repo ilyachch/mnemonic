@@ -842,8 +842,8 @@ func buildInitManifest(projectID, name, slugValue, kind, description string, now
 	m.MarkdownFormatVersion = 1
 	m.Description = description
 	m.CustomInstructions = ""
-	m.CreatedAt = now
-	m.UpdatedAt = now
+	m.CreatedAt = now.Unix()
+	m.UpdatedAt = now.Unix()
 	m.Generator.App = "mnemonic"
 	if kind != "" {
 		m.Type = manifestfmt.ManifestType(kind)

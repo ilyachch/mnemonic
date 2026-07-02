@@ -14,6 +14,8 @@ var canonicalFrontmatterKeys = map[string]struct{}{
 	"title":            {},
 	"slug":             {},
 	"tags":             {},
+	"summary":          {},
+	"aliases":          {},
 	"created_at":       {},
 	"updated_at":       {},
 	"type":             {},
@@ -68,17 +70,29 @@ func renderCanonicalFrontmatter(buf *bytes.Buffer, note Note, slug string) error
 			value any
 		}{"tags", note.Tags})
 	}
+	if note.Summary != "" {
+		pairs = append(pairs, struct {
+			key   string
+			value any
+		}{"summary", note.Summary})
+	}
+	if len(note.Aliases) > 0 {
+		pairs = append(pairs, struct {
+			key   string
+			value any
+		}{"aliases", note.Aliases})
+	}
 	if !note.CreatedAt.IsZero() {
 		pairs = append(pairs, struct {
 			key   string
 			value any
-		}{"created_at", note.CreatedAt.UTC()})
+		}{"created_at", note.CreatedAt.Unix()})
 	}
 	if !note.UpdatedAt.IsZero() {
 		pairs = append(pairs, struct {
 			key   string
 			value any
-		}{"updated_at", note.UpdatedAt.UTC()})
+		}{"updated_at", note.UpdatedAt.Unix()})
 	}
 	if note.Type != "" {
 		pairs = append(pairs, struct {

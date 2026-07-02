@@ -42,7 +42,7 @@ func newStdioFixture(t *testing.T, readOnly bool) *stdioFixture {
 	manifest.Name = "Demo"
 	manifest.Slug = slug
 	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = time.Date(2026, time.June, 23, 10, 0, 0, 0, time.UTC)
+	manifest.CreatedAt = time.Date(2026, time.June, 23, 10, 0, 0, 0, time.UTC).Unix()
 	manifest.UpdatedAt = manifest.CreatedAt
 	manifest.Generator.App = "mnemonic"
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(projectRoot, "mnemonic.toml"), manifest))

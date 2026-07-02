@@ -14,6 +14,8 @@ type Note struct {
 	Title          string
 	Slug           string
 	Tags           []string
+	Summary        string
+	Aliases        []string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 	Type           string
@@ -73,6 +75,12 @@ func ParseNote(data []byte) (Note, error) {
 		note.Slug = note.Permalink
 	}
 	if note.Tags, errField = noteStringSliceField(raw, "tags"); errField != nil {
+		return Note{}, errField
+	}
+	if note.Summary, errField = noteStringField(raw, "summary"); errField != nil {
+		return Note{}, errField
+	}
+	if note.Aliases, errField = noteStringSliceField(raw, "aliases"); errField != nil {
 		return Note{}, errField
 	}
 	if note.CreatedAt, errField = noteTimeField(raw, "created_at"); errField != nil {
@@ -135,15 +143,11 @@ func noteTimeField(raw map[string]any, key string) (time.Time, error) {
 	}
 
 	switch typed := value.(type) {
-	case time.Time:
-		return typed.UTC(), nil
-	case string:
-		parsed, err := time.Parse(time.RFC3339, typed)
-		if err != nil {
-			return time.Time{}, fmt.Errorf("frontmatter %q must be an RFC3339 timestamp: %w", key, err)
-		}
-		return parsed.UTC(), nil
+	case int:
+		return time.Unix(int64(typed), 0).UTC(), nil
+	case int64:
+		return time.Unix(typed, 0).UTC(), nil
 	default:
-		return time.Time{}, fmt.Errorf("frontmatter %q must be a timestamp string", key)
+		return time.Time{}, fmt.Errorf("frontmatter %q must be a Unix timestamp as an integer, got %T", key, value)
 	}
 }

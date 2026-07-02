@@ -226,7 +226,7 @@ func createMaintProject(t *testing.T, memoriesHome, slug, projectID string) proj
 	manifest.Name = slug
 	manifest.Slug = slug
 	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC)
+	manifest.CreatedAt = time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC).Unix()
 	manifest.UpdatedAt = manifest.CreatedAt
 	manifest.Generator.App = "mnemonic"
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))

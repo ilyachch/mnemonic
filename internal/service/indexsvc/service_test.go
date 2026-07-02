@@ -113,7 +113,7 @@ func newTestService(t *testing.T) (*Service, kb.KnowledgeBase) {
 	manifest.Name = k.Name
 	manifest.Slug = k.Slug
 	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC)
+	manifest.CreatedAt = time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC).Unix()
 	manifest.UpdatedAt = manifest.CreatedAt
 	manifest.Generator.App = "mnemonic"
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(k.ManifestPath, manifest))
@@ -122,16 +122,16 @@ func newTestService(t *testing.T) (*Service, kb.KnowledgeBase) {
 		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440001",
 		Title:          "Target Note",
 		Slug:           "target-note",
-		CreatedAt:      manifest.CreatedAt,
-		UpdatedAt:      manifest.CreatedAt,
+		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		Body:           []byte("target body\n"),
 	}))
 	require.NoError(t, writeNote(root, markdown.Note{
 		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440002",
 		Title:          "Source Note",
 		Slug:           "source-note",
-		CreatedAt:      manifest.CreatedAt,
-		UpdatedAt:      manifest.CreatedAt,
+		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		Body:           []byte("See [[Target Note]].\n"),
 	}))
 
@@ -141,8 +141,8 @@ func newTestService(t *testing.T) (*Service, kb.KnowledgeBase) {
 		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440003",
 		Title:          "Trash Note",
 		Slug:           "trash-note",
-		CreatedAt:      manifest.CreatedAt,
-		UpdatedAt:      manifest.CreatedAt,
+		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		Body:           []byte("ignored\n"),
 	}))
 

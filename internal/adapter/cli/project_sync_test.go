@@ -28,7 +28,7 @@ func TestProjectSyncCommandHydratesRawNotesAndSkipsIndexed(t *testing.T) {
 	manifest.Slug = "synced"
 	manifest.Type = manifestfmt.ManifestTypeLocal
 	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
+	manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC).Unix()
 	manifest.UpdatedAt = manifest.CreatedAt
 	manifest.Generator.App = "mnemonic"
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(projectRoot, "mnemonic.toml"), manifest))
@@ -98,7 +98,7 @@ func TestProjectSyncCommandProcessesOnlyExplicitFile(t *testing.T) {
 	manifest.Slug = "targeted"
 	manifest.Type = manifestfmt.ManifestTypeLocal
 	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
+	manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC).Unix()
 	manifest.UpdatedAt = manifest.CreatedAt
 	manifest.Generator.App = "mnemonic"
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(projectRoot, "mnemonic.toml"), manifest))
@@ -146,7 +146,7 @@ func TestProjectSyncCommandRejectsFileOutsideRoot(t *testing.T) {
 	manifest.Slug = "outside"
 	manifest.Type = manifestfmt.ManifestTypeLocal
 	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
+	manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC).Unix()
 	manifest.UpdatedAt = manifest.CreatedAt
 	manifest.Generator.App = "mnemonic"
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(projectRoot, "mnemonic.toml"), manifest))

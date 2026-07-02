@@ -5,8 +5,8 @@ slug: example-note
 tags:
   - docs
   - example
-created_at: 2026-06-06T09:00:00Z
-updated_at: 2026-06-06T09:30:00Z
+created_at: 1780736400
+updated_at: 1780738200
 type: note
 ---
 # Example Note

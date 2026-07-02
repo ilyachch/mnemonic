@@ -274,8 +274,8 @@ func prepareSmokeProject() (string, []string, error) {
 	manifest.Slug = "personal"
 	manifest.Type = manifestfmt.ManifestTypeLocal
 	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = now
-	manifest.UpdatedAt = now
+	manifest.CreatedAt = now.Unix()
+	manifest.UpdatedAt = now.Unix()
 	manifest.Generator.App = "mnemonic"
 	if err := manifestfmt.WriteMnemonicManifest(filepath.Join(memoriesDir, "mnemonic.toml"), manifest); err != nil {
 		return "", nil, err

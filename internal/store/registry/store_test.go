@@ -19,7 +19,7 @@ func makeValidManifest(projectID, name, slug string) *manifestfmt.Manifest {
 	m.Slug = slug
 	m.Type = manifestfmt.ManifestTypeLocal
 	m.MarkdownFormatVersion = 1
-	m.CreatedAt = time.Date(2026, time.June, 23, 10, 0, 0, 0, time.UTC)
+	m.CreatedAt = time.Date(2026, time.June, 23, 10, 0, 0, 0, time.UTC).Unix()
 	m.UpdatedAt = m.CreatedAt
 	return m
 }

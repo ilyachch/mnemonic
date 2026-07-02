@@ -62,7 +62,7 @@ func seedAddProject(t *testing.T) (string, string) {
 	manifest.Name = "Backend"
 	manifest.Slug = "backend"
 	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
+	manifest.CreatedAt = time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC).Unix()
 	manifest.UpdatedAt = manifest.CreatedAt
 	manifest.Generator.App = "mnemonic"
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(importRoot, "mnemonic.toml"), manifest))
