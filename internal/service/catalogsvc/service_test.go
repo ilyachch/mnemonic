@@ -572,12 +572,19 @@ func seedImportedProject(t *testing.T, memoriesHome, projectID, name, slug strin
 	manifest.MarkdownFormatVersion = 1
 	manifest.CreatedAt = time.Now().UTC()
 	manifest.UpdatedAt = manifest.CreatedAt
-	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(repoRoot, "mnemonic.toml"), manifest))
+	manifestPath := filepath.Join(repoRoot, "mnemonic.toml")
+	require.NoError(t, manifestfmt.WriteMnemonicManifest(manifestPath, manifest))
 
-	result, err := importProject(ImportInput{Path: repoRoot}, memoriesHome)
-	require.NoError(t, err)
-	require.Len(t, result.Candidates, 1)
-	return result
+	pointerPath := filepath.Join(memoriesHome, slug+".toml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(pointerPath), 0o755))
+	require.NoError(t, manifestfmt.WritePointerFile(pointerPath, &manifestfmt.PointerFile{ManifestPath: manifestPath}))
+
+	return ImportResult{
+		Path:        repoRoot,
+		Imported:    1,
+		Candidates:  []ImportCandidate{{ProjectID: projectID, Name: name, Slug: slug, MemoriesPath: repoRoot, ManifestAbs: manifestPath}},
+		IndexErrors: []ImportIndexError{},
+	}
 }
 
 func TestWrapRegistryError(t *testing.T) {

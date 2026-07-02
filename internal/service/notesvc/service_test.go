@@ -11,6 +11,7 @@ import (
 	"github.com/ilyachch/mnemonic/internal/store/markdownstore"
 	"github.com/ilyachch/mnemonic/internal/store/sqliteindex"
 	"github.com/ilyachch/mnemonic/internal/testutil"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -176,4 +177,67 @@ func seedServiceIndexFromFile(t *testing.T, indexPath, path string) {
 		note.CreatedAt.UTC().Format(time.RFC3339), note.UpdatedAt.UTC().Format(time.RFC3339),
 	)
 	require.NoError(t, err)
+}
+
+func TestServiceHydrateDelegatesToStore(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+
+	root := t.TempDir()
+	stateDir := t.TempDir()
+	svc := New(kb.KnowledgeBase{
+		ID:        "kb-1",
+		RootDir:   root,
+		StateDir:  stateDir,
+		IndexPath: filepath.Join(stateDir, "index.sqlite"),
+	})
+
+	raw := []byte("# Delegated Note\n\nBody.\n")
+	require.NoError(t, os.MkdirAll(root, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "delegated.md"), raw, 0o644))
+
+	result, err := svc.Hydrate(markdownstore.HydrateInput{
+		Now:  func() time.Time { return time.Date(2026, time.June, 29, 10, 0, 0, 0, time.UTC) },
+		UUID: func() string { return "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" },
+	})
+	require.NoError(t, err)
+	require.Len(t, result.Hydrated, 1)
+	assert.Equal(t, "delegated.md", result.Hydrated[0].Path)
+	assert.Equal(t, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", result.Hydrated[0].NoteID)
+	assert.Equal(t, "Delegated Note", result.Hydrated[0].Title)
+	assert.Equal(t, "delegated-note", result.Hydrated[0].Slug)
+
+	data, err := os.ReadFile(filepath.Join(root, "delegated.md"))
+	require.NoError(t, err)
+	note, err := markdown.ParseNote(data)
+	require.NoError(t, err)
+	assert.Equal(t, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", note.MnemonicNoteID)
+}
+
+func TestServiceHydrateDryRunDoesNotWrite(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+
+	root := t.TempDir()
+	stateDir := t.TempDir()
+	svc := New(kb.KnowledgeBase{
+		ID:        "kb-1",
+		RootDir:   root,
+		StateDir:  stateDir,
+		IndexPath: filepath.Join(stateDir, "index.sqlite"),
+	})
+
+	raw := []byte("# Dry Note\n")
+	require.NoError(t, os.WriteFile(filepath.Join(root, "dry.md"), raw, 0o644))
+
+	result, err := svc.Hydrate(markdownstore.HydrateInput{
+		DryRun: true,
+		Now:    func() time.Time { return time.Date(2026, time.June, 29, 10, 0, 0, 0, time.UTC) },
+		UUID:   func() string { return "ffffffff-0000-0000-0000-000000000000" },
+	})
+	require.NoError(t, err)
+	require.Len(t, result.Hydrated, 1)
+	assert.True(t, result.DryRun)
+
+	data, err := os.ReadFile(filepath.Join(root, "dry.md"))
+	require.NoError(t, err)
+	assert.Equal(t, raw, data)
 }

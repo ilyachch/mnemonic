@@ -198,6 +198,15 @@ func (s Service) Show(selector string) (ShowResult, error) {
 	return s.Notes.Show(selector)
 }
 
+// HydrateResult mirrors the markdownstore hydration payload.
+type HydrateResult = markdownstore.HydrateResult
+
+// Hydrate fills missing canonical frontmatter for raw notes via the bound
+// store. See markdownstore.Store.Hydrate for details.
+func (s Service) Hydrate(input markdownstore.HydrateInput) (HydrateResult, error) {
+	return s.Notes.Hydrate(input)
+}
+
 func (s Service) rebuildIndex() error {
 	_, err := s.Index.Rebuild()
 	return err
