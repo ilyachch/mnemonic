@@ -837,6 +837,57 @@ func (s Store) CountUnresolvedLinks(db *sql.DB) (int, error) {
 	return unresolved, nil
 }
 
+// LinkIssue describes one unresolved or ambiguous link found during diagnostics.
+type LinkIssue struct {
+	LinkID      string `json:"link_id"`
+	NoteID      string `json:"note_id"`
+	Slug        string `json:"slug"`
+	Title       string `json:"title"`
+	Path        string `json:"path"`
+	Target      string `json:"target"`
+	Label       string `json:"label"`
+	LinkStyle   string `json:"link_style"`
+	SourceKind  string `json:"source_kind"`
+	SourceLine  int    `json:"source_line"`
+	IsAmbiguous bool   `json:"is_ambiguous"`
+}
+
+// ListLinkIssues returns all unresolved and ambiguous links with their source
+// note context.
+func (s Store) ListLinkIssues(db *sql.DB) ([]LinkIssue, error) {
+	if db == nil {
+		return nil, errors.New("db is required")
+	}
+
+	rows, err := db.Query(`
+		SELECT l.link_id, l.note_id, n.slug, n.title, n.rel_path,
+		       l.target, l.label, l.link_style, l.source_kind, l.source_line,
+		       l.is_ambiguous
+		FROM links l
+		JOIN notes n ON n.note_id = l.note_id
+		WHERE l.to_note_id IS NULL
+		ORDER BY n.slug ASC, l.source_line ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("list link issues: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []LinkIssue
+	for rows.Next() {
+		var item LinkIssue
+		if err := rows.Scan(&item.LinkID, &item.NoteID, &item.Slug, &item.Title, &item.Path,
+			&item.Target, &item.Label, &item.LinkStyle, &item.SourceKind, &item.SourceLine,
+			&item.IsAmbiguous); err != nil {
+			return nil, fmt.Errorf("scan link issue: %w", err)
+		}
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate link issues: %w", err)
+	}
+	return out, nil
+}
+
 // UnresolvedLinkCount opens the index read-only and counts unresolved links.
 func (s Store) UnresolvedLinkCount() (int, error) {
 	db, err := s.OpenReadonly()

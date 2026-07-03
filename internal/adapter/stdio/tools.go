@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
+	"github.com/ilyachch/mnemonic/internal/service/indexsvc"
 	"github.com/ilyachch/mnemonic/internal/service/notesvc"
 	"github.com/ilyachch/mnemonic/internal/service/searchsvc"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -23,6 +24,7 @@ const (
 	deleteNoteDescription    = `Delete a note.`
 	rebuildIndexDescription  = `Rebuild the index.`
 	doctorDescription        = `Run index and content health checks.`
+	diagnoseNotesDescription = `Scan notes for metadata issues, broken links, and content problems. Returns paginated diagnostic issues with optional candidate suggestions for broken links.`
 )
 
 type ListNotesInput struct {
@@ -179,6 +181,28 @@ type DoctorCheck struct {
 	Count  int    `json:"count,omitempty"`
 }
 
+type DiagnoseNotesInput struct {
+	Kinds              []indexsvc.DiagnosticKind `json:"kinds,omitempty"`
+	Limit              int                       `json:"limit,omitempty"`
+	Cursor             int                       `json:"cursor,omitempty"`
+	IncludeSuggestions bool                      `json:"include_suggestions,omitempty"`
+}
+
+type DiagnoseNotesOutput struct {
+	Issues     []DiagnoseNotesIssue `json:"issues"`
+	TotalCount int                  `json:"total_count"`
+	NextCursor int                  `json:"next_cursor,omitempty"`
+}
+
+type DiagnoseNotesIssue struct {
+	Kind       indexsvc.DiagnosticKind        `json:"kind"`
+	NoteID     string                         `json:"note_id,omitempty"`
+	Slug       string                         `json:"slug,omitempty"`
+	Path       string                         `json:"path,omitempty"`
+	Detail     string                         `json:"detail,omitempty"`
+	Candidates []indexsvc.DiagnosticCandidate `json:"candidates,omitempty"`
+}
+
 func RegisterAll(server *sdkmcp.Server, deps Dependencies, description string, readOnly bool) {
 	RegisterReadOnly(server, deps, description)
 	if !readOnly {
@@ -193,6 +217,7 @@ func RegisterReadOnly(server *sdkmcp.Server, deps Dependencies, description stri
 	RegisterReadNotes(server, deps)
 	RegisterListBacklinks(server, deps)
 	RegisterDoctor(server, deps)
+	RegisterDiagnoseNotes(server, deps)
 }
 
 func RegisterWrite(server *sdkmcp.Server, deps Dependencies, description string) {
@@ -555,6 +580,79 @@ func RegisterDoctor(server *sdkmcp.Server, deps Dependencies) {
 		}
 		return nil, DoctorOutput{Status: result.Status, Checks: checks}, nil
 	})
+}
+
+func RegisterDiagnoseNotes(server *sdkmcp.Server, deps Dependencies) {
+	sdkmcp.AddTool(server, &sdkmcp.Tool{
+		Name:        "diagnose_notes",
+		Description: diagnoseNotesDescription,
+		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
+	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input DiagnoseNotesInput) (*sdkmcp.CallToolResult, DiagnoseNotesOutput, error) {
+		result, err := deps.Index.Diagnose(ctx, indexsvc.DiagnoseInput{
+			Kinds:  input.Kinds,
+			Limit:  input.Limit,
+			Cursor: input.Cursor,
+		})
+		if err != nil {
+			return nil, DiagnoseNotesOutput{}, err
+		}
+
+		issues := make([]DiagnoseNotesIssue, 0, len(result.Issues))
+		for _, issue := range result.Issues {
+			di := DiagnoseNotesIssue{
+				Kind:   issue.Kind,
+				NoteID: issue.NoteID,
+				Slug:   issue.Slug,
+				Path:   issue.Path,
+				Detail: issue.Detail,
+			}
+			if input.IncludeSuggestions && (issue.Kind == indexsvc.KindUnresolvedLink || issue.Kind == indexsvc.KindAmbiguousLink) {
+				di.Candidates = findLinkCandidates(ctx, deps, issue)
+			}
+			issues = append(issues, di)
+		}
+
+		return nil, DiagnoseNotesOutput{
+			Issues:     issues,
+			TotalCount: result.TotalCount,
+			NextCursor: result.NextCursor,
+		}, nil
+	})
+}
+
+func findLinkCandidates(ctx context.Context, deps Dependencies, issue indexsvc.DiagnosticIssue) []indexsvc.DiagnosticCandidate {
+	target := extractLinkTarget(issue.Detail)
+	if target == "" {
+		return nil
+	}
+	hits, err := deps.Search.Search(ctx, searchsvc.SearchInput{Query: target, Limit: 3})
+	if err != nil {
+		return nil
+	}
+	candidates := make([]indexsvc.DiagnosticCandidate, 0, len(hits))
+	for _, hit := range hits {
+		candidates = append(candidates, indexsvc.DiagnosticCandidate{
+			NoteID: hit.NoteID,
+			Slug:   hit.Slug,
+			Title:  hit.Title,
+			Path:   hit.Path,
+		})
+	}
+	return candidates
+}
+
+func extractLinkTarget(detail string) string {
+	const prefix = `target "`
+	start := strings.Index(detail, prefix)
+	if start == -1 {
+		return ""
+	}
+	start += len(prefix)
+	end := strings.Index(detail[start:], `"`)
+	if end == -1 {
+		return ""
+	}
+	return detail[start : start+end]
 }
 
 func buildToolDescription(description, baseInstructions string) string {
