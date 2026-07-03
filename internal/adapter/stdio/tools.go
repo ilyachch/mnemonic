@@ -14,9 +14,30 @@ import (
 )
 
 const (
-	listNotesDescription     = `List all notes in this knowledge base.`
-	readNotesDescription     = `Read one or more notes by note_id, slug, path, or title.`
-	searchNotesDescription   = `Search this knowledge base.`
+	listNotesDescription = `List all notes in this knowledge base.`
+	readNotesDescription = `Read one or more notes by note_id, slug, path, or title.
+Provide an array of identifiers to batch-read multiple notes in a single call.
+Resolved notes are returned with their note_id, slug, title, path, frontmatter, body, content_hash, and updated_at (RFC 3339).
+Unresolved identifiers are listed in the "missing" array.
+
+Parameters:
+- identifiers ([]string, required): note IDs, slugs, file paths, or titles to resolve.
+- fields ([]string, optional): limit output to the specified fields.
+- max_body_chars (int, optional): truncate each note body to this many characters.`
+	searchNotesDescription = `Search this knowledge base with multi-query full-text search, time filters, tag filters, and graph-aware reranking.
+Provide multiple distinct query variants via the "queries" array to improve recall — each query contributes to the combined ranking.
+Results include note_id, slug, title, and a relevance snippet. Set include_related to true to fetch linked notes for each hit.
+Set debug to true to expose internal fields (path, score, content_hash).
+
+Parameters:
+- queries ([]string, optional): FTS5 query strings; submit several phrasing variants.
+- tags ([]string, optional): restrict results to notes tagged with every listed tag (AND).
+- created_before / created_after (int64, optional): Unix timestamps for creation time range.
+- updated_before / updated_after (int64, optional): Unix timestamps for update time range.
+- created_since / updated_since (string, optional): relative duration (e.g. "24h", "7d").
+- limit (int, optional): maximum number of results (default 20).
+- include_related (bool, optional): return related notes (backlinks and forward links) with their relation_type.
+- debug (bool, optional): expose path, score, and content_hash for each hit.`
 	listTagsDescription      = `List tags in this knowledge base.`
 	listBacklinksDescription = `List backlinks for a note.`
 	createNoteDescription    = `Create a new note.`
@@ -24,7 +45,15 @@ const (
 	deleteNoteDescription    = `Delete a note.`
 	rebuildIndexDescription  = `Rebuild the index.`
 	doctorDescription        = `Run index and content health checks.`
-	diagnoseNotesDescription = `Scan notes for metadata issues, broken links, and content problems. Returns paginated diagnostic issues with optional candidate suggestions for broken links.`
+	diagnoseNotesDescription = `Scan notes for metadata issues, broken links, and content problems.
+Returns paginated diagnostic issues. Set include_suggestions to true to receive candidate targets for unresolved or ambiguous links.
+Use this tool periodically to verify repository integrity after bulk changes.
+
+Parameters:
+- kinds ([]string, optional): filter by diagnostic kind. Valid values: "invalid_frontmatter", "missing_required_field", "missing_summary", "invalid_timestamp", "duplicate_slug", "duplicate_alias", "unresolved_link", "ambiguous_link", "empty_body".
+- limit (int, optional): maximum issues per page (default 50).
+- cursor (int, optional): zero-based page offset.
+- include_suggestions (bool, optional): resolve broken links via search and include candidate notes.`
 )
 
 type ListNotesInput struct {
