@@ -17,20 +17,25 @@ const (
 	RelationSourceRelationsSection RelationSource = "relations_section"
 )
 
-// RelationRef describes a parsed wiki-link with optional relation metadata.
+// RelationRef describes a parsed link with optional relation metadata.
 type RelationRef struct {
 	RelationType string
 	Target       WikiLink
 	Source       RelationSource
 	Line         int
+	LinkStyle    string
 }
 
-// ParseRelations extracts relation references and wiki-links from markdown text.
+// ParseRelations extracts relation references, wiki-links, and standard
+// markdown links from markdown text.
 //
 // Links inside a `## Relations` section are marked with source
 // `relations_section`. Links outside that section are marked with source
 // `wikilink`. Bullet lines in the Relations section may prefix the target link
 // with a relation type such as `depends_on` or `relates_to`.
+//
+// Wiki-links are tagged with LinkStyle "wiki" and standard markdown inline
+// links with "regular".
 func ParseRelations(data []byte) []RelationRef {
 	doc := parseDocument(data)
 	if doc == nil {
@@ -58,7 +63,7 @@ func ParseRelations(data []byte) []RelationRef {
 			continue
 		}
 
-		appendWikiLinksFromNode(child, doc, RelationSourceWikiLink, "", &refs)
+		appendLinksFromNode(child, doc, RelationSourceWikiLink, "", &refs)
 	}
 
 	return refs
@@ -94,8 +99,9 @@ func appendRelationsFromNode(node ast.Node, doc *parsedDocument, refs *[]Relatio
 		return
 	case *ast.TextBlock, *ast.Paragraph:
 		for _, line := range collectVisibleLines(n, doc.source, doc.lineForOffset) {
-			appendWikiLinksFromLine(line.Text, line.Line, RelationSourceRelationsSection, "", refs)
+			appendLinksFromLine(line.Text, line.Line, RelationSourceRelationsSection, "", refs)
 		}
+		collectRegularLinksFromNode(n, doc, RelationSourceRelationsSection, "", refs)
 		return
 	}
 
@@ -116,45 +122,97 @@ func appendRelationsFromListItem(item *ast.ListItem, doc *parsedDocument, refs *
 		if i == 0 {
 			currentRelationType = relationType
 		}
-		appendWikiLinksFromLine(line.Text, line.Line, RelationSourceRelationsSection, currentRelationType, refs)
+		appendLinksFromLine(line.Text, line.Line, RelationSourceRelationsSection, currentRelationType, refs)
 	}
+	collectRegularLinksFromNode(item, doc, RelationSourceRelationsSection, relationType, refs)
 }
 
-func appendWikiLinksFromNode(node ast.Node, doc *parsedDocument, source RelationSource, relationType string, refs *[]RelationRef) {
+func appendLinksFromNode(node ast.Node, doc *parsedDocument, source RelationSource, relationType string, refs *[]RelationRef) {
 	switch n := node.(type) {
 	case *ast.Heading:
 		return
 	case *ast.List:
 		for item := n.FirstChild(); item != nil; item = item.NextSibling() {
-			appendWikiLinksFromNode(item, doc, source, relationType, refs)
+			appendLinksFromNode(item, doc, source, relationType, refs)
 		}
 		return
 	case *ast.ListItem:
 		for _, line := range collectVisibleLines(n, doc.source, doc.lineForOffset) {
-			appendWikiLinksFromLine(line.Text, line.Line, source, relationType, refs)
+			appendLinksFromLine(line.Text, line.Line, source, relationType, refs)
 		}
+		collectRegularLinksFromNode(n, doc, source, relationType, refs)
 		return
 	case *ast.TextBlock, *ast.Paragraph:
 		for _, line := range collectVisibleLines(n, doc.source, doc.lineForOffset) {
-			appendWikiLinksFromLine(line.Text, line.Line, source, relationType, refs)
+			appendLinksFromLine(line.Text, line.Line, source, relationType, refs)
 		}
+		collectRegularLinksFromNode(n, doc, source, relationType, refs)
 		return
 	}
 
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
-		appendWikiLinksFromNode(child, doc, source, relationType, refs)
+		appendLinksFromNode(child, doc, source, relationType, refs)
 	}
 }
 
-func appendWikiLinksFromLine(line string, lineNumber int, source RelationSource, relationType string, refs *[]RelationRef) {
+func appendLinksFromLine(line string, lineNumber int, source RelationSource, relationType string, refs *[]RelationRef) {
 	for _, link := range parseWikiLinksInLine([]byte(line), lineNumber) {
 		*refs = append(*refs, RelationRef{
 			RelationType: relationType,
 			Target:       link,
 			Source:       source,
 			Line:         lineNumber,
+			LinkStyle:    "wiki",
 		})
 	}
+}
+
+func collectRegularLinksFromNode(node ast.Node, doc *parsedDocument, source RelationSource, relationType string, refs *[]RelationRef) {
+	var walk func(n ast.Node)
+	walk = func(n ast.Node) {
+		switch n := n.(type) {
+		case *ast.CodeBlock, *ast.FencedCodeBlock, *ast.CodeSpan:
+			return
+		case *ast.Link:
+			dest := strings.TrimSpace(string(n.Destination))
+			if len(dest) == 0 || isExternalOrAnchorString(dest) {
+				return
+			}
+			label := collectLinkLabelText(n, doc.source)
+			line := linkLineNumber(n, doc)
+			*refs = append(*refs, RelationRef{
+				RelationType: relationType,
+				Target:       WikiLink{Target: extractSlugFromDestString(dest), Alias: label, Line: line},
+				Source:       source,
+				Line:         line,
+				LinkStyle:    "regular",
+			})
+			return
+		}
+		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
+			walk(child)
+		}
+	}
+	walk(node)
+}
+
+func linkLineNumber(link *ast.Link, doc *parsedDocument) int {
+	for child := link.FirstChild(); child != nil; child = child.NextSibling() {
+		if text, ok := child.(*ast.Text); ok {
+			return doc.lineForOffset(text.Segment.Start)
+		}
+	}
+	return 0
+}
+
+func collectLinkLabelText(link *ast.Link, source []byte) string {
+	var buf strings.Builder
+	for child := link.FirstChild(); child != nil; child = child.NextSibling() {
+		if text, ok := child.(*ast.Text); ok {
+			buf.Write(text.Segment.Value(source))
+		}
+	}
+	return buf.String()
 }
 
 func parseRelationTypeLine(line string) string {
@@ -163,4 +221,21 @@ func parseRelationTypeLine(line string) string {
 		return ""
 	}
 	return fields[0]
+}
+
+func isExternalOrAnchorString(s string) bool {
+	for _, scheme := range []string{"http://", "https://", "ftp://", "mailto:", "tel:"} {
+		if strings.HasPrefix(s, scheme) {
+			return true
+		}
+	}
+	return len(s) > 0 && s[0] == '#'
+}
+
+func extractSlugFromDestString(s string) string {
+	s = strings.TrimRight(s, "/")
+	if idx := strings.LastIndexByte(s, '/'); idx >= 0 {
+		s = s[idx+1:]
+	}
+	return strings.TrimSuffix(s, ".md")
 }
