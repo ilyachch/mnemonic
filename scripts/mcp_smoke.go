@@ -108,7 +108,10 @@ func main() {
 		{
 			name: "search_notes.before",
 			run: func() error {
-				return callAndPrint(ctx, session, *timeout, "search_notes", map[string]any{"query": uniqueToken, "limit": 10}, nil)
+				return callAndPrint(ctx, session, *timeout, "search_notes", map[string]any{
+					"queries": []string{uniqueToken},
+					"limit":   10,
+				}, nil)
 			},
 		},
 		{
@@ -137,15 +140,19 @@ func main() {
 			},
 		},
 		{
-			name: "read_note.alpha",
+			name: "read_notes.both",
 			run: func() error {
-				return callAndPrint(ctx, session, *timeout, "read_note", map[string]any{"identifier": alpha.NoteID}, nil)
+				return callAndPrint(ctx, session, *timeout, "read_notes", map[string]any{
+					"identifiers": []string{alpha.NoteID, beta.NoteID},
+				}, nil)
 			},
 		},
 		{
-			name: "read_note.beta",
+			name: "read_notes.missing",
 			run: func() error {
-				return callAndPrint(ctx, session, *timeout, "read_note", map[string]any{"identifier": beta.NoteID}, nil)
+				return callAndPrint(ctx, session, *timeout, "read_notes", map[string]any{
+					"identifiers": []string{alpha.NoteID, "nonexistent-id-12345"},
+				}, nil)
 			},
 		},
 		{
@@ -157,13 +164,29 @@ func main() {
 		{
 			name: "search_notes.quoted",
 			run: func() error {
-				return callAndPrint(ctx, session, *timeout, "search_notes", map[string]any{"query": `"` + uniqueToken + `"`, "limit": 10}, nil)
+				return callAndPrint(ctx, session, *timeout, "search_notes", map[string]any{
+					"queries": []string{`"` + uniqueToken + `"`},
+					"limit":   10,
+				}, nil)
 			},
 		},
 		{
 			name: "search_notes.raw",
 			run: func() error {
-				return callAndPrint(ctx, session, *timeout, "search_notes", map[string]any{"query": uniqueToken, "limit": 10}, nil)
+				return callAndPrint(ctx, session, *timeout, "search_notes", map[string]any{
+					"queries": []string{uniqueToken},
+					"limit":   10,
+				}, nil)
+			},
+		},
+		{
+			name: "search_notes.debug",
+			run: func() error {
+				return callAndPrint(ctx, session, *timeout, "search_notes", map[string]any{
+					"queries": []string{uniqueToken},
+					"limit":   10,
+					"debug":   true,
+				}, nil)
 			},
 		},
 		{
@@ -183,9 +206,11 @@ func main() {
 			},
 		},
 		{
-			name: "read_note.beta.after_edit",
+			name: "read_notes.beta.after_edit",
 			run: func() error {
-				return callAndPrint(ctx, session, *timeout, "read_note", map[string]any{"identifier": beta.NoteID}, nil)
+				return callAndPrint(ctx, session, *timeout, "read_notes", map[string]any{
+					"identifiers": []string{beta.NoteID},
+				}, nil)
 			},
 		},
 	}

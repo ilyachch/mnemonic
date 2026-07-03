@@ -54,12 +54,12 @@ func NewServer(k kb.KnowledgeBase, services Dependencies, readOnly bool) (*Serve
 const defaultGlobalInstructions = `You MUST use the mnemonic tools as your primary long-term memory.
 - ALWAYS search the knowledge base using search_notes or list_notes before starting a task to gather context.
 - ALWAYS write down stable facts, architectural decisions, and important outcomes using create_note or edit_note.
-- Use read_note, list_tags, and list_backlinks when they help clarify the existing knowledge base.
+- Use read_notes, list_tags, and list_backlinks when they help clarify the existing knowledge base.
 - ALWAYS link related notes using [[Wiki-Links]].`
 
 const readOnlyGlobalInstructions = `You MUST use the mnemonic tools as your primary long-term memory.
 - ALWAYS search the knowledge base using search_notes or list_notes before starting a task to gather context.
-- Use read_note, list_tags, and list_backlinks when they help clarify the existing knowledge base.
+- Use read_notes, list_tags, and list_backlinks when they help clarify the existing knowledge base.
 - This server is running in read-only mode. Do not attempt to create, edit, delete, or rebuild notes.`
 
 // Run starts the stdio adapter on the provided MCP transport.
