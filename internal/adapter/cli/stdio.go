@@ -40,7 +40,7 @@ func runStdioAdapter(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	server, err := stdio.NewServer(runtime.KB, stdio.Dependencies{
+	srv, err := stdio.NewServer(runtime.KB, stdio.Dependencies{
 		Notes:  runtime.Services.Notes,
 		Search: runtime.Services.Search,
 		Index:  runtime.Services.Index,
@@ -49,7 +49,9 @@ func runStdioAdapter(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return stdioRun(server, commandContext(cmd), &mcp.StdioTransport{})
+	srv.Logger = loggerFromContext(commandContext(cmd))
+
+	return stdioRun(srv, commandContext(cmd), &mcp.StdioTransport{})
 }
 
 var stdioRun = stdioRunReal

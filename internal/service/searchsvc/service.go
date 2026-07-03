@@ -2,6 +2,7 @@ package searchsvc
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
@@ -12,7 +13,8 @@ import (
 
 // Service owns runtime search operations for one selected knowledge base.
 type Service struct {
-	Index sqliteindex.Store
+	Index  sqliteindex.Store
+	Logger *slog.Logger
 }
 
 // SearchInput configures a runtime search query.
@@ -124,6 +126,17 @@ func (s Service) Search(ctx context.Context, input SearchInput) ([]SearchResult,
 		return nil, err
 	}
 
+	if s.Logger != nil {
+		s.Logger.Debug("search executed",
+			"terms", input.Query,
+			"tag", input.Tag,
+			"limit", input.Limit,
+		)
+		s.Logger.Info("search completed",
+			"count", len(hits),
+		)
+	}
+
 	out := make([]SearchResult, 0, len(hits))
 	for _, hit := range hits {
 		out = append(out, SearchResult{
@@ -220,9 +233,25 @@ func (s Service) AdvancedSearch(ctx context.Context, input AdvancedSearchInput) 
 		IncludeRelated: input.IncludeRelated,
 	}
 
+	if s.Logger != nil {
+		s.Logger.Debug("advanced search executed",
+			"queries", input.Queries,
+			"tags", input.Tags,
+			"created_since", input.CreatedSince,
+			"updated_since", input.UpdatedSince,
+			"include_related", input.IncludeRelated,
+		)
+	}
+
 	hits, err := s.Index.SearchAdvanced(db, opts, clock.NowUTC())
 	if err != nil {
 		return nil, err
+	}
+
+	if s.Logger != nil {
+		s.Logger.Info("advanced search completed",
+			"count", len(hits),
+		)
 	}
 
 	out := make([]AdvancedSearchResult, 0, len(hits))

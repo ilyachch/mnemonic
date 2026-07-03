@@ -27,6 +27,7 @@ type Server struct {
 	KB       kb.KnowledgeBase
 	Services Dependencies
 	ReadOnly bool
+	Logger   *slog.Logger
 }
 
 // NewServer builds a stdio adapter around runtime services for one knowledge base.
@@ -72,11 +73,15 @@ func (s *Server) Run(ctx context.Context, transport sdkmcp.Transport) error {
 
 // BuildSDKServer creates the configured SDK MCP server for the selected KB.
 func (s *Server) BuildSDKServer() *sdkmcp.Server {
+	sdkLogger := s.Logger
+	if sdkLogger == nil {
+		sdkLogger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	}
 	sdkServer := sdkmcp.NewServer(
 		&sdkmcp.Implementation{Name: "mnemonic", Version: buildinfo.Version()},
 		&sdkmcp.ServerOptions{
 			Instructions: buildGlobalInstructions(s.KB.CustomInstructions, s.KB.Description, s.ReadOnly),
-			Logger:       slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Logger:       sdkLogger,
 			Capabilities: &sdkmcp.ServerCapabilities{
 				Tools: &sdkmcp.ToolCapabilities{ListChanged: true},
 			},
