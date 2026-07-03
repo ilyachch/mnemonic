@@ -147,8 +147,8 @@ func (m *Manifest) Validate() error {
 	if m.UpdatedAt <= 0 {
 		return errors.New("updated_at is required")
 	}
-	if m.Format.LinksStyle != "" && m.Format.LinksStyle != "wiki" && m.Format.LinksStyle != "regular" {
-		return fmt.Errorf("format.links_style must be %q or %q, got %q", "wiki", "regular", m.Format.LinksStyle)
+	if err := m.validateFormat(); err != nil {
+		return err
 	}
 	if len(m.Layout.NotesGlob) == 0 {
 		return errors.New("layout.notes_glob is required")
@@ -165,6 +165,13 @@ func (m *Manifest) Validate() error {
 	}
 }
 
+func (m *Manifest) validateFormat() error {
+	if m.Format.LinksStyle != "" && m.Format.LinksStyle != "wiki" && m.Format.LinksStyle != "regular" {
+		return fmt.Errorf("format.links_style must be %q or %q, got %q", "wiki", "regular", m.Format.LinksStyle)
+	}
+	return nil
+}
+
 // MarshalTOML serializes mnemonic.toml.
 func (m *Manifest) MarshalTOML() ([]byte, error) {
 	copy := *m
@@ -173,21 +180,7 @@ func (m *Manifest) MarshalTOML() ([]byte, error) {
 		return nil, err
 	}
 
-	raw := manifestTOML{
-		Version:               copy.Version,
-		ProjectID:             copy.ProjectID,
-		Name:                  copy.Name,
-		Slug:                  copy.Slug,
-		Type:                  copy.Type,
-		MarkdownFormatVersion: copy.MarkdownFormatVersion,
-		Description:           copy.Description,
-		CustomInstructions:    copy.CustomInstructions,
-		CreatedAt:             copy.CreatedAt,
-		UpdatedAt:             copy.UpdatedAt,
-		Format:                copy.Format,
-		Layout:                copy.Layout,
-		Generator:             copy.Generator,
-	}
+	raw := manifestTOML(copy)
 	return toml.Marshal(raw)
 }
 
