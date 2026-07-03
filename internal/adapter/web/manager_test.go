@@ -178,7 +178,7 @@ func TestServerReadOnlyOmitsWriteTools(t *testing.T) {
 	for _, tool := range tools.Tools {
 		names = append(names, tool.Name)
 	}
-	require.Equal(t, []string{"doctor", "list_backlinks", "list_notes", "list_tags", "read_notes", "search_notes"}, names)
+	require.Equal(t, []string{"diagnose_notes", "doctor", "list_backlinks", "list_notes", "list_tags", "read_notes", "search_notes"}, names)
 }
 
 func TestServerInitializeIncludesGlobalInstructions(t *testing.T) {
