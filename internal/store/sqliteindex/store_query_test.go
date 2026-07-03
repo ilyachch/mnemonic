@@ -2,10 +2,13 @@ package sqliteindex
 
 import (
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/ilyachch/mnemonic/internal/apperr"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -66,6 +69,227 @@ func TestCountUnresolvedLinks(t *testing.T) {
 	count, err := store.CountUnresolvedLinks(db)
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
+}
+
+func TestParseRelativeDurationValid(t *testing.T) {
+	now := time.Date(2026, time.July, 3, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		input    string
+		expected int64
+	}{
+		{"15m", now.Add(-15 * time.Minute).Unix()},
+		{"2h", now.Add(-2 * time.Hour).Unix()},
+		{"30d", now.Add(-30 * 24 * time.Hour).Unix()},
+		{"1m", now.Add(-1 * time.Minute).Unix()},
+		{"24h", now.Add(-24 * time.Hour).Unix()},
+		{"1d", now.Add(-24 * time.Hour).Unix()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			ts, err := parseRelativeDuration(tt.input, now)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, ts)
+		})
+	}
+}
+
+func TestParseRelativeDurationInvalid(t *testing.T) {
+	now := time.Date(2026, time.July, 3, 12, 0, 0, 0, time.UTC)
+
+	invalid := []string{"abc", "10s", "1y", "-5m", "0d", "m", "5"}
+	for _, input := range invalid {
+		t.Run("invalid_"+input, func(t *testing.T) {
+			_, err := parseRelativeDuration(input, now)
+			require.Error(t, err)
+			var appErr *apperr.Error
+			require.True(t, errors.As(err, &appErr))
+		})
+	}
+}
+
+func TestSearchAdvancedMultiQuery(t *testing.T) {
+	store, db := seedQueryStore(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	now := time.Date(2026, time.July, 3, 12, 0, 0, 0, time.UTC)
+	results, err := store.SearchAdvanced(db, SearchOptions{
+		Queries: []string{"queryterm!", "alpha"},
+		Limit:   10,
+	}, now)
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+
+	alphaIdx := 0
+	betaIdx := 1
+	if results[0].Slug != "alpha" {
+		alphaIdx, betaIdx = 1, 0
+	}
+	assert.Equal(t, "alpha", results[alphaIdx].Slug)
+	assert.True(t, results[alphaIdx].MatchCount >= 1)
+	assert.Equal(t, "beta", results[betaIdx].Slug)
+	assert.Equal(t, 1, results[betaIdx].MatchCount)
+}
+
+func TestSearchAdvancedTimeFilterNoQueries(t *testing.T) {
+	store, db := seedQueryStore(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	createdAt := time.Date(2026, time.June, 21, 12, 0, 0, 0, time.UTC)
+	now := createdAt.Add(1 * time.Hour)
+
+	results, err := store.SearchAdvanced(db, SearchOptions{
+		CreatedSince: "2h",
+		Limit:        10,
+	}, now)
+	require.NoError(t, err)
+	require.Len(t, results, 3)
+}
+
+func TestSearchAdvancedTimeFilterNoResults(t *testing.T) {
+	store, db := seedQueryStore(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	createdAt := time.Date(2026, time.June, 21, 12, 0, 0, 0, time.UTC)
+	now := createdAt.Add(48 * time.Hour)
+
+	results, err := store.SearchAdvanced(db, SearchOptions{
+		CreatedBefore: ptr(createdAt.Unix()),
+		Limit:         10,
+	}, now)
+	require.NoError(t, err)
+	require.Empty(t, results)
+}
+
+func TestSearchAdvancedGraphRerank(t *testing.T) {
+	store, db := seedQueryStore(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	now := time.Date(2026, time.July, 3, 12, 0, 0, 0, time.UTC)
+	results, err := store.SearchAdvanced(db, SearchOptions{
+		Queries: []string{"queryterm!"},
+		Limit:   10,
+	}, now)
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	assert.GreaterOrEqual(t, results[0].Score, results[1].Score)
+}
+
+func TestSearchAdvancedRelatedNotes(t *testing.T) {
+	store, db := seedQueryStore(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	now := time.Date(2026, time.July, 3, 12, 0, 0, 0, time.UTC)
+	results, err := store.SearchAdvanced(db, SearchOptions{
+		Queries:        []string{"queryterm!"},
+		Limit:          10,
+		IncludeRelated: true,
+	}, now)
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+
+	for _, r := range results {
+		if r.Slug == "alpha" {
+			require.Len(t, r.RelatedNotes, 1)
+			assert.Equal(t, "gamma-id", r.RelatedNotes[0].NoteID)
+			assert.NotEmpty(t, r.RelatedNotes[0].RelationType)
+		}
+	}
+}
+
+func TestSearchAdvancedRelatedNotesFalse(t *testing.T) {
+	store, db := seedQueryStore(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	now := time.Date(2026, time.July, 3, 12, 0, 0, 0, time.UTC)
+	results, err := store.SearchAdvanced(db, SearchOptions{
+		Queries:        []string{"queryterm!"},
+		Limit:          10,
+		IncludeRelated: false,
+	}, now)
+	require.NoError(t, err)
+	for _, r := range results {
+		assert.Nil(t, r.RelatedNotes)
+	}
+}
+
+func TestSearchAdvancedNoFilterError(t *testing.T) {
+	store, db := seedQueryStore(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	now := time.Date(2026, time.July, 3, 12, 0, 0, 0, time.UTC)
+	_, err := store.SearchAdvanced(db, SearchOptions{Limit: 10}, now)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "at least one query")
+}
+
+func TestSearchAdvancedInvalidDuration(t *testing.T) {
+	store, db := seedQueryStore(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	now := time.Date(2026, time.July, 3, 12, 0, 0, 0, time.UTC)
+	_, err := store.SearchAdvanced(db, SearchOptions{
+		CreatedSince: "abc",
+		Limit:        10,
+	}, now)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "created_since")
+}
+
+func TestSearchAdvancedTagFilter(t *testing.T) {
+	store, db := seedQueryStore(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	now := time.Date(2026, time.July, 3, 12, 0, 0, 0, time.UTC)
+	results, err := store.SearchAdvanced(db, SearchOptions{
+		Queries: []string{"queryterm!"},
+		Tags:    []string{"go", "django"},
+		Limit:   10,
+	}, now)
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+}
+
+func TestSearchAdvancedAbsoluteTimeBounds(t *testing.T) {
+	store, db := seedQueryStore(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	createdAt := time.Date(2026, time.June, 21, 12, 0, 0, 0, time.UTC)
+	now := time.Date(2026, time.July, 3, 12, 0, 0, 0, time.UTC)
+
+	after := createdAt.Add(-1 * time.Hour).Unix()
+	before := createdAt.Add(1 * time.Hour).Unix()
+
+	results, err := store.SearchAdvanced(db, SearchOptions{
+		CreatedAfter:  &after,
+		CreatedBefore: &before,
+		Limit:         10,
+	}, now)
+	require.NoError(t, err)
+	require.Len(t, results, 3)
+}
+
+func TestSearchAdvancedUpdatedBounds(t *testing.T) {
+	store, db := seedQueryStore(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	updatedAt := time.Date(2026, time.June, 21, 12, 0, 0, 0, time.UTC)
+	now := updatedAt.Add(48 * time.Hour)
+
+	after := updatedAt.Add(-1 * time.Hour).Unix()
+	before := updatedAt.Add(1 * time.Hour).Unix()
+
+	results, err := store.SearchAdvanced(db, SearchOptions{
+		UpdatedAfter:  &after,
+		UpdatedBefore: &before,
+		Limit:         10,
+	}, now)
+	require.NoError(t, err)
+	require.Len(t, results, 3)
+}
+
+func ptr[T any](v T) *T {
+	return &v
 }
 
 func seedQueryStore(t *testing.T) (Store, *sql.DB) {

@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
+	"github.com/ilyachch/mnemonic/internal/platform/clock"
 	"github.com/ilyachch/mnemonic/internal/store/sqliteindex"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -109,3 +111,85 @@ func insertSearchLink(t *testing.T, db *sql.DB, linkID, noteID, toNoteID, target
 	)
 	require.NoError(t, err)
 }
+
+func TestAdvancedSearchMultiQuery(t *testing.T) {
+	now := time.Date(2026, time.July, 3, 12, 0, 0, 0, time.UTC)
+	restore := clock.SetClock(frozenClock{now: now})
+	defer restore()
+
+	svc := newSearchService(t)
+
+	results, err := svc.AdvancedSearch(context.Background(), AdvancedSearchInput{
+		Queries: []string{"queryterm!", "alpha"},
+		Limit:   10,
+	})
+	require.NoError(t, err)
+	assert.Len(t, results, 2)
+
+	slugs := make([]string, len(results))
+	for i, r := range results {
+		slugs[i] = r.Slug
+	}
+	assert.Contains(t, slugs, "alpha")
+	assert.Contains(t, slugs, "beta")
+}
+
+func TestAdvancedSearchTimeFilter(t *testing.T) {
+	now := time.Date(2026, time.June, 21, 13, 0, 0, 0, time.UTC)
+	restore := clock.SetClock(frozenClock{now: now})
+	defer restore()
+
+	svc := newSearchService(t)
+
+	results, err := svc.AdvancedSearch(context.Background(), AdvancedSearchInput{
+		CreatedSince: "2h",
+		Limit:        10,
+	})
+	require.NoError(t, err)
+	assert.Len(t, results, 3)
+}
+
+func TestAdvancedSearchRelated(t *testing.T) {
+	now := time.Date(2026, time.July, 3, 12, 0, 0, 0, time.UTC)
+	restore := clock.SetClock(frozenClock{now: now})
+	defer restore()
+
+	svc := newSearchService(t)
+
+	results, err := svc.AdvancedSearch(context.Background(), AdvancedSearchInput{
+		Queries:        []string{"queryterm!"},
+		Limit:          10,
+		IncludeRelated: true,
+	})
+	require.NoError(t, err)
+	assert.Len(t, results, 2)
+
+	for _, r := range results {
+		if r.Slug == "alpha" {
+			require.Len(t, r.RelatedNotes, 1)
+			assert.Equal(t, "gamma-id", r.RelatedNotes[0].NoteID)
+		}
+	}
+}
+
+func TestAdvancedSearchInvalidDuration(t *testing.T) {
+	now := time.Date(2026, time.July, 3, 12, 0, 0, 0, time.UTC)
+	restore := clock.SetClock(frozenClock{now: now})
+	defer restore()
+
+	svc := newSearchService(t)
+
+	_, err := svc.AdvancedSearch(context.Background(), AdvancedSearchInput{
+		UpdatedSince: "10s",
+		Limit:        10,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "updated_since")
+}
+
+type frozenClock struct {
+	now time.Time
+}
+
+func (f frozenClock) Now() time.Time { return f.now.UTC() }
+func (f frozenClock) UUID() string   { return "00000000-0000-0000-0000-000000000000" }
