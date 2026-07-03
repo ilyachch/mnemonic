@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 
 	"github.com/ilyachch/mnemonic/internal/app"
@@ -57,4 +58,12 @@ func projectSelectorValue(cmd *cobra.Command) string {
 		return shared.ProjectSelector()
 	}
 	return os.Getenv("MNEMONIC_PROJECT")
+}
+
+func loggerFromContext(ctx context.Context) *slog.Logger {
+	state := cliStateFromContext(ctx)
+	if state == nil {
+		return nil
+	}
+	return state.logger
 }

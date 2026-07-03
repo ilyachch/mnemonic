@@ -35,7 +35,8 @@ type OutputConfig struct {
 
 // LoggingConfig holds settings for log level and outputs.
 type LoggingConfig struct {
-	Level string `toml:"level" json:"level"`
+	Level  string `toml:"level" json:"level"`
+	Format string `toml:"format" json:"format"`
 }
 
 // DefaultConfig returns a Config populated with default values.
@@ -58,7 +59,8 @@ func DefaultConfig() *Config {
 			JSONPretty: false,
 		},
 		Logging: LoggingConfig{
-			Level: "info",
+			Level:  "info",
+			Format: "text",
 		},
 	}
 }

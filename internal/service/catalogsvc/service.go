@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,6 +37,7 @@ type Service struct {
 	MemoriesHome string
 	StateHome    string
 	Registry     registry.Store
+	Logger       *slog.Logger
 }
 
 // ListResult mirrors the project list payload.
@@ -180,6 +182,14 @@ func (s Service) Resolve(selector string) (kb.KnowledgeBase, error) {
 		return kb.KnowledgeBase{}, err
 	}
 
+	if s.Logger != nil {
+		s.Logger.Info("project selected",
+			"slug", resolved.Slug,
+			"kind", resolved.Kind,
+			"root_dir", resolved.RootDir,
+		)
+	}
+
 	return resolved, nil
 }
 
@@ -215,6 +225,14 @@ func (s Service) List() (ListResult, error) {
 			}
 			item.Issue = issue.Error
 			projects = append(projects, item)
+
+			if s.Logger != nil {
+				s.Logger.Warn("project issue detected",
+					"slug", entry.Slug,
+					"status", item.Status,
+					"error", issue.Error,
+				)
+			}
 			continue
 		}
 
@@ -303,6 +321,14 @@ func (s Service) Import(ctx context.Context, input ImportInput) (ImportResult, e
 	}
 	result.Hydrated = hydrateResult.Hydrated
 	result.Skipped = hydrateResult.Skipped
+
+	if s.Logger != nil {
+		s.Logger.Info("import hydration complete",
+			"slug", candidate.Slug,
+			"hydrated", len(hydrateResult.Hydrated),
+			"skipped", len(hydrateResult.Skipped),
+		)
+	}
 
 	if input.DryRun {
 		result.IndexStatus = "skipped"

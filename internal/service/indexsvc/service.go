@@ -2,6 +2,7 @@ package indexsvc
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,9 +16,10 @@ import (
 
 // Service owns runtime index operations for one selected knowledge base.
 type Service struct {
-	KB    kb.KnowledgeBase
-	Notes markdownstore.Store
-	Index sqliteindex.Store
+	KB     kb.KnowledgeBase
+	Notes  markdownstore.Store
+	Index  sqliteindex.Store
+	Logger *slog.Logger
 }
 
 // RebuildOutput mirrors the runtime rebuild payload.
@@ -66,6 +68,15 @@ func (s Service) Rebuild(ctx context.Context) (RebuildOutput, error) {
 	if err != nil {
 		return RebuildOutput{}, err
 	}
+
+	if s.Logger != nil {
+		s.Logger.Info("index rebuilt",
+			"kb_id", result.KBID,
+			"notes_seen", result.NotesSeen,
+			"notes_indexed", result.NotesIndexed,
+		)
+	}
+
 	return RebuildOutput{
 		KBID:         result.KBID,
 		NotesSeen:    result.NotesSeen,
@@ -122,6 +133,27 @@ func (s Service) Doctor(ctx context.Context) (DoctorOutput, error) {
 	result.addCheck(DoctorCheck{Name: "unresolved link count", Status: countStatus(unresolved), Count: unresolved})
 	result.addCheck(DoctorCheck{Name: ".trash ignored", Status: countStatus(trashIgnored), Count: trashIgnored})
 	result.addCheck(doctorStaleTempCheck(root))
+
+	if s.Logger != nil {
+		for _, check := range result.Checks {
+			switch check.Status {
+			case "warning":
+				s.Logger.Warn("doctor check warning",
+					"kb_slug", s.KB.Slug,
+					"check", check.Name,
+					"count", check.Count,
+					"detail", check.Detail,
+				)
+			case "missing", "error":
+				s.Logger.Warn("doctor check issue",
+					"kb_slug", s.KB.Slug,
+					"check", check.Name,
+					"status", check.Status,
+					"detail", check.Detail,
+				)
+			}
+		}
+	}
 
 	return result, nil
 }
