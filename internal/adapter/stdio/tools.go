@@ -14,7 +14,7 @@ import (
 
 const (
 	listNotesDescription     = `List all notes in this knowledge base.`
-	readNoteDescription      = `Read a note by note_id, slug, path, or title.`
+	readNotesDescription     = `Read one or more notes by note_id, slug, path, or title.`
 	searchNotesDescription   = `Search this knowledge base.`
 	listTagsDescription      = `List tags in this knowledge base.`
 	listBacklinksDescription = `List backlinks for a note.`
@@ -35,15 +35,18 @@ type ListNotesOutput struct {
 	NextCursor string                `json:"next_cursor,omitempty"`
 }
 
-type ReadNoteInput struct {
-	Identifier string `json:"identifier"`
+type ReadNotesInput struct {
+	Identifiers  []string `json:"identifiers"`
+	Fields       []string `json:"fields,omitempty"`
+	MaxBodyChars int      `json:"max_body_chars,omitempty"`
 }
 
-type ReadNoteOutput struct {
-	Note ReadNoteItem `json:"note"`
+type ReadNotesOutput struct {
+	Notes   []ReadNotesNote `json:"notes"`
+	Missing []string        `json:"missing,omitempty"`
 }
 
-type ReadNoteItem struct {
+type ReadNotesNote struct {
 	NoteID      string         `json:"note_id"`
 	Slug        string         `json:"slug"`
 	Title       string         `json:"title"`
@@ -55,13 +58,40 @@ type ReadNoteItem struct {
 }
 
 type SearchNotesInput struct {
-	Query string `json:"query"`
-	Limit int    `json:"limit,omitempty"`
-	Tag   string `json:"tag,omitempty"`
+	Queries        []string `json:"queries,omitempty"`
+	Tags           []string `json:"tags,omitempty"`
+	CreatedBefore  *int64   `json:"created_before,omitempty"`
+	CreatedAfter   *int64   `json:"created_after,omitempty"`
+	UpdatedBefore  *int64   `json:"updated_before,omitempty"`
+	UpdatedAfter   *int64   `json:"updated_after,omitempty"`
+	CreatedSince   string   `json:"created_since,omitempty"`
+	UpdatedSince   string   `json:"updated_since,omitempty"`
+	Limit          int      `json:"limit,omitempty"`
+	IncludeRelated bool     `json:"include_related,omitempty"`
+	Debug          bool     `json:"debug,omitempty"`
+}
+
+type SearchNotesHit struct {
+	NoteID       string                  `json:"note_id"`
+	Slug         string                  `json:"slug"`
+	Title        string                  `json:"title"`
+	Snippet      string                  `json:"snippet"`
+	Path         string                  `json:"path,omitempty"`
+	Score        float64                 `json:"score,omitempty"`
+	ContentHash  string                  `json:"content_hash,omitempty"`
+	RelatedNotes []searchNotesRelatedHit `json:"related_notes,omitempty"`
+}
+
+type searchNotesRelatedHit struct {
+	NoteID       string `json:"note_id"`
+	Slug         string `json:"slug"`
+	Title        string `json:"title"`
+	Path         string `json:"path"`
+	RelationType string `json:"relation_type"`
 }
 
 type SearchNotesOutput struct {
-	Hits []searchsvc.SearchResult `json:"hits"`
+	Hits []SearchNotesHit `json:"hits"`
 }
 
 type ListTagsInput struct {
@@ -160,7 +190,7 @@ func RegisterReadOnly(server *sdkmcp.Server, deps Dependencies, description stri
 	RegisterListNotes(server, deps)
 	RegisterListTags(server, deps)
 	RegisterSearchNotes(server, deps, description)
-	RegisterReadNote(server, deps)
+	RegisterReadNotes(server, deps)
 	RegisterListBacklinks(server, deps)
 	RegisterDoctor(server, deps)
 }
@@ -216,30 +246,37 @@ func parseCursor(raw string, maxVal int) int {
 	return v
 }
 
-func RegisterReadNote(server *sdkmcp.Server, deps Dependencies) {
+func RegisterReadNotes(server *sdkmcp.Server, deps Dependencies) {
 	sdkmcp.AddTool(server, &sdkmcp.Tool{
-		Name:        "read_note",
-		Description: readNoteDescription,
+		Name:        "read_notes",
+		Description: readNotesDescription,
 		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
-	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input ReadNoteInput) (*sdkmcp.CallToolResult, ReadNoteOutput, error) {
+	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input ReadNotesInput) (*sdkmcp.CallToolResult, ReadNotesOutput, error) {
 		_ = ctx
-		resolved, err := deps.Notes.Show(input.Identifier)
-		if err != nil {
-			return nil, ReadNoteOutput{}, err
-		}
-		result := ReadNoteOutput{
-			Note: ReadNoteItem{
+		var notes []ReadNotesNote
+		var missing []string
+		for _, identifier := range input.Identifiers {
+			resolved, err := deps.Notes.Show(identifier)
+			if err != nil {
+				missing = append(missing, identifier)
+				continue
+			}
+			body := string(resolved.Note.Body)
+			if input.MaxBodyChars > 0 && len(body) > input.MaxBodyChars {
+				body = body[:input.MaxBodyChars]
+			}
+			notes = append(notes, ReadNotesNote{
 				NoteID:      resolved.Note.MnemonicNoteID,
 				Slug:        resolved.Note.EffectiveSlug(),
 				Title:       resolved.Note.Title,
 				Path:        resolved.Path,
 				Frontmatter: resolved.Note.Frontmatter,
-				Body:        string(resolved.Note.Body),
+				Body:        body,
 				ContentHash: resolved.ContentHash,
 				UpdatedAt:   resolved.Note.UpdatedAt.UTC().Format(time.RFC3339),
-			},
+			})
 		}
-		return nil, result, nil
+		return nil, ReadNotesOutput{Notes: notes, Missing: missing}, nil
 	})
 }
 
@@ -252,11 +289,47 @@ func RegisterSearchNotes(server *sdkmcp.Server, deps Dependencies, description s
 		if input.Limit <= 0 {
 			input.Limit = 20
 		}
-		hits, err := deps.Search.Search(ctx, searchsvc.SearchInput{Query: input.Query, Limit: input.Limit, Tag: input.Tag})
+		advancedInput := searchsvc.AdvancedSearchInput{
+			Queries:        input.Queries,
+			Tags:           input.Tags,
+			CreatedBefore:  input.CreatedBefore,
+			CreatedAfter:   input.CreatedAfter,
+			UpdatedBefore:  input.UpdatedBefore,
+			UpdatedAfter:   input.UpdatedAfter,
+			CreatedSince:   input.CreatedSince,
+			UpdatedSince:   input.UpdatedSince,
+			Limit:          input.Limit,
+			IncludeRelated: input.IncludeRelated,
+		}
+		hits, err := deps.Search.AdvancedSearch(ctx, advancedInput)
 		if err != nil {
 			return nil, SearchNotesOutput{}, err
 		}
-		return nil, SearchNotesOutput{Hits: hits}, nil
+		out := make([]SearchNotesHit, 0, len(hits))
+		for _, hit := range hits {
+			s := SearchNotesHit{
+				NoteID:  hit.NoteID,
+				Slug:    hit.Slug,
+				Title:   hit.Title,
+				Snippet: hit.Snippet,
+			}
+			if input.Debug {
+				s.Path = hit.Path
+				s.Score = hit.Score
+				s.ContentHash = hit.ContentHash
+			}
+			for _, rn := range hit.RelatedNotes {
+				s.RelatedNotes = append(s.RelatedNotes, searchNotesRelatedHit{
+					NoteID:       rn.NoteID,
+					Slug:         rn.Slug,
+					Title:        rn.Title,
+					Path:         rn.Path,
+					RelationType: rn.RelationType,
+				})
+			}
+			out = append(out, s)
+		}
+		return nil, SearchNotesOutput{Hits: out}, nil
 	})
 }
 
@@ -374,7 +447,7 @@ func validateEditInput(input EditNoteInput) error {
 		return apperr.CLIUsage("edit modes append, replace_body, and merge_frontmatter are mutually exclusive", nil)
 	}
 	if input.ReplaceBody != "" && input.IfMatchHash == "" {
-		return apperr.Unsafe("replace_body requires if_match_hash from read_note", nil)
+		return apperr.Unsafe("replace_body requires if_match_hash from read_notes", nil)
 	}
 	return nil
 }
@@ -411,7 +484,7 @@ func RegisterDeleteNote(server *sdkmcp.Server, deps Dependencies) {
 			return nil, DeleteNoteOutput{}, apperr.CLIUsage("note identifier is required", nil)
 		}
 		if input.HardDelete && input.IfMatchHash == "" {
-			return nil, DeleteNoteOutput{}, apperr.Unsafe("hard delete requires if_match_hash from read_note", nil)
+			return nil, DeleteNoteOutput{}, apperr.Unsafe("hard delete requires if_match_hash from read_notes", nil)
 		}
 		if input.IfMatchHash != "" {
 			resolved, err := deps.Notes.Show(input.Identifier)

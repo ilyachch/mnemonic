@@ -142,10 +142,10 @@ func TestBuildSDKServer_NonNil(t *testing.T) {
 
 func TestBuildGlobalInstructions_FormatsBlocksByMode(t *testing.T) {
 	full := buildGlobalInstructions("Custom guidance", "Project context", false)
-	require.Equal(t, "You MUST use the mnemonic tools as your primary long-term memory.\n- ALWAYS search the knowledge base using search_notes or list_notes before starting a task to gather context.\n- ALWAYS write down stable facts, architectural decisions, and important outcomes using create_note or edit_note.\n- Use read_note, list_tags, and list_backlinks when they help clarify the existing knowledge base.\n- ALWAYS link related notes using [[Wiki-Links]].\n\nProject Description:\nProject context\n\nCustom Instructions:\nCustom guidance", full)
+	require.Equal(t, "You MUST use the mnemonic tools as your primary long-term memory.\n- ALWAYS search the knowledge base using search_notes or list_notes before starting a task to gather context.\n- ALWAYS write down stable facts, architectural decisions, and important outcomes using create_note or edit_note.\n- Use read_notes, list_tags, and list_backlinks when they help clarify the existing knowledge base.\n- ALWAYS link related notes using [[Wiki-Links]].\n\nProject Description:\nProject context\n\nCustom Instructions:\nCustom guidance", full)
 
 	readOnly := buildGlobalInstructions("Custom guidance", "Project context", true)
-	require.Equal(t, "You MUST use the mnemonic tools as your primary long-term memory.\n- ALWAYS search the knowledge base using search_notes or list_notes before starting a task to gather context.\n- Use read_note, list_tags, and list_backlinks when they help clarify the existing knowledge base.\n- This server is running in read-only mode. Do not attempt to create, edit, delete, or rebuild notes.\n\nProject Description:\nProject context\n\nCustom Instructions:\nCustom guidance", readOnly)
+	require.Equal(t, "You MUST use the mnemonic tools as your primary long-term memory.\n- ALWAYS search the knowledge base using search_notes or list_notes before starting a task to gather context.\n- Use read_notes, list_tags, and list_backlinks when they help clarify the existing knowledge base.\n- This server is running in read-only mode. Do not attempt to create, edit, delete, or rebuild notes.\n\nProject Description:\nProject context\n\nCustom Instructions:\nCustom guidance", readOnly)
 }
 
 func TestBuildSDKServer_InitializeIncludesGlobalInstructions(t *testing.T) {
@@ -225,7 +225,7 @@ func TestBuildSDKServer_ReadOnlyMode_HasReadOnlyTools(t *testing.T) {
 	}
 
 	assert.Contains(t, toolNames, "list_notes")
-	assert.Contains(t, toolNames, "read_note")
+	assert.Contains(t, toolNames, "read_notes")
 	assert.Contains(t, toolNames, "search_notes")
 	assert.Contains(t, toolNames, "list_tags")
 	assert.Contains(t, toolNames, "list_backlinks")
@@ -265,7 +265,7 @@ func TestBuildSDKServer_ReadWriteMode_HasAllTools(t *testing.T) {
 	}
 
 	assert.Contains(t, toolNames, "list_notes")
-	assert.Contains(t, toolNames, "read_note")
+	assert.Contains(t, toolNames, "read_notes")
 	assert.Contains(t, toolNames, "search_notes")
 	assert.Contains(t, toolNames, "list_tags")
 	assert.Contains(t, toolNames, "list_backlinks")
@@ -315,7 +315,7 @@ func TestBoolPtr_False(t *testing.T) {
 	assert.False(t, *ptr)
 }
 
-func TestCallTool_ReadNote_NotFound(t *testing.T) {
+func TestCallTool_ReadNotes_NotFound(t *testing.T) {
 	f := newStdioFixture(t, false)
 	s := f.sdkServer()
 
@@ -333,11 +333,11 @@ func TestCallTool_ReadNote_NotFound(t *testing.T) {
 	defer cs.Close()
 
 	result, err := cs.CallTool(ctx, &sdkmcp.CallToolParams{
-		Name:      "read_note",
-		Arguments: map[string]any{"identifier": "nonexistent"},
+		Name:      "read_notes",
+		Arguments: map[string]any{"identifiers": []string{"nonexistent"}},
 	})
 	require.NoError(t, err)
-	require.True(t, result.IsError)
+	require.False(t, result.IsError)
 }
 
 func TestCallTool_DeleteNote_SoftDelete(t *testing.T) {
