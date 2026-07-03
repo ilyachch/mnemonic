@@ -24,8 +24,12 @@ func TestHashBytes(t *testing.T) {
 }
 
 func TestResolveLinkTarget_NotFound(t *testing.T) {
-	// Empty docs should return false
-	target, ok := resolveLinkTarget(nil, nil, "nonexistent")
+	aliasMap := make(map[string]struct {
+		noteID string
+		count  int
+	})
+	target, ok, ambiguous := resolveLinkTarget(nil, nil, aliasMap, "nonexistent")
 	assert.False(t, ok)
+	assert.False(t, ambiguous)
 	assert.Empty(t, target)
 }

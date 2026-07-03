@@ -18,6 +18,8 @@ type NoteDoc struct {
 	NoteID       string
 	Slug         string
 	Title        string
+	Summary      string
+	Aliases      []string
 	RelPath      string
 	Frontmatter  map[string]any
 	BodyMarkdown string
@@ -25,6 +27,8 @@ type NoteDoc struct {
 	ContentHash  string
 	FileMTimeNS  int64
 	FileSize     int64
+	CreatedAt    int64
+	UpdatedAt    int64
 	Tags         []tagRow
 	Observations []observationRow
 	Links        []linkRow
@@ -44,12 +48,14 @@ type observationRow struct {
 }
 
 type linkRow struct {
-	RelationType string
-	RawTarget    string
-	ToNoteID     sql.NullString
-	Resolved     int
-	Source       string
-	Line         int
+	Label       string
+	LinkStyle   string
+	SourceKind  string
+	RawTarget   string
+	ToNoteID    sql.NullString
+	IsResolved  int
+	IsAmbiguous int
+	Line        int
 }
 
 // ScanNotes collects markdown notes from a project root.
@@ -109,6 +115,14 @@ func scanOneNote(root, relPath string) (NoteDoc, error) {
 }
 
 func populateNoteDocData(info *NoteDoc, note markdown.Note, data []byte) {
+	info.Summary = note.Summary
+	info.Aliases = note.Aliases
+	if !note.CreatedAt.IsZero() {
+		info.CreatedAt = note.CreatedAt.Unix()
+	}
+	if !note.UpdatedAt.IsZero() {
+		info.UpdatedAt = note.UpdatedAt.Unix()
+	}
 	info.Tags = append(info.Tags, tagRow{Source: "frontmatter"})
 	for _, t := range note.Tags {
 		info.Tags = append(info.Tags, tagRow{Source: "frontmatter", Value: t})
@@ -125,9 +139,10 @@ func populateNoteDocData(info *NoteDoc, note markdown.Note, data []byte) {
 		})
 		info.Tags = append(info.Tags, tagRow{Source: "observation", Value: ob.Category})
 	}
-	searchable := make([]string, 0, 2+len(note.Tags)+2*len(info.Observations))
-	searchable = append(searchable, note.Title, string(note.Body))
+	searchable := make([]string, 0, 4+len(note.Tags)+2*len(info.Observations)+len(note.Aliases))
+	searchable = append(searchable, note.Title, note.Summary, string(note.Body))
 	searchable = append(searchable, note.Tags...)
+	searchable = append(searchable, note.Aliases...)
 	for _, ob := range info.Observations {
 		searchable = append(searchable, ob.Category, ob.Content)
 	}
@@ -135,8 +150,11 @@ func populateNoteDocData(info *NoteDoc, note markdown.Note, data []byte) {
 	for _, rel := range markdown.ParseRelations(note.Body) {
 		target := strings.TrimSpace(rel.Target.Target)
 		info.Links = append(info.Links, linkRow{
-			RelationType: rel.RelationType, RawTarget: target,
-			Source: string(rel.Source), Line: rel.Line,
+			RawTarget:  target,
+			Label:      rel.Target.Alias,
+			LinkStyle:  rel.LinkStyle,
+			SourceKind: string(rel.Source),
+			Line:       rel.Line,
 		})
 	}
 }

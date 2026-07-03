@@ -98,13 +98,14 @@ func insertDocs(db *sql.DB, docs []NoteDoc, kbid string) error {
 	if err != nil {
 		return err
 	}
+	aliasMap := buildAliasMap(docs)
 	for _, doc := range docs {
 		if err := insertNoteDoc(db, doc, kbid); err != nil {
 			return err
 		}
 	}
 	for _, doc := range docs {
-		insertDocLinks(db, doc, docs, seenNorm)
+		insertDocLinks(db, doc, docs, seenNorm, aliasMap)
 	}
 	return nil
 }
@@ -128,18 +129,39 @@ func validateDocs(docs []NoteDoc) (seenNoteIDs, seenSlugs map[string]struct{}, s
 }
 
 func insertNoteDoc(db *sql.DB, doc NoteDoc, kbid string) error {
-	if _, err := db.Exec(`INSERT INTO notes(note_id, project_id, slug, rel_path, title, content_hash, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-		doc.NoteID, kbid, doc.Slug, doc.RelPath, doc.Title, doc.ContentHash); err != nil {
+	createdAt := doc.CreatedAt
+	updatedAt := doc.UpdatedAt
+	if createdAt == 0 {
+		createdAt = doc.FileMTimeNS / 1e9
+	}
+	if updatedAt == 0 {
+		updatedAt = createdAt
+	}
+	if _, err := db.Exec(`INSERT INTO notes(note_id, project_id, slug, rel_path, title, content_hash, summary, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		doc.NoteID, kbid, doc.Slug, doc.RelPath, doc.Title, doc.ContentHash, doc.Summary, createdAt, updatedAt); err != nil {
 		return err
 	}
-	_, _ = db.Exec(`INSERT INTO notes_fts(rowid, note_id, title, body) VALUES ((SELECT rowid FROM notes WHERE note_id = ?), ?, ?, ?)`,
-		doc.NoteID, doc.NoteID, doc.Title, doc.SearchText)
+	tagsStr := make([]string, 0, len(doc.Tags))
+	for _, tag := range doc.Tags {
+		if tag.Value != "" {
+			tagsStr = append(tagsStr, tag.Value)
+		}
+	}
+	aliasesStr := doc.Aliases
+	_, _ = db.Exec(`INSERT INTO notes_fts(rowid, note_id, title, summary, tags, aliases, body) VALUES ((SELECT rowid FROM notes WHERE note_id = ?), ?, ?, ?, ?, ?, ?)`,
+		doc.NoteID, doc.NoteID, doc.Title, doc.Summary, strings.Join(tagsStr, " "), strings.Join(aliasesStr, " "), doc.SearchText)
 	for _, tag := range doc.Tags {
 		if tag.Value == "" {
 			continue
 		}
 		_, _ = db.Exec(`INSERT INTO note_tags(note_id, tag) VALUES (?, ?)`, doc.NoteID, tag.Source+":"+tag.Value)
+	}
+	for _, alias := range doc.Aliases {
+		if alias == "" {
+			continue
+		}
+		_, _ = db.Exec(`INSERT INTO note_aliases(note_id, alias) VALUES (?, ?)`, doc.NoteID, alias)
 	}
 	for _, ob := range doc.Observations {
 		_, _ = db.Exec(`INSERT INTO observations(observation_id, note_id, kind, value) VALUES (?, ?, ?, ?)`,
@@ -148,34 +170,76 @@ func insertNoteDoc(db *sql.DB, doc NoteDoc, kbid string) error {
 	return nil
 }
 
-func insertDocLinks(db *sql.DB, doc NoteDoc, docs []NoteDoc, seenNorm map[string]int) {
+func buildAliasMap(docs []NoteDoc) map[string]struct {
+	noteID string
+	count  int
+} {
+	m := make(map[string]struct {
+		noteID string
+		count  int
+	})
+	for _, doc := range docs {
+		for _, alias := range doc.Aliases {
+			if alias == "" {
+				continue
+			}
+			entry := m[alias]
+			entry.noteID = doc.NoteID
+			entry.count++
+			m[alias] = entry
+		}
+	}
+	return m
+}
+
+func insertDocLinks(db *sql.DB, doc NoteDoc, docs []NoteDoc, seenNorm map[string]int, aliasMap map[string]struct {
+	noteID string
+	count  int
+}) {
 	for _, link := range doc.Links {
 		toID := sql.NullString{}
-		if resolved, ok := resolveLinkTarget(docs, seenNorm, link.RawTarget); ok {
+		isResolved := 0
+		isAmbiguous := 0
+		if resolved, resolvedOk, ambiguous := resolveLinkTarget(docs, seenNorm, aliasMap, link.RawTarget); resolvedOk {
 			toID.Valid = true
 			toID.String = resolved
+			isResolved = 1
+		} else if ambiguous {
+			isAmbiguous = 1
 		}
-		_, _ = db.Exec(`INSERT INTO links(link_id, note_id, to_note_id, target, relation_type, source_line) VALUES (?, ?, ?, ?, ?, ?)`,
-			markdownstore.HashBytes([]byte(doc.NoteID+link.RawTarget+link.Source+strconv.Itoa(link.Line))), doc.NoteID, toID, link.RawTarget, link.RelationType, link.Line)
+		_, _ = db.Exec(`INSERT INTO links(link_id, note_id, to_note_id, target, label, link_style, source_kind, is_resolved, is_ambiguous, source_line) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			markdownstore.HashBytes([]byte(doc.NoteID+link.RawTarget+link.SourceKind+strconv.Itoa(link.Line))),
+			doc.NoteID, toID, link.RawTarget, link.Label, link.LinkStyle, link.SourceKind, isResolved, isAmbiguous, link.Line)
 	}
 }
 
-func resolveLinkTarget(docs []NoteDoc, norms map[string]int, target string) (string, bool) {
+func resolveLinkTarget(docs []NoteDoc, norms map[string]int, aliasMap map[string]struct {
+	noteID string
+	count  int
+}, target string) (noteID string, resolved bool, ambiguous bool) {
 	for _, doc := range docs {
 		if doc.NoteID == target || doc.Slug == target || doc.RelPath == target || doc.Title == target {
-			return doc.NoteID, true
+			return doc.NoteID, true, false
 		}
+	}
+	if entry, ok := aliasMap[target]; ok {
+		if entry.count == 1 {
+			return entry.noteID, true, false
+		}
+		return "", false, true
 	}
 	norm := normalizeTitleSlug(target)
-	if norms[norm] != 1 {
-		return "", false
+	if norms[norm] > 1 {
+		return "", false, true
 	}
-	for _, doc := range docs {
-		if n := normalizeTitleSlug(doc.Title); n == norm {
-			return doc.NoteID, true
+	if norms[norm] == 1 {
+		for _, doc := range docs {
+			if n := normalizeTitleSlug(doc.Title); n == norm {
+				return doc.NoteID, true, false
+			}
 		}
 	}
-	return "", false
+	return "", false, false
 }
 
 func quickCheckFile(path string) error {

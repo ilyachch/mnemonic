@@ -38,7 +38,7 @@ func TestOpenCreatesFileAndPragmas(t *testing.T) {
 
 	var userVersion int
 	require.NoError(t, db.QueryRow(`PRAGMA user_version`).Scan(&userVersion))
-	require.Equal(t, 1, userVersion)
+	require.Equal(t, 2, userVersion)
 }
 
 func TestOpenReadonlyUsesReadOnlyMode(t *testing.T) {

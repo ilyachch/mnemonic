@@ -178,8 +178,8 @@ func (s Store) Search(db *sql.DB, query string, limit int, tag string) ([]Search
 	tag = strings.TrimSpace(tag)
 
 	sqlQuery := `
-		SELECT n.note_id, n.slug, n.title, n.rel_path, bm25(notes_fts) AS score,
-		       snippet(notes_fts, 2, '[', ']', '...', 12) AS snippet,
+		SELECT n.note_id, n.slug, n.title, n.rel_path, bm25(notes_fts, 10.0, 5.0, 5.0, 2.0, 1.0) AS score,
+		       snippet(notes_fts, 5, '[', ']', '...', 12) AS snippet,
 		       n.content_hash
 		FROM notes_fts
 		JOIN notes n ON n.note_id = notes_fts.note_id
@@ -292,7 +292,7 @@ func (s Store) Backlinks(db *sql.DB, targetNoteID string, limit int) ([]Backlink
 		return nil, errors.New("target note id is required")
 	}
 
-	sqlQuery := `SELECT l.link_id, l.note_id, n.slug, n.title, n.rel_path, l.relation_type, l.source_line
+	sqlQuery := `SELECT l.link_id, l.note_id, n.slug, n.title, n.rel_path, l.source_kind, l.source_line
 		 FROM links l
 		 JOIN notes n ON n.note_id = l.note_id
 		 WHERE l.to_note_id = ?
@@ -378,7 +378,7 @@ func openDB(path string) (*sql.DB, error) {
 		`PRAGMA foreign_keys = ON`,
 		`PRAGMA journal_mode = WAL`,
 		`PRAGMA busy_timeout = 5000`,
-		`PRAGMA user_version = 1`,
+		`PRAGMA user_version = 2`,
 	}
 	for _, pragma := range pragmas {
 		if _, err := db.Exec(pragma); err != nil {

@@ -80,16 +80,16 @@ func insertSearchNote(t *testing.T, db *sql.DB, noteID, slug, title, relPath, bo
 	t.Helper()
 
 	_, err := db.Exec(
-		`INSERT INTO notes(note_id, project_id, slug, rel_path, title, content_hash, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		noteID, "kb-1", slug, relPath, title, "hash-"+noteID, now.Format(time.RFC3339), now.Format(time.RFC3339),
+		`INSERT INTO notes(note_id, project_id, slug, rel_path, title, content_hash, summary, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		noteID, "kb-1", slug, relPath, title, "hash-"+noteID, "", now.Unix(), now.Unix(),
 	)
 	require.NoError(t, err)
 
 	_, err = db.Exec(
-		`INSERT INTO notes_fts(rowid, note_id, title, body)
-		 VALUES ((SELECT rowid FROM notes WHERE note_id = ?), ?, ?, ?)`,
-		noteID, noteID, title, body,
+		`INSERT INTO notes_fts(rowid, note_id, title, summary, tags, aliases, body)
+		 VALUES ((SELECT rowid FROM notes WHERE note_id = ?), ?, ?, ?, ?, ?, ?)`,
+		noteID, noteID, title, "", "", "", body,
 	)
 	require.NoError(t, err)
 
@@ -99,13 +99,13 @@ func insertSearchNote(t *testing.T, db *sql.DB, noteID, slug, title, relPath, bo
 	}
 }
 
-func insertSearchLink(t *testing.T, db *sql.DB, linkID, noteID, toNoteID, target, relationType string, sourceLine int) {
+func insertSearchLink(t *testing.T, db *sql.DB, linkID, noteID, toNoteID, target, sourceKind string, sourceLine int) {
 	t.Helper()
 
 	_, err := db.Exec(
-		`INSERT INTO links(link_id, note_id, to_note_id, target, relation_type, source_line)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		linkID, noteID, toNoteID, target, relationType, sourceLine,
+		`INSERT INTO links(link_id, note_id, to_note_id, target, label, link_style, source_kind, is_resolved, is_ambiguous, source_line)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		linkID, noteID, toNoteID, target, "", "wiki", sourceKind, 1, 0, sourceLine,
 	)
 	require.NoError(t, err)
 }
