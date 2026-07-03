@@ -25,7 +25,7 @@ func TestNotesSearchCommandReturnsHits(t *testing.T) {
 	reindexResult := executeCommand("project", "reindex", "personal", "--json")
 	require.NoError(t, reindexResult.Err, "stderr: %s", reindexResult.Stderr)
 
-	result := executeCommand("notes", "search", "auth", "--project", "personal", "--json")
+	result := executeCommand("notes", "search", "--query", "auth", "--project", "personal", "--json", "--debug")
 	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 
 	var got struct {
@@ -69,7 +69,7 @@ func TestNotesSearchCommandRespectsLimit(t *testing.T) {
 	reindexResult := executeCommand("project", "reindex", "personal", "--json")
 	require.NoError(t, reindexResult.Err, "stderr: %s", reindexResult.Stderr)
 
-	result := executeCommand("notes", "search", "queryterm", "--project", "personal", "--limit", "2", "--json")
+	result := executeCommand("notes", "search", "--query", "queryterm", "--project", "personal", "--limit", "2", "--json")
 	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 	var got struct {
 		Hits []any `json:"hits"`
@@ -88,12 +88,12 @@ func TestNotesSearchCommandFiltersByTag(t *testing.T) {
 	defer restoreWD()
 
 	memoriesRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
-	writeTaggedNote(t, filepath.Join(memoriesRoot, "frontmatter-tag.md"), "550e8400-e29b-41d4-a716-446655440001", "Frontmatter tag", "frontmatter-tag", []string{"django"}, "auth queryterm\n")
-	writeTaggedNote(t, filepath.Join(memoriesRoot, "inline-tag.md"), "550e8400-e29b-41d4-a716-446655440002", "Inline tag", "inline-tag", nil, "auth queryterm #django\n")
+	writeTaggedNote(t, filepath.Join(memoriesRoot, "frontmatter-tag.md"), "550e8400-e29b-41d4-a716-446655440001", "Frontmatter tag", "frontmatter-tag", []string{"python"}, "auth queryterm\n")
+	writeTaggedNote(t, filepath.Join(memoriesRoot, "inline-tag.md"), "550e8400-e29b-41d4-a716-446655440002", "Inline tag", "inline-tag", nil, "auth queryterm #python\n")
 	reindexResult := executeCommand("project", "reindex", "personal", "--json")
 	require.NoError(t, reindexResult.Err, "stderr: %s", reindexResult.Stderr)
 
-	result := executeCommand("notes", "search", "auth", "--project", "personal", "--tag", "django", "--json")
+	result := executeCommand("notes", "search", "--query", "auth", "--project", "personal", "--tag", "python", "--json")
 	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
 	var got struct {
 		Hits []struct {
@@ -113,8 +113,76 @@ func TestNotesSearchCommandMissingIndexSuggestsReindex(t *testing.T) {
 	restoreWD := chdirForNotesTest(t, projectRoot)
 	defer restoreWD()
 
-	result := executeCommand("notes", "search", "auth", "--project", "personal", "--json")
+	result := executeCommand("notes", "search", "--query", "auth", "--project", "personal", "--json")
 	require.Error(t, result.Err)
 	require.Equal(t, 3, ExitCodeForError(result.Err))
 	require.Contains(t, result.Stderr, "mnemonic project reindex")
+}
+
+func TestNotesSearchCommandWithoutQueryArgUsesTimeFilter(t *testing.T) {
+	projectRoot := testutil.CleanEnvForTest(t)
+
+	setLocalProjectMemoriesHome(t, projectRoot)
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
+
+	restoreWD := chdirForNotesTest(t, projectRoot)
+	defer restoreWD()
+
+	memoriesRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
+	writeTaggedNote(t, filepath.Join(memoriesRoot, "recent-note.md"), "550e8400-e29b-41d4-a716-446655440001", "Recent Note", "recent-note", nil, "Some content.\n")
+
+	reindexResult := executeCommand("project", "reindex", "personal", "--json")
+	require.NoError(t, reindexResult.Err, "stderr: %s", reindexResult.Stderr)
+
+	result := executeCommand("notes", "search", "--project", "personal", "--created-since", "1000h", "--json")
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
+
+	var got struct {
+		Hits []struct {
+			NoteID  string  `json:"note_id"`
+			Slug    string  `json:"slug"`
+			Title   string  `json:"title"`
+			Snippet string  `json:"snippet"`
+			Path    string  `json:"path"`
+			Score   float64 `json:"score"`
+		} `json:"hits"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(result.Stdout), &got), "stdout: %s", result.Stdout)
+	require.NotEmpty(t, got.Hits)
+	require.Equal(t, "recent-note", got.Hits[0].Slug)
+}
+
+func TestNotesSearchCommandDebugHidesSensitiveFieldsByDefault(t *testing.T) {
+	projectRoot := testutil.CleanEnvForTest(t)
+
+	setLocalProjectMemoriesHome(t, projectRoot)
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
+
+	restoreWD := chdirForNotesTest(t, projectRoot)
+	defer restoreWD()
+
+	memoriesRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
+	writeTaggedNote(t, filepath.Join(memoriesRoot, "auth-migration.md"), "550e8400-e29b-41d4-a716-446655440001", "Auth migration", "auth-migration", nil, "Search this body.\nObservation queryterm.\n")
+
+	result := executeCommand("project", "reindex", "personal", "--json")
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
+
+	result = executeCommand("notes", "search", "--query", "auth", "--project", "personal", "--json")
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
+
+	var got struct {
+		Hits []struct {
+			Slug        string  `json:"slug"`
+			Title       string  `json:"title"`
+			Path        string  `json:"path,omitempty"`
+			Score       float64 `json:"score,omitempty"`
+			ContentHash string  `json:"content_hash,omitempty"`
+		} `json:"hits"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(result.Stdout), &got), "stdout: %s", result.Stdout)
+	require.NotEmpty(t, got.Hits)
+	require.Equal(t, "auth-migration", got.Hits[0].Slug)
+	require.Empty(t, got.Hits[0].Path)
+	require.Zero(t, got.Hits[0].Score)
+	require.Empty(t, got.Hits[0].ContentHash)
 }
