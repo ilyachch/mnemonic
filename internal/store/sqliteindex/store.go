@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -69,6 +70,43 @@ type Backlink struct {
 	Path         string `json:"path"`
 	RelationType string `json:"relation_type"`
 	SourceLine   int    `json:"source_line"`
+}
+
+// SearchOptions configures an advanced search with multi-query, time, tag, and
+// graph-aware features.
+type SearchOptions struct {
+	Queries        []string
+	Tags           []string
+	CreatedBefore  *int64
+	CreatedAfter   *int64
+	UpdatedBefore  *int64
+	UpdatedAfter   *int64
+	CreatedSince   string
+	UpdatedSince   string
+	Limit          int
+	IncludeRelated bool
+}
+
+// SearchResult is an extended search hit that may carry related notes.
+type SearchResult struct {
+	NoteID       string        `json:"note_id"`
+	Slug         string        `json:"slug"`
+	Title        string        `json:"title"`
+	Path         string        `json:"path"`
+	Score        float64       `json:"score"`
+	Snippet      string        `json:"snippet"`
+	ContentHash  string        `json:"content_hash"`
+	RelatedNotes []RelatedNote `json:"related_notes,omitempty"`
+	MatchCount   int           `json:"-"`
+}
+
+// RelatedNote is a short linked-note reference.
+type RelatedNote struct {
+	NoteID       string `json:"note_id"`
+	Slug         string `json:"slug"`
+	Title        string `json:"title"`
+	Path         string `json:"path"`
+	RelationType string `json:"relation_type"`
 }
 
 // Open opens the index database, creating parent directories and applying the
@@ -217,6 +255,468 @@ func (s Store) Search(db *sql.DB, query string, limit int, tag string) ([]Search
 	}
 
 	return results, nil
+}
+
+// SearchAdvanced runs an advanced search with multi-query, time filters, tag
+// filters, graph-aware reranking, and optional related notes.
+func (s Store) SearchAdvanced(db *sql.DB, opts SearchOptions, now time.Time) ([]SearchResult, error) {
+	if db == nil {
+		return nil, errors.New("db is required")
+	}
+	if opts.Limit <= 0 {
+		opts.Limit = 20
+	}
+
+	ca, cb, ua, ub, err := resolveTimeBounds(opts, now)
+	if err != nil {
+		return nil, err
+	}
+
+	hasTimeFilter := ca != nil || cb != nil || ua != nil || ub != nil
+	hasTagFilter := len(opts.Tags) > 0
+	hasQuery := len(opts.Queries) > 0
+
+	if !searchParamsValid(hasQuery, hasTimeFilter, hasTagFilter) {
+		return nil, errors.New("at least one query, tag, or time filter is required")
+	}
+
+	results, err := s.runSearch(db, opts, hasQuery, ca, cb, ua, ub)
+	if err != nil {
+		return nil, err
+	}
+
+	if hasQuery && len(results) > 1 {
+		results = s.rerankByGraphLinks(db, results)
+	}
+
+	if len(results) > opts.Limit {
+		results = results[:opts.Limit]
+	}
+
+	if opts.IncludeRelated {
+		if err := s.populateRelatedNotes(db, results); err != nil {
+			return nil, err
+		}
+	}
+
+	return results, nil
+}
+
+func (s Store) runSearch(db *sql.DB, opts SearchOptions, hasQuery bool, ca, cb, ua, ub *int64) ([]SearchResult, error) {
+	if hasQuery {
+		return s.searchMultiQuery(db, opts, ca, cb, ua, ub)
+	}
+	return s.searchNotesByFilter(db, opts, ca, cb, ua, ub)
+}
+
+func resolveTimeBounds(opts SearchOptions, now time.Time) (*int64, *int64, *int64, *int64, error) {
+	ca, err := resolveTimeBound(opts.CreatedAfter, opts.CreatedSince, now)
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("created_since: %w", err)
+	}
+	ua, err := resolveTimeBound(opts.UpdatedAfter, opts.UpdatedSince, now)
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("updated_since: %w", err)
+	}
+	return ca, opts.CreatedBefore, ua, opts.UpdatedBefore, nil
+}
+
+func searchParamsValid(hasQuery, hasTimeFilter, hasTagFilter bool) bool {
+	return hasQuery || hasTimeFilter || hasTagFilter
+}
+
+func (s Store) searchMultiQuery(db *sql.DB, opts SearchOptions, ca, cb, ua, ub *int64) ([]SearchResult, error) {
+	timeClause, timeArgs := buildTimeFilterClause(ca, cb, ua, ub)
+	tagClause, tagArgs := buildTagFilterClause(opts.Tags)
+
+	seen := make(map[string]*SearchResult)
+	for _, q := range opts.Queries {
+		clean := sanitizeFTSQuery(q)
+		if strings.TrimSpace(clean) == "" {
+			continue
+		}
+		hits, err := runFTSSearch(db, clean, opts.Limit, timeClause, timeArgs, tagClause, tagArgs)
+		if err != nil {
+			return nil, err
+		}
+		mergeSearchHits(seen, hits)
+	}
+
+	results := applyMultiQueryBoost(seen)
+	sortSearchResults(results)
+	return results, nil
+}
+
+func mergeSearchHits(seen map[string]*SearchResult, hits []SearchResult) {
+	for _, hit := range hits {
+		if existing, ok := seen[hit.NoteID]; ok {
+			if hit.Score < existing.Score {
+				existing.Score = hit.Score
+			}
+			existing.MatchCount++
+		} else {
+			r := hit
+			r.MatchCount = 1
+			seen[hit.NoteID] = &r
+		}
+	}
+}
+
+func applyMultiQueryBoost(seen map[string]*SearchResult) []SearchResult {
+	results := make([]SearchResult, 0, len(seen))
+	for _, r := range seen {
+		if r.MatchCount > 1 {
+			r.Score = r.Score * (1.0 - 0.1*float64(r.MatchCount-1))
+			if r.Score < 0 {
+				r.Score = 0
+			}
+		}
+		results = append(results, *r)
+	}
+	return results
+}
+
+func (s Store) searchNotesByFilter(db *sql.DB, opts SearchOptions, ca, cb, ua, ub *int64) ([]SearchResult, error) {
+	where := "WHERE 1=1"
+	var args []any
+
+	if ca != nil {
+		where += " AND n.created_at > ?"
+		args = append(args, *ca)
+	}
+	if cb != nil {
+		where += " AND n.created_at < ?"
+		args = append(args, *cb)
+	}
+	if ua != nil {
+		where += " AND n.updated_at > ?"
+		args = append(args, *ua)
+	}
+	if ub != nil {
+		where += " AND n.updated_at < ?"
+		args = append(args, *ub)
+	}
+
+	if len(opts.Tags) > 0 {
+		placeholders := make([]string, len(opts.Tags))
+		for i, t := range opts.Tags {
+			placeholders[i] = "?"
+			args = append(args, "%:"+strings.TrimSpace(t))
+		}
+		where += ` AND EXISTS (
+			SELECT 1 FROM note_tags nt
+			WHERE nt.note_id = n.note_id
+			  AND nt.tag LIKE ` + strings.Join(placeholders, " OR nt.tag LIKE ") + ")"
+	}
+
+	query := "SELECT n.note_id, n.slug, n.title, n.rel_path, 0.0, '', n.content_hash FROM notes n " + where + " ORDER BY n.created_at DESC LIMIT ?"
+	args = append(args, opts.Limit)
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("filter search: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	results := make([]SearchResult, 0)
+	for rows.Next() {
+		var r SearchResult
+		if err := rows.Scan(&r.NoteID, &r.Slug, &r.Title, &r.Path, &r.Score, &r.Snippet, &r.ContentHash); err != nil {
+			return nil, fmt.Errorf("scan filter result: %w", err)
+		}
+		results = append(results, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate filter results: %w", err)
+	}
+	return results, nil
+}
+
+func (s Store) rerankByGraphLinks(db *sql.DB, results []SearchResult) []SearchResult {
+	const topN = 5
+	n := topN
+	if len(results) < n {
+		n = len(results)
+	}
+	if n == 0 {
+		return results
+	}
+
+	topIDs := make(map[string]bool, n)
+	for i := 0; i < n; i++ {
+		topIDs[results[i].NoteID] = true
+	}
+
+	idToIdx := make(map[string]int, len(results))
+	allIDs := make([]string, len(results))
+	for i, r := range results {
+		allIDs[i] = r.NoteID
+		idToIdx[r.NoteID] = i
+	}
+
+	topList := make([]string, 0, n)
+	for id := range topIDs {
+		topList = append(topList, id)
+	}
+
+	connections := s.countGraphConnections(db, allIDs, topList, idToIdx)
+
+	for i := range results {
+		if conn := connections[i]; conn > 0 {
+			results[i].Score = results[i].Score / (1.0 + 0.1*float64(conn))
+		}
+	}
+
+	sortSearchResults(results)
+	return results
+}
+
+func (s Store) countGraphConnections(db *sql.DB, allIDs, topList []string, idToIdx map[string]int) []int {
+	connections := make([]int, len(allIDs))
+	s.countOutgoingLinks(db, allIDs, topList, idToIdx, connections)
+	s.countIncomingLinks(db, topList, allIDs, idToIdx, connections)
+	return connections
+}
+
+func (s Store) countOutgoingLinks(db *sql.DB, allIDs, topList []string, idToIdx map[string]int, connections []int) {
+	args := append(stringSliceToAny(allIDs), stringSliceToAny(topList)...)
+	query := "SELECT note_id FROM links WHERE note_id IN (" + placeholders(len(allIDs)) + ") AND to_note_id IN (" + placeholders(len(topList)) + ") AND to_note_id IS NOT NULL"
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var noteID string
+		if rows.Scan(&noteID) == nil {
+			if idx, ok := idToIdx[noteID]; ok {
+				connections[idx]++
+			}
+		}
+	}
+	_ = rows.Err()
+}
+
+func (s Store) countIncomingLinks(db *sql.DB, topList, allIDs []string, idToIdx map[string]int, connections []int) {
+	args := append(stringSliceToAny(topList), stringSliceToAny(allIDs)...)
+	query := "SELECT to_note_id FROM links WHERE note_id IN (" + placeholders(len(topList)) + ") AND to_note_id IN (" + placeholders(len(allIDs)) + ") AND to_note_id IS NOT NULL"
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var toNoteID string
+		if rows.Scan(&toNoteID) == nil {
+			if idx, ok := idToIdx[toNoteID]; ok {
+				connections[idx]++
+			}
+		}
+	}
+	_ = rows.Err()
+}
+
+func (s Store) populateRelatedNotes(db *sql.DB, results []SearchResult) error {
+	if len(results) == 0 {
+		return nil
+	}
+
+	ids := make([]string, len(results))
+	for i, r := range results {
+		ids[i] = r.NoteID
+	}
+
+	query := "SELECT l.note_id, l.to_note_id, n.note_id, n.slug, n.title, n.rel_path, l.source_kind " +
+		"FROM links l " +
+		"JOIN notes n ON n.note_id = l.to_note_id " +
+		"WHERE l.note_id IN (" + placeholders(len(ids)) + ") AND l.to_note_id IS NOT NULL " +
+		"UNION ALL " +
+		"SELECT l.to_note_id, l.note_id, n.note_id, n.slug, n.title, n.rel_path, l.source_kind " +
+		"FROM links l " +
+		"JOIN notes n ON n.note_id = l.note_id " +
+		"WHERE l.to_note_id IN (" + placeholders(len(ids)) + ") AND l.to_note_id IS NOT NULL"
+
+	allIDs := append(stringSliceToAny(ids), stringSliceToAny(ids)...)
+
+	rows, err := db.Query(query, allIDs...)
+	if err != nil {
+		return fmt.Errorf("query related notes: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	relatedByNoteID := make(map[string][]RelatedNote, len(results))
+	for rows.Next() {
+		var sourceID, targetID, nID, slug, title, path, rel string
+		if err := rows.Scan(&sourceID, &targetID, &nID, &slug, &title, &path, &rel); err != nil {
+			return fmt.Errorf("scan related note: %w", err)
+		}
+		relatedByNoteID[sourceID] = append(relatedByNoteID[sourceID], RelatedNote{
+			NoteID:       nID,
+			Slug:         slug,
+			Title:        title,
+			Path:         path,
+			RelationType: rel,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate related notes: %w", err)
+	}
+
+	for i := range results {
+		rn := relatedByNoteID[results[i].NoteID]
+		if len(rn) > 3 {
+			rn = rn[:3]
+		}
+		if rn == nil {
+			rn = []RelatedNote{}
+		}
+		results[i].RelatedNotes = rn
+	}
+
+	return nil
+}
+
+func runFTSSearch(db *sql.DB, query string, limit int, timeClause string, timeArgs []any, tagClause string, tagArgs []any) ([]SearchResult, error) {
+	sqlQuery := `SELECT n.note_id, n.slug, n.title, n.rel_path, bm25(notes_fts, 10.0, 5.0, 5.0, 2.0, 1.0) AS score,
+		       snippet(notes_fts, 5, '[', ']', '...', 12) AS snippet,
+		       n.content_hash
+		FROM notes_fts
+		JOIN notes n ON n.note_id = notes_fts.note_id
+		WHERE notes_fts MATCH ?`
+
+	args := []any{query}
+	if timeClause != "" {
+		sqlQuery += " AND " + timeClause
+		args = append(args, timeArgs...)
+	}
+	if tagClause != "" {
+		sqlQuery += " AND " + tagClause
+		args = append(args, tagArgs...)
+	}
+	sqlQuery += " ORDER BY score ASC LIMIT ?"
+	args = append(args, limit)
+
+	rows, err := db.Query(sqlQuery, args...)
+	if err != nil {
+		return nil, fmt.Errorf("fts search: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	results := make([]SearchResult, 0)
+	for rows.Next() {
+		var r SearchResult
+		if err := rows.Scan(&r.NoteID, &r.Slug, &r.Title, &r.Path, &r.Score, &r.Snippet, &r.ContentHash); err != nil {
+			return nil, fmt.Errorf("scan fts result: %w", err)
+		}
+		results = append(results, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate fts results: %w", err)
+	}
+	return results, nil
+}
+
+func resolveTimeBound(absolute *int64, relative string, now time.Time) (*int64, error) {
+	if relative != "" {
+		ts, err := parseRelativeDuration(relative, now)
+		if err != nil {
+			return nil, err
+		}
+		return &ts, nil
+	}
+	return absolute, nil
+}
+
+func parseRelativeDuration(s string, now time.Time) (int64, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, errors.New("duration is empty")
+	}
+	if len(s) < 2 {
+		return 0, apperr.CLIUsage("invalid relative duration: "+s, errors.New("expected format like 15m, 24h, or 30d"))
+	}
+	unit := s[len(s)-1]
+	numStr := s[:len(s)-1]
+	num, err := strconv.Atoi(numStr)
+	if err != nil || num <= 0 {
+		return 0, apperr.CLIUsage("invalid relative duration: "+s, errors.New("expected a positive integer followed by m, h, or d"))
+	}
+	var duration time.Duration
+	switch unit {
+	case 'm':
+		duration = time.Duration(num) * time.Minute
+	case 'h':
+		duration = time.Duration(num) * time.Hour
+	case 'd':
+		duration = time.Duration(num) * 24 * time.Hour
+	default:
+		return 0, apperr.CLIUsage("unsupported duration unit in "+s, errors.New("use m (minutes), h (hours), or d (days)"))
+	}
+	return now.Add(-duration).Unix(), nil
+}
+
+func buildTimeFilterClause(ca, cb, ua, ub *int64) (string, []any) {
+	var parts []string
+	var args []any
+	if ca != nil {
+		parts = append(parts, "n.created_at > ?")
+		args = append(args, *ca)
+	}
+	if cb != nil {
+		parts = append(parts, "n.created_at < ?")
+		args = append(args, *cb)
+	}
+	if ua != nil {
+		parts = append(parts, "n.updated_at > ?")
+		args = append(args, *ua)
+	}
+	if ub != nil {
+		parts = append(parts, "n.updated_at < ?")
+		args = append(args, *ub)
+	}
+	if len(parts) == 0 {
+		return "", nil
+	}
+	return strings.Join(parts, " AND "), args
+}
+
+func buildTagFilterClause(tags []string) (string, []any) {
+	if len(tags) == 0 {
+		return "", nil
+	}
+	placeholders := make([]string, len(tags))
+	args := make([]any, len(tags))
+	for i, t := range tags {
+		placeholders[i] = "?"
+		args[i] = "%:" + strings.TrimSpace(t)
+	}
+	return "EXISTS (SELECT 1 FROM note_tags nt WHERE nt.note_id = n.note_id AND nt.tag LIKE " + strings.Join(placeholders, " OR nt.tag LIKE ") + ")", args
+}
+
+func placeholders(n int) string {
+	parts := make([]string, n)
+	for i := 0; i < n; i++ {
+		parts[i] = "?"
+	}
+	return strings.Join(parts, ",")
+}
+
+func stringSliceToAny(s []string) []any {
+	result := make([]any, len(s))
+	for i, v := range s {
+		result[i] = v
+	}
+	return result
+}
+
+func sortSearchResults(results []SearchResult) {
+	for i := 0; i < len(results); i++ {
+		for j := i + 1; j < len(results); j++ {
+			if results[j].Score < results[i].Score || (results[j].Score == results[i].Score && results[j].Title < results[i].Title) {
+				results[i], results[j] = results[j], results[i]
+			}
+		}
+	}
 }
 
 // ListTags returns grouped tags and note counts.

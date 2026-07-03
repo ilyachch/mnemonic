@@ -6,6 +6,7 @@ import (
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
+	"github.com/ilyachch/mnemonic/internal/platform/clock"
 	"github.com/ilyachch/mnemonic/internal/store/sqliteindex"
 )
 
@@ -58,6 +59,43 @@ type Backlink struct {
 	Path         string `json:"path"`
 	RelationType string `json:"relation_type"`
 	SourceLine   int    `json:"source_line"`
+}
+
+// AdvancedSearchInput configures an advanced search with multi-query, time
+// filters, tag filters, and related-note inclusion.
+type AdvancedSearchInput struct {
+	Queries        []string
+	Tags           []string
+	CreatedBefore  *int64
+	CreatedAfter   *int64
+	UpdatedBefore  *int64
+	UpdatedAfter   *int64
+	CreatedSince   string
+	UpdatedSince   string
+	Limit          int
+	IncludeRelated bool
+}
+
+// AdvancedSearchResult mirrors an advanced search hit with optional related
+// notes.
+type AdvancedSearchResult struct {
+	NoteID       string            `json:"note_id"`
+	Slug         string            `json:"slug"`
+	Title        string            `json:"title"`
+	Path         string            `json:"path"`
+	Score        float64           `json:"score"`
+	Snippet      string            `json:"snippet"`
+	ContentHash  string            `json:"content_hash"`
+	RelatedNotes []RelatedNoteItem `json:"related_notes,omitempty"`
+}
+
+// RelatedNoteItem is a short linked-note reference for the service layer.
+type RelatedNoteItem struct {
+	NoteID       string `json:"note_id"`
+	Slug         string `json:"slug"`
+	Title        string `json:"title"`
+	Path         string `json:"path"`
+	RelationType string `json:"relation_type"`
 }
 
 // New constructs the runtime search service for one knowledge base.
@@ -154,6 +192,60 @@ func (s Service) Backlinks(ctx context.Context, input BacklinksInput) ([]Backlin
 			Path:         link.Path,
 			RelationType: link.RelationType,
 			SourceLine:   link.SourceLine,
+		})
+	}
+	return out, nil
+}
+
+// AdvancedSearch runs an advanced search with multi-query, time filters, tag
+// filters, graph-aware reranking, and optional related notes.
+func (s Service) AdvancedSearch(ctx context.Context, input AdvancedSearchInput) ([]AdvancedSearchResult, error) {
+	_ = ctx
+	db, err := s.Index.OpenReadonly()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = db.Close() }()
+
+	opts := sqliteindex.SearchOptions{
+		Queries:        input.Queries,
+		Tags:           input.Tags,
+		CreatedBefore:  input.CreatedBefore,
+		CreatedAfter:   input.CreatedAfter,
+		UpdatedBefore:  input.UpdatedBefore,
+		UpdatedAfter:   input.UpdatedAfter,
+		CreatedSince:   input.CreatedSince,
+		UpdatedSince:   input.UpdatedSince,
+		Limit:          input.Limit,
+		IncludeRelated: input.IncludeRelated,
+	}
+
+	hits, err := s.Index.SearchAdvanced(db, opts, clock.NowUTC())
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]AdvancedSearchResult, 0, len(hits))
+	for _, hit := range hits {
+		related := make([]RelatedNoteItem, 0, len(hit.RelatedNotes))
+		for _, rn := range hit.RelatedNotes {
+			related = append(related, RelatedNoteItem{
+				NoteID:       rn.NoteID,
+				Slug:         rn.Slug,
+				Title:        rn.Title,
+				Path:         rn.Path,
+				RelationType: rn.RelationType,
+			})
+		}
+		out = append(out, AdvancedSearchResult{
+			NoteID:       hit.NoteID,
+			Slug:         hit.Slug,
+			Title:        hit.Title,
+			Path:         hit.Path,
+			Score:        hit.Score,
+			Snippet:      hit.Snippet,
+			ContentHash:  hit.ContentHash,
+			RelatedNotes: related,
 		})
 	}
 	return out, nil
