@@ -27,7 +27,7 @@ func TestAddRegistersStructuredProjectAndRebuildsIndex(t *testing.T) {
 	manifest.Name = "Structured"
 	manifest.Slug = "structured"
 	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = time.Now().UTC()
+	manifest.CreatedAt = time.Now().UTC().Unix()
 	manifest.UpdatedAt = manifest.CreatedAt
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(repoRoot, "mnemonic.toml"), manifest))
 
@@ -101,7 +101,7 @@ func TestImportPreservesExistingManifest(t *testing.T) {
 	manifest.Name = "Existing"
 	manifest.Slug = "existing"
 	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = time.Now().UTC()
+	manifest.CreatedAt = time.Now().UTC().Unix()
 	manifest.UpdatedAt = manifest.CreatedAt
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(repoRoot, "mnemonic.toml"), manifest))
 

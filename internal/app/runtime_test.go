@@ -73,7 +73,7 @@ func TestBootstrapRuntimeResolvesSelector(t *testing.T) {
 	manifest.Name = "Demo"
 	manifest.Slug = slug
 	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = time.Now().UTC()
+	manifest.CreatedAt = time.Now().UTC().Unix()
 	manifest.UpdatedAt = manifest.CreatedAt
 	manifest.Generator.App = "mnemonic"
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))

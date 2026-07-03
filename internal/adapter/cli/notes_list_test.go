@@ -53,7 +53,8 @@ func TestNotesListCommandReturnsMarkdownNotes(t *testing.T) {
 mnemonic_note_id: note-123
 title: Intro
 slug: intro
-updated_at: 2026-06-02T10:00:00Z
+created_at: 1780394400
+updated_at: 1780394400
 ---
 # Intro
 `)

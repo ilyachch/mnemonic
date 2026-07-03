@@ -44,7 +44,7 @@ func TestResolveBuildsKnowledgeBase(t *testing.T) {
 	manifest.Description = "Catalog description"
 	manifest.CustomInstructions = "Catalog instructions"
 	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = time.Now().UTC()
+	manifest.CreatedAt = time.Now().UTC().Unix()
 	manifest.UpdatedAt = manifest.CreatedAt
 	manifest.Generator.App = "mnemonic"
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))
@@ -76,7 +76,7 @@ func TestKnowledgeBaseFromEntryPrefersEntryMetadataAndFallsBackToManifest(t *tes
 	manifest.Description = "Manifest description"
 	manifest.CustomInstructions = "Manifest instructions"
 	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = time.Now().UTC()
+	manifest.CreatedAt = time.Now().UTC().Unix()
 	manifest.UpdatedAt = manifest.CreatedAt
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(manifestPath, manifest))
 
@@ -308,7 +308,7 @@ func TestListAndShowShapeRegistryData(t *testing.T) {
 	centralManifest.Description = "Central description"
 	centralManifest.CustomInstructions = "Central instructions"
 	centralManifest.MarkdownFormatVersion = 1
-	centralManifest.CreatedAt = time.Now().UTC()
+	centralManifest.CreatedAt = time.Now().UTC().Unix()
 	centralManifest.UpdatedAt = centralManifest.CreatedAt
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(centralDir, "mnemonic.toml"), centralManifest))
 
@@ -324,7 +324,7 @@ func TestListAndShowShapeRegistryData(t *testing.T) {
 	localManifest.Description = "Local description"
 	localManifest.CustomInstructions = "Local instructions"
 	localManifest.MarkdownFormatVersion = 1
-	localManifest.CreatedAt = time.Now().UTC()
+	localManifest.CreatedAt = time.Now().UTC().Unix()
 	localManifest.UpdatedAt = localManifest.CreatedAt
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(localManifestDir, "mnemonic.toml"), localManifest))
 	require.NoError(t, manifestfmt.WritePointerFile(filepath.Join(memoriesHome, localSlug+".toml"), &manifestfmt.PointerFile{ManifestPath: filepath.Join(localManifestDir, "mnemonic.toml")}))
@@ -406,7 +406,7 @@ func TestImportRemoveAndSlugs(t *testing.T) {
 	manifest.Name = "Import Demo"
 	manifest.Slug = "import-demo"
 	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = time.Now().UTC()
+	manifest.CreatedAt = time.Now().UTC().Unix()
 	manifest.UpdatedAt = manifest.CreatedAt
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(repoRoot, "mnemonic.toml"), manifest))
 
@@ -431,7 +431,7 @@ func TestImportRemoveAndSlugs(t *testing.T) {
 	removedManifest.Name = manifest.Name
 	removedManifest.Slug = manifest.Slug
 	removedManifest.MarkdownFormatVersion = 1
-	removedManifest.CreatedAt = time.Now().UTC()
+	removedManifest.CreatedAt = time.Now().UTC().Unix()
 	removedManifest.UpdatedAt = removedManifest.CreatedAt
 	removedManifest.Generator.App = "mnemonic"
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), removedManifest))
@@ -468,7 +468,7 @@ func TestImportReturnsSkippedIndexStatusForDryRun(t *testing.T) {
 	manifest.Name = "Dry Run"
 	manifest.Slug = "dry-run"
 	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = time.Now().UTC()
+	manifest.CreatedAt = time.Now().UTC().Unix()
 	manifest.UpdatedAt = manifest.CreatedAt
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(repoRoot, "mnemonic.toml"), manifest))
 
@@ -551,7 +551,7 @@ func TestImportReturnsErrorWhenRegistrationFails(t *testing.T) {
 	manifest.Name = "Duplicate"
 	manifest.Slug = "duplicate"
 	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = time.Now().UTC()
+	manifest.CreatedAt = time.Now().UTC().Unix()
 	manifest.UpdatedAt = manifest.CreatedAt
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(repoRoot, "mnemonic.toml"), manifest))
 
@@ -570,7 +570,7 @@ func seedImportedProject(t *testing.T, memoriesHome, projectID, name, slug strin
 	manifest.Name = name
 	manifest.Slug = slug
 	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = time.Now().UTC()
+	manifest.CreatedAt = time.Now().UTC().Unix()
 	manifest.UpdatedAt = manifest.CreatedAt
 	manifestPath := filepath.Join(repoRoot, "mnemonic.toml")
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(manifestPath, manifest))

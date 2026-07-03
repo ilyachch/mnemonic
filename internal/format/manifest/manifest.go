@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"time"
 
 	toml "github.com/pelletier/go-toml/v2"
 )
@@ -18,6 +17,11 @@ const (
 	ManifestTypeLocal ManifestType = "local"
 )
 
+// ManifestFormat holds format-related manifest settings.
+type ManifestFormat struct {
+	LinksStyle string `toml:"links_style"`
+}
+
 // Manifest is the TOML schema stored in mnemonic.toml.
 type Manifest struct {
 	Version               int            `toml:"version"`
@@ -28,8 +32,9 @@ type Manifest struct {
 	MarkdownFormatVersion int            `toml:"markdown_format_version"`
 	Description           string         `toml:"description"`
 	CustomInstructions    string         `toml:"custom_instructions"`
-	CreatedAt             time.Time      `toml:"created_at"`
-	UpdatedAt             time.Time      `toml:"updated_at"`
+	CreatedAt             int64          `toml:"created_at"`
+	UpdatedAt             int64          `toml:"updated_at"`
+	Format                ManifestFormat `toml:"format"`
 	Layout                ManifestLayout `toml:"layout"`
 	Generator             Generator      `toml:"generator"`
 }
@@ -65,8 +70,9 @@ type manifestTOML struct {
 	MarkdownFormatVersion int            `toml:"markdown_format_version"`
 	Description           string         `toml:"description"`
 	CustomInstructions    string         `toml:"custom_instructions"`
-	CreatedAt             time.Time      `toml:"created_at"`
-	UpdatedAt             time.Time      `toml:"updated_at"`
+	CreatedAt             int64          `toml:"created_at"`
+	UpdatedAt             int64          `toml:"updated_at"`
+	Format                ManifestFormat `toml:"format"`
 	Layout                ManifestLayout `toml:"layout"`
 	Generator             Generator      `toml:"generator"`
 }
@@ -101,6 +107,9 @@ func (m *Manifest) ApplyDefaults() {
 	if m.Version == 0 {
 		m.Version = 1
 	}
+	if m.Format.LinksStyle == "" {
+		m.Format.LinksStyle = "wiki"
+	}
 	if len(m.Layout.NotesGlob) == 0 {
 		m.Layout.NotesGlob = []string{"**/*.md"}
 	}
@@ -132,11 +141,14 @@ func (m *Manifest) Validate() error {
 	if m.MarkdownFormatVersion <= 0 {
 		return errors.New("markdown_format_version must be positive")
 	}
-	if m.CreatedAt.IsZero() {
+	if m.CreatedAt <= 0 {
 		return errors.New("created_at is required")
 	}
-	if m.UpdatedAt.IsZero() {
+	if m.UpdatedAt <= 0 {
 		return errors.New("updated_at is required")
+	}
+	if err := m.validateFormat(); err != nil {
+		return err
 	}
 	if len(m.Layout.NotesGlob) == 0 {
 		return errors.New("layout.notes_glob is required")
@@ -153,6 +165,13 @@ func (m *Manifest) Validate() error {
 	}
 }
 
+func (m *Manifest) validateFormat() error {
+	if m.Format.LinksStyle != "" && m.Format.LinksStyle != "wiki" && m.Format.LinksStyle != "regular" {
+		return fmt.Errorf("format.links_style must be %q or %q, got %q", "wiki", "regular", m.Format.LinksStyle)
+	}
+	return nil
+}
+
 // MarshalTOML serializes mnemonic.toml.
 func (m *Manifest) MarshalTOML() ([]byte, error) {
 	copy := *m
@@ -161,20 +180,7 @@ func (m *Manifest) MarshalTOML() ([]byte, error) {
 		return nil, err
 	}
 
-	raw := manifestTOML{
-		Version:               copy.Version,
-		ProjectID:             copy.ProjectID,
-		Name:                  copy.Name,
-		Slug:                  copy.Slug,
-		Type:                  copy.Type,
-		MarkdownFormatVersion: copy.MarkdownFormatVersion,
-		Description:           copy.Description,
-		CustomInstructions:    copy.CustomInstructions,
-		CreatedAt:             copy.CreatedAt.UTC(),
-		UpdatedAt:             copy.UpdatedAt.UTC(),
-		Layout:                copy.Layout,
-		Generator:             copy.Generator,
-	}
+	raw := manifestTOML(copy)
 	return toml.Marshal(raw)
 }
 
@@ -217,6 +223,7 @@ func ParseMnemonicManifest(data []byte) (*Manifest, error) {
 		CustomInstructions:    raw.CustomInstructions,
 		CreatedAt:             raw.CreatedAt,
 		UpdatedAt:             raw.UpdatedAt,
+		Format:                raw.Format,
 		Layout:                raw.Layout,
 		Generator:             raw.Generator,
 	}

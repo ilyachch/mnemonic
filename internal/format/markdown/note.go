@@ -14,6 +14,8 @@ type Note struct {
 	Title          string
 	Slug           string
 	Tags           []string
+	Summary        string
+	Aliases        []string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 	Type           string
@@ -56,36 +58,50 @@ func ParseNote(data []byte) (Note, error) {
 	}
 	note.Frontmatter = raw
 
-	var errField error
-	if note.MnemonicNoteID, errField = noteStringField(raw, "mnemonic_note_id"); errField != nil {
-		return Note{}, errField
-	}
-	if note.Title, errField = noteStringField(raw, "title"); errField != nil {
-		return Note{}, errField
-	}
-	if note.Slug, errField = noteStringField(raw, "slug"); errField != nil {
-		return Note{}, errField
-	}
-	if note.Permalink, errField = noteStringField(raw, "permalink"); errField != nil {
-		return Note{}, errField
-	}
-	if note.Slug == "" {
-		note.Slug = note.Permalink
-	}
-	if note.Tags, errField = noteStringSliceField(raw, "tags"); errField != nil {
-		return Note{}, errField
-	}
-	if note.CreatedAt, errField = noteTimeField(raw, "created_at"); errField != nil {
-		return Note{}, errField
-	}
-	if note.UpdatedAt, errField = noteTimeField(raw, "updated_at"); errField != nil {
-		return Note{}, errField
-	}
-	if note.Type, errField = noteStringField(raw, "type"); errField != nil {
-		return Note{}, errField
+	if err := note.populateFromRaw(raw); err != nil {
+		return Note{}, err
 	}
 
 	return note, nil
+}
+
+func (n *Note) populateFromRaw(raw map[string]any) error {
+	var errField error
+	if n.MnemonicNoteID, errField = noteStringField(raw, "mnemonic_note_id"); errField != nil {
+		return errField
+	}
+	if n.Title, errField = noteStringField(raw, "title"); errField != nil {
+		return errField
+	}
+	if n.Slug, errField = noteStringField(raw, "slug"); errField != nil {
+		return errField
+	}
+	if n.Permalink, errField = noteStringField(raw, "permalink"); errField != nil {
+		return errField
+	}
+	if n.Slug == "" {
+		n.Slug = n.Permalink
+	}
+	if n.Tags, errField = noteStringSliceField(raw, "tags"); errField != nil {
+		return errField
+	}
+	if n.Summary, errField = noteStringField(raw, "summary"); errField != nil {
+		return errField
+	}
+	if n.Aliases, errField = noteStringSliceField(raw, "aliases"); errField != nil {
+		return errField
+	}
+	if n.CreatedAt, errField = noteTimeField(raw, "created_at"); errField != nil {
+		return errField
+	}
+	if n.UpdatedAt, errField = noteTimeField(raw, "updated_at"); errField != nil {
+		return errField
+	}
+	if n.Type, errField = noteStringField(raw, "type"); errField != nil {
+		return errField
+	}
+
+	return nil
 }
 
 func noteStringField(raw map[string]any, key string) (string, error) {
@@ -135,15 +151,11 @@ func noteTimeField(raw map[string]any, key string) (time.Time, error) {
 	}
 
 	switch typed := value.(type) {
-	case time.Time:
-		return typed.UTC(), nil
-	case string:
-		parsed, err := time.Parse(time.RFC3339, typed)
-		if err != nil {
-			return time.Time{}, fmt.Errorf("frontmatter %q must be an RFC3339 timestamp: %w", key, err)
-		}
-		return parsed.UTC(), nil
+	case int:
+		return time.Unix(int64(typed), 0).UTC(), nil
+	case int64:
+		return time.Unix(typed, 0).UTC(), nil
 	default:
-		return time.Time{}, fmt.Errorf("frontmatter %q must be a timestamp string", key)
+		return time.Time{}, fmt.Errorf("frontmatter %q must be a Unix timestamp as an integer, got %T", key, value)
 	}
 }

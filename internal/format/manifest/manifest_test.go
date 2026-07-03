@@ -3,6 +3,7 @@ package manifest
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -11,11 +12,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func fixedTime(hour, min int) time.Time {
-	return time.Date(2026, time.June, 23, hour, min, 0, 0, time.UTC)
+func fixedTimeUnix() int64 {
+	return time.Date(2026, time.June, 23, 10, 0, 0, 0, time.UTC).Unix()
 }
 
 func validManifest() *Manifest {
+	ts := fixedTimeUnix()
 	return &Manifest{
 		Version:               1,
 		ProjectID:             "550e8400-e29b-41d4-a716-446655440000",
@@ -25,8 +27,8 @@ func validManifest() *Manifest {
 		MarkdownFormatVersion: 1,
 		Description:           "A test project",
 		CustomInstructions:    "Follow the house style.",
-		CreatedAt:             fixedTime(10, 0),
-		UpdatedAt:             fixedTime(10, 0),
+		CreatedAt:             ts,
+		UpdatedAt:             ts,
 		Layout: ManifestLayout{
 			NotesGlob: []string{"**/*.md"},
 			Ignore:    []string{"mnemonic.toml", ".trash/**"},
@@ -38,6 +40,10 @@ func validManifest() *Manifest {
 	}
 }
 
+func itoa(n int64) string {
+	return strconv.FormatInt(n, 10)
+}
+
 // ── New / NewMnemonicManifest ──────────────────────────────────────────
 
 func TestNew(t *testing.T) {
@@ -46,9 +52,8 @@ func TestNew(t *testing.T) {
 	assert.Equal(t, 1, m.Version)
 	assert.Equal(t, []string{"**/*.md"}, m.Layout.NotesGlob)
 	assert.Equal(t, []string{"mnemonic.toml", ".trash/**"}, m.Layout.Ignore)
-	// CreatedAt and UpdatedAt are not set by New() — they are zero
-	assert.True(t, m.CreatedAt.IsZero())
-	assert.True(t, m.UpdatedAt.IsZero())
+	assert.Equal(t, int64(0), m.CreatedAt)
+	assert.Equal(t, int64(0), m.UpdatedAt)
 }
 
 func TestNewMnemonicManifest(t *testing.T) {
@@ -66,11 +71,13 @@ func TestApplyDefaults_FillsMissing(t *testing.T) {
 	assert.Equal(t, 1, m.Version)
 	assert.Equal(t, []string{"**/*.md"}, m.Layout.NotesGlob)
 	assert.Equal(t, []string{"mnemonic.toml", ".trash/**"}, m.Layout.Ignore)
+	assert.Equal(t, "wiki", m.Format.LinksStyle)
 }
 
 func TestApplyDefaults_PreservesExisting(t *testing.T) {
 	m := &Manifest{
 		Version: 2,
+		Format:  ManifestFormat{LinksStyle: "regular"},
 		Layout: ManifestLayout{
 			NotesGlob: []string{"docs/*.md"},
 			Ignore:    []string{"secret.md"},
@@ -80,6 +87,7 @@ func TestApplyDefaults_PreservesExisting(t *testing.T) {
 	assert.Equal(t, 2, m.Version)
 	assert.Equal(t, []string{"docs/*.md"}, m.Layout.NotesGlob)
 	assert.Equal(t, []string{"secret.md"}, m.Layout.Ignore)
+	assert.Equal(t, "regular", m.Format.LinksStyle)
 }
 
 func TestApplyDefaults_NilSafe(t *testing.T) {
@@ -185,7 +193,7 @@ func TestValidate_MissingMarkdownFormatVersion(t *testing.T) {
 
 func TestValidate_MissingCreatedAt(t *testing.T) {
 	m := validManifest()
-	m.CreatedAt = time.Time{}
+	m.CreatedAt = 0
 	err := m.Validate()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "created_at")
@@ -193,7 +201,7 @@ func TestValidate_MissingCreatedAt(t *testing.T) {
 
 func TestValidate_MissingUpdatedAt(t *testing.T) {
 	m := validManifest()
-	m.UpdatedAt = time.Time{}
+	m.UpdatedAt = 0
 	err := m.Validate()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "updated_at")
@@ -213,6 +221,32 @@ func TestValidate_EmptyIgnore(t *testing.T) {
 	err := m.Validate()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ignore")
+}
+
+func TestValidate_InvalidLinksStyle(t *testing.T) {
+	m := validManifest()
+	m.Format.LinksStyle = "unknown"
+	err := m.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "links_style")
+}
+
+func TestValidate_ValidLinksStyleWiki(t *testing.T) {
+	m := validManifest()
+	m.Format.LinksStyle = "wiki"
+	require.NoError(t, m.Validate())
+}
+
+func TestValidate_ValidLinksStyleRegular(t *testing.T) {
+	m := validManifest()
+	m.Format.LinksStyle = "regular"
+	require.NoError(t, m.Validate())
+}
+
+func TestValidate_EmptyLinksStyleOK(t *testing.T) {
+	m := validManifest()
+	m.Format.LinksStyle = ""
+	require.NoError(t, m.Validate())
 }
 
 // ── MarshalTOML / Parse round-trip ─────────────────────────────────────
@@ -235,9 +269,8 @@ func TestMarshalTOML_RoundTrip(t *testing.T) {
 	assert.Equal(t, original.CustomInstructions, parsed.CustomInstructions)
 	assert.Equal(t, original.Generator.App, parsed.Generator.App)
 	assert.Equal(t, original.Generator.AppVersion, parsed.Generator.AppVersion)
-	// Times should match within the second (RFC3339 precision)
-	assert.WithinDuration(t, original.CreatedAt, parsed.CreatedAt, time.Second)
-	assert.WithinDuration(t, original.UpdatedAt, parsed.UpdatedAt, time.Second)
+	assert.Equal(t, original.CreatedAt, parsed.CreatedAt)
+	assert.Equal(t, original.UpdatedAt, parsed.UpdatedAt)
 }
 
 func TestMarshalTOML_EmitsEmptyOptionalStrings(t *testing.T) {
@@ -267,13 +300,14 @@ func TestMarshalTOML_InvalidManifest(t *testing.T) {
 // ── ParseMnemonicManifest ─────────────────────────────────────────────
 
 func TestParseMnemonicManifest_ValidTOML(t *testing.T) {
+	ts := fixedTimeUnix()
 	tomlData := `version = 1
 project_id = "550e8400-e29b-41d4-a716-446655440000"
 name = "My Project"
 slug = "my-project"
 markdown_format_version = 1
-created_at = 2026-06-23T10:00:00Z
-updated_at = 2026-06-23T10:00:00Z
+created_at = ` + itoa(ts) + `
+updated_at = ` + itoa(ts) + `
 `
 	m, err := ParseMnemonicManifest([]byte(tomlData))
 	require.NoError(t, err)
@@ -281,14 +315,29 @@ updated_at = 2026-06-23T10:00:00Z
 	assert.Equal(t, "my-project", m.Slug)
 }
 
-func TestParseMnemonicManifest_UnknownFields(t *testing.T) {
+func TestParseMnemonicManifest_RejectsRFC3339StringTimestamp(t *testing.T) {
 	tomlData := `version = 1
 project_id = "550e8400-e29b-41d4-a716-446655440000"
 name = "My Project"
 slug = "my-project"
 markdown_format_version = 1
-created_at = 2026-06-23T10:00:00Z
-updated_at = 2026-06-23T10:00:00Z
+created_at = "2026-06-23T10:00:00Z"
+updated_at = ` + itoa(fixedTimeUnix()) + `
+`
+	_, err := ParseMnemonicManifest([]byte(tomlData))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "CreatedAt")
+}
+
+func TestParseMnemonicManifest_UnknownFields(t *testing.T) {
+	ts := fixedTimeUnix()
+	tomlData := `version = 1
+project_id = "550e8400-e29b-41d4-a716-446655440000"
+name = "My Project"
+slug = "my-project"
+markdown_format_version = 1
+created_at = ` + itoa(ts) + `
+updated_at = ` + itoa(ts) + `
 unknown_field = "should fail"
 `
 	_, err := ParseMnemonicManifest([]byte(tomlData))
@@ -301,6 +350,7 @@ func TestParseMnemonicManifest_InvalidTOML(t *testing.T) {
 }
 
 func TestParseMnemonicManifest_FullTOML(t *testing.T) {
+	ts := fixedTimeUnix()
 	tomlData := `version = 1
 project_id = "550e8400-e29b-41d4-a716-446655440000"
 name = "Full Project"
@@ -309,8 +359,11 @@ type = "local"
 markdown_format_version = 1
 description = "A fully specified project"
 custom_instructions = "Always use short answers."
-created_at = 2026-06-23T10:00:00Z
-updated_at = 2026-06-23T10:00:00Z
+created_at = ` + itoa(ts) + `
+updated_at = ` + itoa(ts) + `
+
+[format]
+links_style = "wiki"
 
 [layout]
 notes_glob = ["docs/*.md", "blog/*.md"]
@@ -331,6 +384,21 @@ app_version = "2.0.0"
 	assert.Equal(t, []string{"secret.md", ".trash/**"}, m.Layout.Ignore)
 	assert.Equal(t, "mnemonic", m.Generator.App)
 	assert.Equal(t, "2.0.0", m.Generator.AppVersion)
+	assert.Equal(t, "wiki", m.Format.LinksStyle)
+}
+
+func TestParseMnemonicManifest_NonCanonicalTimestampFails(t *testing.T) {
+	tomlData := `version = 1
+project_id = "550e8400-e29b-41d4-a716-446655440000"
+name = "Bad Format"
+slug = "bad-format"
+markdown_format_version = 1
+created_at = 2026-06-23T10:00:00Z
+updated_at = ` + itoa(fixedTimeUnix()) + `
+`
+	_, err := ParseMnemonicManifest([]byte(tomlData))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "CreatedAt")
 }
 
 // ── WriteMnemonicManifest / ParseMnemonicManifestFromFile ─────────────
@@ -450,8 +518,8 @@ func TestMarshalTOML_AppliesDefaults(t *testing.T) {
 		Name:                  "name",
 		Slug:                  "slug",
 		MarkdownFormatVersion: 1,
-		CreatedAt:             fixedTime(10, 0),
-		UpdatedAt:             fixedTime(10, 0),
+		CreatedAt:             fixedTimeUnix(),
+		UpdatedAt:             fixedTimeUnix(),
 		// NotesGlob and Ignore are empty — defaults should be applied
 	}
 
@@ -467,6 +535,10 @@ func TestMarshalTOML_AppliesDefaults(t *testing.T) {
 	require.True(t, ok, "layout should be present")
 	assert.NotEmpty(t, layout["notes_glob"])
 	assert.NotEmpty(t, layout["ignore"])
+
+	formatSection, ok := raw["format"].(map[string]any)
+	require.True(t, ok, "format should be present")
+	assert.Equal(t, "wiki", formatSection["links_style"])
 }
 
 func TestMarshalTOML_IncludesGenerator(t *testing.T) {
@@ -480,4 +552,23 @@ func TestMarshalTOML_IncludesGenerator(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "test-runner", parsed.Generator.App)
 	assert.Equal(t, "2.0.0", parsed.Generator.AppVersion)
+}
+
+func TestMarshalTOML_EmitsIntegerTimestamps(t *testing.T) {
+	m := validManifest()
+
+	data, err := m.MarshalTOML()
+	require.NoError(t, err)
+
+	var raw map[string]any
+	err = toml.Unmarshal(data, &raw)
+	require.NoError(t, err)
+
+	createdAt, ok := raw["created_at"].(int64)
+	require.True(t, ok, "created_at should be an integer")
+	assert.Equal(t, m.CreatedAt, createdAt)
+
+	updatedAt, ok := raw["updated_at"].(int64)
+	require.True(t, ok, "updated_at should be an integer")
+	assert.Equal(t, m.UpdatedAt, updatedAt)
 }

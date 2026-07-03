@@ -121,8 +121,8 @@ func writeCentralProjectFixture(t *testing.T, memoriesHome, slug, projectID stri
 	manifest.Description = "Central description"
 	manifest.CustomInstructions = "Central instructions"
 	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = createdAt
-	manifest.UpdatedAt = createdAt
+	manifest.CreatedAt = createdAt.Unix()
+	manifest.UpdatedAt = createdAt.Unix()
 	manifest.Generator.App = "mnemonic"
 
 	if err := manifestfmt.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest); err != nil {
@@ -150,8 +150,8 @@ func writeLocalProjectFixture(t *testing.T, cwd, slug string) error {
 	manifest.Slug = slug
 	manifest.Type = manifestfmt.ManifestTypeLocal
 	manifest.MarkdownFormatVersion = 1
-	manifest.CreatedAt = now
-	manifest.UpdatedAt = now
+	manifest.CreatedAt = now.Unix()
+	manifest.UpdatedAt = now.Unix()
 	manifest.Generator.App = "mnemonic"
 
 	if err := manifestfmt.WriteMnemonicManifest(filepath.Join(memoriesDir, "mnemonic.toml"), manifest); err != nil {

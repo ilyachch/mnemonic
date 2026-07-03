@@ -23,8 +23,8 @@ func writeTaggedNote(t *testing.T, path, noteID, title, slug string, tags []stri
 		}
 		content += contentSb19.String()
 	}
-	content += "created_at: 2026-06-02T12:34:56Z\n"
-	content += "updated_at: 2026-06-02T12:34:56Z\n"
+	content += "created_at: 1780403696\n"
+	content += "updated_at: 1780403696\n"
 	content += "---\n"
 	content += body
 

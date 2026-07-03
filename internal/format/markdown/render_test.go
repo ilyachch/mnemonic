@@ -22,6 +22,8 @@ func TestRenderNoteRoundTripPreservesMetadata(t *testing.T) {
 		Title:          "Auth migration plan",
 		Slug:           "auth-migration-plan",
 		Tags:           []string{"django", "auth"},
+		Summary:        "Plan for migrating auth system",
+		Aliases:        []string{"auth-plan", "migration-plan"},
 		CreatedAt:      time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
 		UpdatedAt:      time.Date(2026, time.June, 2, 11, 0, 0, 0, time.UTC),
 		Type:           "note",
@@ -34,11 +36,15 @@ func TestRenderNoteRoundTripPreservesMetadata(t *testing.T) {
 	renderedText := string(rendered)
 	require.NotContains(t, renderedText, "permalink:")
 	require.Contains(t, renderedText, "tags:\n  - django\n  - auth\n")
+	require.Contains(t, renderedText, "summary: Plan for migrating auth system\n")
+	require.Contains(t, renderedText, "aliases:\n  - auth-plan\n  - migration-plan\n")
 	assertOrderedSubstrings(t, renderedText,
 		"mnemonic_note_id:",
 		"title:",
 		"slug:",
 		"tags:",
+		"summary:",
+		"aliases:",
 		"created_at:",
 		"updated_at:",
 		"type:",
@@ -53,6 +59,8 @@ func TestRenderNoteRoundTripPreservesMetadata(t *testing.T) {
 	require.Equal(t, note.Title, roundTripped.Title)
 	require.Equal(t, note.Slug, roundTripped.Slug)
 	require.Equal(t, note.Tags, roundTripped.Tags)
+	require.Equal(t, note.Summary, roundTripped.Summary)
+	require.Equal(t, note.Aliases, roundTripped.Aliases)
 	require.True(t, roundTripped.CreatedAt.Equal(note.CreatedAt))
 	require.True(t, roundTripped.UpdatedAt.Equal(note.UpdatedAt))
 	require.Equal(t, note.Type, roundTripped.Type)
@@ -60,6 +68,25 @@ func TestRenderNoteRoundTripPreservesMetadata(t *testing.T) {
 	_, ok := roundTripped.Frontmatter["permalink"]
 	require.False(t, ok)
 	require.True(t, bytes.Equal(roundTripped.Body, body))
+}
+
+func TestRenderNoteEmitsIntegerTimestamps(t *testing.T) {
+	t.Parallel()
+
+	note := Note{
+		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440020",
+		Slug:           "timestamp-test",
+		CreatedAt:      time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
+		UpdatedAt:      time.Date(2026, time.June, 2, 11, 0, 0, 0, time.UTC),
+		Body:           []byte("body\n"),
+	}
+
+	rendered, err := RenderNote(note)
+	require.NoError(t, err)
+
+	renderedText := string(rendered)
+	require.Contains(t, renderedText, "created_at: 1780394400\n")
+	require.Contains(t, renderedText, "updated_at: 1780398000\n")
 }
 
 func TestRenderNoteSingleTagUsesYAMLList(t *testing.T) {

@@ -18,8 +18,8 @@ func TestParseNoteReadsCanonicalFieldsAndPreservesBody(t *testing.T) {
 		"tags:\n" +
 		"  - django\n" +
 		"  - auth\n" +
-		"created_at: 2026-06-02T10:00:00Z\n" +
-		"updated_at: 2026-06-02T11:00:00Z\n" +
+		"created_at: 1780394400\n" +
+		"updated_at: 1780398000\n" +
 		"type: decision\n" +
 		"permalink: example-note\n" +
 		"extra_field: keep-me\n" +
@@ -44,6 +44,30 @@ func TestParseNoteReadsCanonicalFieldsAndPreservesBody(t *testing.T) {
 	require.True(t, bytes.Equal(note.Body, []byte("# Heading\nBody text\n")))
 }
 
+func TestParseNoteParsesSummaryAndAliases(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("---\n" +
+		"mnemonic_note_id: 550e8400-e29b-41d4-a716-446655440000\n" +
+		"title: Note With Extras\n" +
+		"slug: note-with-extras\n" +
+		"summary: A brief summary of the note\n" +
+		"aliases:\n" +
+		"  - alias-one\n" +
+		"  - alias-two\n" +
+		"created_at: 1780394400\n" +
+		"updated_at: 1780394400\n" +
+		"---\n" +
+		"Body\n")
+
+	note, err := ParseNote(input)
+	require.NoError(t, err)
+
+	require.Equal(t, "Note With Extras", note.Title)
+	require.Equal(t, "A brief summary of the note", note.Summary)
+	require.Equal(t, []string{"alias-one", "alias-two"}, note.Aliases)
+}
+
 func TestParseNoteUsesPermalinkFallbackWhenSlugMissing(t *testing.T) {
 	t.Parallel()
 
@@ -51,8 +75,8 @@ func TestParseNoteUsesPermalinkFallbackWhenSlugMissing(t *testing.T) {
 		"mnemonic_note_id: 550e8400-e29b-41d4-a716-446655440001\n" +
 		"title: Permalink Note\n" +
 		"permalink: permalink-note\n" +
-		"created_at: 2026-06-02T10:00:00Z\n" +
-		"updated_at: 2026-06-02T10:00:00Z\n" +
+		"created_at: 1780394400\n" +
+		"updated_at: 1780394400\n" +
 		"---\n" +
 		"Body\n"))
 	require.NoError(t, err)
@@ -69,27 +93,42 @@ func TestParseNoteWithoutFrontmatterReturnsFullBody(t *testing.T) {
 	require.True(t, bytes.Equal(note.Body, input))
 }
 
-func TestParseNoteRejectsWrongFieldTypes(t *testing.T) {
+func TestParseNoteRejectsRFC3339StringTimestamp(t *testing.T) {
 	t.Parallel()
 
 	_, err := ParseNote([]byte("---\n" +
 		"mnemonic_note_id: 550e8400-e29b-41d4-a716-446655440002\n" +
 		"title: Bad Note\n" +
-		"created_at: 123\n" +
-		"updated_at: 2026-06-02T10:00:00Z\n" +
+		"created_at: 2026-06-02T10:00:00Z\n" +
+		"updated_at: 1780394400\n" +
 		"---\n" +
 		"Body\n"))
 	require.Error(t, err)
+	require.Contains(t, err.Error(), "created_at")
 }
 
-func TestNoteTimeField_TimeType(t *testing.T) {
+func TestParseNoteRejectsStringTimestamp(t *testing.T) {
 	t.Parallel()
 
-	now := time.Now()
-	raw := map[string]any{"created_at": now}
+	_, err := ParseNote([]byte("---\n" +
+		"mnemonic_note_id: 550e8400-e29b-41d4-a716-446655440003\n" +
+		"title: Bad Note\n" +
+		"created_at: 1780394400\n" +
+		"updated_at: \"2026-06-02T10:00:00Z\"\n" +
+		"---\n" +
+		"Body\n"))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "updated_at")
+}
+
+func TestNoteTimeField_IntType(t *testing.T) {
+	t.Parallel()
+
+	raw := map[string]any{"created_at": 1780394400}
 	result, err := noteTimeField(raw, "created_at")
 	require.NoError(t, err)
-	require.Equal(t, now.UTC(), result)
+	want := time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
+	require.Equal(t, want, result)
 }
 
 func TestNoteTimeField_MissingField(t *testing.T) {
