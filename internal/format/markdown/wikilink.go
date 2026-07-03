@@ -56,6 +56,10 @@ func parseWikiLinksInLine(line []byte, lineNumber int) []WikiLink {
 }
 
 func isEscapedWikiLinkStart(line []byte, pos int) bool {
+	return isEscapedChar(line, pos)
+}
+
+func isEscapedChar(line []byte, pos int) bool {
 	backslashes := 0
 	for i := pos - 1; i >= 0 && line[i] == '\\'; i-- {
 		backslashes++
@@ -88,4 +92,25 @@ func parseWikiLinkContent(content []byte, lineNumber int) (WikiLink, bool) {
 	}
 
 	return link, true
+}
+
+// FormatLink renders a slug-based link in the given style.
+//
+//   - "wiki": [[target-slug|Label]] or [[target-slug]]
+//   - "regular": [Label](target-slug.md) or [](target-slug.md)
+func FormatLink(targetSlug, label, style string) string {
+	switch style {
+	case "wiki":
+		if label == "" {
+			return "[[" + targetSlug + "]]"
+		}
+		return "[[" + targetSlug + "|" + label + "]]"
+	case "regular":
+		if label == "" {
+			return "[](" + targetSlug + ".md)"
+		}
+		return "[" + label + "](" + targetSlug + ".md)"
+	default:
+		return ""
+	}
 }

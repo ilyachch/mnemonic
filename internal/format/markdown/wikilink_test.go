@@ -61,3 +61,28 @@ func TestParseWikiLinksHandlesEmptyInput(t *testing.T) {
 	links := ParseWikiLinks(nil)
 	require.Empty(t, links)
 }
+
+func TestFormatLink(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		targetSlug string
+		label      string
+		style      string
+		want       string
+	}{
+		{name: "wiki with label", targetSlug: "target-slug", label: "Label", style: "wiki", want: "[[target-slug|Label]]"},
+		{name: "wiki without label", targetSlug: "target-slug", label: "", style: "wiki", want: "[[target-slug]]"},
+		{name: "regular with label", targetSlug: "target-slug", label: "Label", style: "regular", want: "[Label](target-slug.md)"},
+		{name: "regular without label", targetSlug: "target-slug", label: "", style: "regular", want: "[](target-slug.md)"},
+		{name: "unknown style", targetSlug: "x", label: "y", style: "unknown", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FormatLink(tt.targetSlug, tt.label, tt.style)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
