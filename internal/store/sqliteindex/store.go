@@ -343,19 +343,23 @@ func (s Store) searchMultiQuery(db *sql.DB, opts SearchOptions, ca, cb, ua, ub *
 	timeClause, timeArgs := buildTimeFilterClause(ca, cb, ua, ub)
 	tagClause, tagArgs := buildTagFilterClause(opts.Tags)
 
+	candidateLimit := opts.Limit * 3
+	if candidateLimit < 30 {
+		candidateLimit = 30
+	}
+
+	queries := dedupQueries(opts.Queries)
+
 	type docEntry struct {
 		result         SearchResult
 		matchCount     int
 		matchedQueries map[string]bool
+		bestRank       int
 	}
 	docs := make(map[string]*docEntry)
 
-	for _, q := range opts.Queries {
-		clean := sanitizeFTSQuery(q)
-		if strings.TrimSpace(clean) == "" {
-			continue
-		}
-		hits, err := runFTSSearch(db, clean, opts.Limit, timeClause, timeArgs, tagClause, tagArgs)
+	for _, q := range queries {
+		hits, err := runFTSSearch(db, q, candidateLimit, timeClause, timeArgs, tagClause, tagArgs)
 		if err != nil {
 			return nil, err
 		}
@@ -364,12 +368,16 @@ func (s Store) searchMultiQuery(db *sql.DB, opts SearchOptions, ca, cb, ua, ub *
 			if !ok {
 				r := hit
 				r.Score = 0.0
-				entry = &docEntry{result: r, matchedQueries: make(map[string]bool)}
+				entry = &docEntry{result: r, matchedQueries: make(map[string]bool), bestRank: rank}
 				docs[hit.NoteID] = entry
 			}
 			entry.result.Score += 1.0 / (rrfK + float64(rank+1))
 			entry.matchCount++
 			entry.matchedQueries[q] = true
+			if rank < entry.bestRank {
+				entry.bestRank = rank
+				entry.result.Snippet = hit.Snippet
+			}
 		}
 	}
 
@@ -387,6 +395,23 @@ func (s Store) searchMultiQuery(db *sql.DB, opts SearchOptions, ca, cb, ua, ub *
 
 	sortSearchResults(results)
 	return results, nil
+}
+
+func dedupQueries(queries []string) []string {
+	seen := make(map[string]bool, len(queries))
+	result := make([]string, 0, len(queries))
+	for _, q := range queries {
+		clean := sanitizeFTSQuery(q)
+		if strings.TrimSpace(clean) == "" {
+			continue
+		}
+		if seen[clean] {
+			continue
+		}
+		seen[clean] = true
+		result = append(result, clean)
+	}
+	return result
 }
 
 func (s Store) searchNotesByFilter(db *sql.DB, opts SearchOptions, ca, cb, ua, ub *int64) ([]SearchResult, error) {

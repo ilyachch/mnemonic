@@ -24,7 +24,7 @@ type SearchInput struct {
 	Tag   string
 }
 
-// SearchResult mirrors the legacy search payload.
+// SearchResult wraps a search hit.
 type SearchResult struct {
 	NoteID      string  `json:"note_id"`
 	Slug        string  `json:"slug"`
@@ -35,7 +35,7 @@ type SearchResult struct {
 	ContentHash string  `json:"content_hash"`
 }
 
-// ListTagsOutput mirrors the legacy tag listing payload.
+// ListTagsOutput wraps a tag listing result.
 type ListTagsOutput struct {
 	Tags []ListTagsItem `json:"tags"`
 }
@@ -52,7 +52,7 @@ type BacklinksInput struct {
 	Limit      int
 }
 
-// Backlink mirrors the legacy backlink payload.
+// Backlink wraps a backlink reference.
 type Backlink struct {
 	LinkID       string `json:"link_id"`
 	NoteID       string `json:"note_id"`

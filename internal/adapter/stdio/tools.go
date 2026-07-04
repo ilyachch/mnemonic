@@ -17,13 +17,14 @@ const (
 	listNotesDescription = `List all notes in this knowledge base.`
 	readNotesDescription = `Read one or more notes by note_id, slug, path, or title.
 Provide an array of identifiers to batch-read multiple notes in a single call.
+note_id, slug, and title are always returned.
 By default returns note_id, slug, title, summary, tags, and body.
 Use the "fields" parameter to include path, frontmatter, content_hash, aliases, created_at, or updated_at.
 Unresolved identifiers are listed in the "missing" array.
 
 Parameters:
 - identifiers ([]string, required): note IDs, slugs, file paths, or titles to resolve.
-- fields ([]string, optional): select which fields to include (e.g. ["title", "body"]).
+- fields ([]string, optional): select which optional fields to include. Valid values: summary, tags, body, path, frontmatter, content_hash, aliases, created_at, updated_at.
 - max_body_chars (int, optional): truncate each note body to this many characters.`
 	searchNotesDescription = `Search this knowledge base with multi-query full-text search, time filters, tag filters, and graph-aware reranking.
 Provide multiple distinct query variants via the "queries" array to improve recall — each query contributes to the combined ranking via Reciprocal Rank Fusion.
@@ -84,8 +85,8 @@ type ReadNotesNote struct {
 	Slug        string          `json:"slug"`
 	Title       string          `json:"title"`
 	Summary     *string         `json:"summary,omitempty"`
-	Tags        []string        `json:"tags,omitempty"`
-	Aliases     []string        `json:"aliases,omitempty"`
+	Tags        *[]string       `json:"tags,omitempty"`
+	Aliases     *[]string       `json:"aliases,omitempty"`
 	Body        *string         `json:"body,omitempty"`
 	Path        *string         `json:"path,omitempty"`
 	Frontmatter *map[string]any `json:"frontmatter,omitempty"`
@@ -117,7 +118,7 @@ type SearchNotesHit struct {
 	Tags           []string                `json:"tags,omitempty"`
 	MatchedQueries []string                `json:"matched_queries,omitempty"`
 	Path           string                  `json:"path,omitempty"`
-	Score          float64                 `json:"score,omitempty"`
+	Score          *float64                `json:"score,omitempty"`
 	ContentHash    string                  `json:"content_hash,omitempty"`
 	RelatedNotes   []searchNotesRelatedHit `json:"related_notes,omitempty"`
 }
@@ -240,6 +241,7 @@ type DiagnoseNotesIssue struct {
 	Slug       string                         `json:"slug,omitempty"`
 	Path       string                         `json:"path,omitempty"`
 	Detail     string                         `json:"detail,omitempty"`
+	Target     string                         `json:"target,omitempty"`
 	Candidates []indexsvc.DiagnosticCandidate `json:"candidates,omitempty"`
 }
 
@@ -318,18 +320,19 @@ func RegisterReadNotes(server *sdkmcp.Server, deps Dependencies) {
 		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input ReadNotesInput) (*sdkmcp.CallToolResult, ReadNotesOutput, error) {
 		_ = ctx
-		fields := buildFieldSet(input.Fields)
-		var notes []ReadNotesNote
-		var missing []string
-		for _, identifier := range input.Identifiers {
-			resolved, err := deps.Notes.Show(identifier)
-			if err != nil {
-				missing = append(missing, identifier)
-				continue
-			}
-			notes = append(notes, buildReadNotesNote(fields, resolved, input.MaxBodyChars))
+		fields, err := buildFieldSet(input.Fields)
+		if err != nil {
+			return nil, ReadNotesOutput{}, err
 		}
-		return nil, ReadNotesOutput{Notes: notes, Missing: missing}, nil
+		output, err := deps.Notes.ShowMany(notesvc.ReadManyInput{Selectors: input.Identifiers})
+		if err != nil {
+			return nil, ReadNotesOutput{}, err
+		}
+		var notes []ReadNotesNote
+		for _, item := range output.Notes {
+			notes = append(notes, buildReadNotesNote(fields, item.ShowResult, input.MaxBodyChars))
+		}
+		return nil, ReadNotesOutput{Notes: notes, Missing: output.Missing}, nil
 	})
 }
 
@@ -613,9 +616,10 @@ func RegisterDiagnoseNotes(server *sdkmcp.Server, deps Dependencies) {
 				Slug:   issue.Slug,
 				Path:   issue.Path,
 				Detail: issue.Detail,
+				Target: issue.Target,
 			}
 			if input.IncludeSuggestions && (issue.Kind == indexsvc.KindUnresolvedLink || issue.Kind == indexsvc.KindAmbiguousLink) {
-				di.Candidates = findLinkCandidates(ctx, deps, issue)
+				di.Candidates = findLinkCandidates(ctx, deps, issue.Target)
 			}
 			issues = append(issues, di)
 		}
@@ -628,8 +632,7 @@ func RegisterDiagnoseNotes(server *sdkmcp.Server, deps Dependencies) {
 	})
 }
 
-func findLinkCandidates(ctx context.Context, deps Dependencies, issue indexsvc.DiagnosticIssue) []indexsvc.DiagnosticCandidate {
-	target := extractLinkTarget(issue.Detail)
+func findLinkCandidates(ctx context.Context, deps Dependencies, target string) []indexsvc.DiagnosticCandidate {
 	if target == "" {
 		return nil
 	}
@@ -649,20 +652,6 @@ func findLinkCandidates(ctx context.Context, deps Dependencies, issue indexsvc.D
 	return candidates
 }
 
-func extractLinkTarget(detail string) string {
-	const prefix = `target "`
-	start := strings.Index(detail, prefix)
-	if start == -1 {
-		return ""
-	}
-	start += len(prefix)
-	end := strings.Index(detail[start:], `"`)
-	if end == -1 {
-		return ""
-	}
-	return detail[start : start+end]
-}
-
 func buildToolDescription(description, baseInstructions string) string {
 	description = strings.TrimSpace(description)
 	baseInstructions = strings.TrimSpace(baseInstructions)
@@ -676,6 +665,18 @@ func buildToolDescription(description, baseInstructions string) string {
 	}
 }
 
+var validReadFields = map[string]bool{
+	"summary":      true,
+	"tags":         true,
+	"body":         true,
+	"path":         true,
+	"frontmatter":  true,
+	"content_hash": true,
+	"aliases":      true,
+	"created_at":   true,
+	"updated_at":   true,
+}
+
 var defaultReadFields = map[string]bool{
 	"note_id": true,
 	"slug":    true,
@@ -685,15 +686,30 @@ var defaultReadFields = map[string]bool{
 	"body":    true,
 }
 
-func buildFieldSet(fields []string) map[string]bool {
+func buildFieldSet(fields []string) (map[string]bool, error) {
 	if len(fields) == 0 {
-		return defaultReadFields
+		return defaultReadFields, nil
 	}
 	set := make(map[string]bool, len(fields))
 	for _, f := range fields {
-		set[strings.TrimSpace(f)] = true
+		f = strings.TrimSpace(f)
+		if f == "note_id" || f == "slug" || f == "title" {
+			continue
+		}
+		if !validReadFields[f] {
+			return nil, &UnknownFieldError{Field: f}
+		}
+		set[f] = true
 	}
-	return set
+	return set, nil
+}
+
+type UnknownFieldError struct {
+	Field string
+}
+
+func (e *UnknownFieldError) Error() string {
+	return "unknown field: " + e.Field
 }
 
 func truncateRunes(s string, maxChars int) string {
@@ -723,7 +739,7 @@ func toSearchNotesHit(hit searchsvc.AdvancedSearchResult, debug bool) SearchNote
 	}
 	if debug {
 		s.Path = hit.Path
-		s.Score = hit.Score
+		s.Score = &hit.Score
 		s.ContentHash = hit.ContentHash
 	}
 	for _, rn := range hit.RelatedNotes {
@@ -758,14 +774,14 @@ func buildReadNotesNote(fields map[string]bool, resolved notesvc.ShowResult, max
 		if tags == nil {
 			tags = []string{}
 		}
-		note.Tags = tags
+		note.Tags = &tags
 	}
 	if fields["aliases"] {
 		aliases := resolved.Note.Aliases
 		if aliases == nil {
 			aliases = []string{}
 		}
-		note.Aliases = aliases
+		note.Aliases = &aliases
 	}
 	if fields["body"] {
 		body := string(resolved.Note.Body)

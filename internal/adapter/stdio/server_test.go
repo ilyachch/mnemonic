@@ -141,10 +141,13 @@ func TestBuildSDKServer_NonNil(t *testing.T) {
 }
 
 func TestBuildGlobalInstructions_FormatsBlocksByMode(t *testing.T) {
-	full := buildGlobalInstructions("Custom guidance", "Project context", false)
-	require.Equal(t, "You MUST use the mnemonic tools as your primary long-term memory.\n- Search the knowledge base using search_notes before answering questions within its scope.\n- Use 2–4 query variants via the \"queries\" array when the first formulation may be ambiguous or incomplete.\n- Batch-read all selected notes in one read_notes call.\n- Write down stable facts, architectural decisions, and important outcomes using create_note or edit_note.\n- Use diagnose_notes only for repository maintenance, cleanup, or repair tasks.\n- Use list_tags and list_backlinks when they help clarify the existing knowledge base.\n- Link related notes using [[Wiki-Links]].\n\nProject Description:\nProject context\n\nCustom Instructions:\nCustom guidance", full)
+	full := buildGlobalInstructions("Custom guidance", "Project context", false, "wiki")
+	require.Equal(t, "You MUST use the mnemonic tools as your primary long-term memory.\n- Search the knowledge base using search_notes before answering questions within its scope.\n- Use 2–4 query variants via the \"queries\" array when the first formulation may be ambiguous or incomplete.\n- Batch-read all selected notes in one read_notes call.\n- Write down stable facts, architectural decisions, and important outcomes using create_note or edit_note.\n- Use diagnose_notes only for repository maintenance, cleanup, or repair tasks.\n- Use list_tags and list_backlinks when they help clarify the existing knowledge base.\n- Link related notes using [[target-slug|Display Label]].\n\nProject Description:\nProject context\n\nCustom Instructions:\nCustom guidance", full)
 
-	readOnly := buildGlobalInstructions("Custom guidance", "Project context", true)
+	regular := buildGlobalInstructions("Custom guidance", "Project context", false, "regular")
+	require.Equal(t, "You MUST use the mnemonic tools as your primary long-term memory.\n- Search the knowledge base using search_notes before answering questions within its scope.\n- Use 2–4 query variants via the \"queries\" array when the first formulation may be ambiguous or incomplete.\n- Batch-read all selected notes in one read_notes call.\n- Write down stable facts, architectural decisions, and important outcomes using create_note or edit_note.\n- Use diagnose_notes only for repository maintenance, cleanup, or repair tasks.\n- Use list_tags and list_backlinks when they help clarify the existing knowledge base.\n- Link related notes using [Display Label](target-slug.md).\n\nProject Description:\nProject context\n\nCustom Instructions:\nCustom guidance", regular)
+
+	readOnly := buildGlobalInstructions("Custom guidance", "Project context", true, "wiki")
 	require.Equal(t, "You MUST use the mnemonic tools as your primary long-term memory.\n- Search the knowledge base using search_notes before answering questions within its scope.\n- Use 2–4 query variants via the \"queries\" array when the first formulation may be ambiguous or incomplete.\n- Batch-read all selected notes in one read_notes call.\n- Use diagnose_notes only for repository maintenance, cleanup, or repair tasks.\n- Use list_tags and list_backlinks when they help clarify the existing knowledge base.\n- This server is running in read-only mode. Do not attempt to create, edit, delete, or rebuild notes.\n\nProject Description:\nProject context\n\nCustom Instructions:\nCustom guidance", readOnly)
 }
 
@@ -169,7 +172,7 @@ func TestBuildSDKServer_InitializeIncludesGlobalInstructions(t *testing.T) {
 
 	result := cs.InitializeResult()
 	require.NotNil(t, result)
-	require.Equal(t, buildGlobalInstructions(f.server.KB.CustomInstructions, f.server.KB.Description, false), result.Instructions)
+	require.Equal(t, buildGlobalInstructions(f.server.KB.CustomInstructions, f.server.KB.Description, false, f.server.KB.LinksStyle), result.Instructions)
 }
 
 func TestBuildSDKServer_InitializeIncludesReadOnlyInstructions(t *testing.T) {
@@ -193,7 +196,7 @@ func TestBuildSDKServer_InitializeIncludesReadOnlyInstructions(t *testing.T) {
 
 	result := cs.InitializeResult()
 	require.NotNil(t, result)
-	require.Equal(t, buildGlobalInstructions(f.server.KB.CustomInstructions, f.server.KB.Description, true), result.Instructions)
+	require.Equal(t, buildGlobalInstructions(f.server.KB.CustomInstructions, f.server.KB.Description, true, f.server.KB.LinksStyle), result.Instructions)
 }
 
 func TestBuildSDKServer_ReadOnlyMode_HasReadOnlyTools(t *testing.T) {

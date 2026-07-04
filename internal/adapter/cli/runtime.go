@@ -21,6 +21,9 @@ func runtimeAppForSelector(ctx context.Context, selector string) (*app.RuntimeAp
 
 	logger := loggerFromContext(ctx)
 	if logger != nil {
+		if runtime.Services.Notes != nil {
+			runtime.Services.Notes.Logger = logger
+		}
 		if runtime.Services.Search != nil {
 			runtime.Services.Search.Logger = logger
 		}

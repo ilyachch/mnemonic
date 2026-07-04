@@ -18,6 +18,7 @@ const (
 	KindInvalidFrontmatter   DiagnosticKind = "invalid_frontmatter"
 	KindMissingRequiredField DiagnosticKind = "missing_required_field"
 	KindMissingSummary       DiagnosticKind = "missing_summary"
+	KindMissingTimestamp     DiagnosticKind = "missing_timestamp"
 	KindInvalidTimestamp     DiagnosticKind = "invalid_timestamp"
 	KindDuplicateSlug        DiagnosticKind = "duplicate_slug"
 	KindDuplicateAlias       DiagnosticKind = "duplicate_alias"
@@ -48,6 +49,7 @@ type DiagnosticIssue struct {
 	Slug       string                `json:"slug,omitempty"`
 	Path       string                `json:"path,omitempty"`
 	Detail     string                `json:"detail,omitempty"`
+	Target     string                `json:"target,omitempty"`
 	Candidates []DiagnosticCandidate `json:"candidates,omitempty"`
 }
 
@@ -222,28 +224,51 @@ func (s Service) checkRequiredFields(noteID, slug, title, path string, filter ki
 }
 
 func (s Service) checkContentFields(noteID, slug string, note markdown.Note, path string, filter kindFilter) []DiagnosticIssue {
-	issues := make([]DiagnosticIssue, 0, 4)
+	issues := make([]DiagnosticIssue, 0, 6)
 	if note.Summary == "" && filter.include(KindMissingSummary) {
 		issues = append(issues, DiagnosticIssue{
 			Kind: KindMissingSummary, NoteID: noteID, Slug: slug, Path: path,
 		})
 	}
-	if !note.CreatedAt.IsZero() && note.CreatedAt.Unix() <= 0 && filter.include(KindInvalidTimestamp) {
-		issues = append(issues, DiagnosticIssue{
-			Kind: KindInvalidTimestamp, NoteID: noteID, Slug: slug, Path: path,
-			Detail: "created_at <= 0",
-		})
-	}
-	if !note.UpdatedAt.IsZero() && note.UpdatedAt.Unix() <= 0 && filter.include(KindInvalidTimestamp) {
-		issues = append(issues, DiagnosticIssue{
-			Kind: KindInvalidTimestamp, NoteID: noteID, Slug: slug, Path: path,
-			Detail: "updated_at <= 0",
-		})
-	}
+	issues = append(issues, s.checkTimestamps(noteID, slug, note, path, filter)...)
 	if len(strings.TrimSpace(string(note.Body))) == 0 && filter.include(KindEmptyBody) {
 		issues = append(issues, DiagnosticIssue{
 			Kind: KindEmptyBody, NoteID: noteID, Slug: slug, Path: path,
 		})
+	}
+	return issues
+}
+
+func (s Service) checkTimestamps(noteID, slug string, note markdown.Note, path string, filter kindFilter) []DiagnosticIssue {
+	var issues []DiagnosticIssue
+	addMissing := func(field string) {
+		if filter.include(KindMissingTimestamp) {
+			issues = append(issues, DiagnosticIssue{
+				Kind: KindMissingTimestamp, NoteID: noteID, Slug: slug, Path: path,
+				Detail: "missing " + field,
+			})
+		}
+	}
+	addInvalid := func(detail string) {
+		if filter.include(KindInvalidTimestamp) {
+			issues = append(issues, DiagnosticIssue{
+				Kind: KindInvalidTimestamp, NoteID: noteID, Slug: slug, Path: path,
+				Detail: detail,
+			})
+		}
+	}
+	if note.CreatedAt.IsZero() {
+		addMissing("created_at")
+	} else if note.CreatedAt.Unix() <= 0 {
+		addInvalid("created_at <= 0")
+	}
+	if note.UpdatedAt.IsZero() {
+		addMissing("updated_at")
+	} else if note.UpdatedAt.Unix() <= 0 {
+		addInvalid("updated_at <= 0")
+	}
+	if !note.CreatedAt.IsZero() && !note.UpdatedAt.IsZero() && note.CreatedAt.After(note.UpdatedAt) {
+		addInvalid("created_at > updated_at")
 	}
 	return issues
 }
@@ -312,6 +337,7 @@ func (s Service) collectLinkIssues(filter kindFilter) ([]DiagnosticIssue, error)
 			issues = append(issues, DiagnosticIssue{
 				Kind:   KindAmbiguousLink,
 				NoteID: li.NoteID, Slug: li.Slug, Path: li.Path,
+				Target: li.Target,
 				Detail: "ambiguous link target \"" + li.Target + "\" at line " + strconv.Itoa(li.SourceLine),
 			})
 		}
@@ -319,6 +345,7 @@ func (s Service) collectLinkIssues(filter kindFilter) ([]DiagnosticIssue, error)
 			issues = append(issues, DiagnosticIssue{
 				Kind:   KindUnresolvedLink,
 				NoteID: li.NoteID, Slug: li.Slug, Path: li.Path,
+				Target: li.Target,
 				Detail: "unresolved link target \"" + li.Target + "\" at line " + strconv.Itoa(li.SourceLine),
 			})
 		}

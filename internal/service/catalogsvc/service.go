@@ -358,7 +358,7 @@ func (s Service) Add(ctx context.Context, input AddInput) (AddResult, error) {
 		return AddResult{}, fmt.Errorf("stat mnemonic.toml: %w", statErr)
 	}
 
-	manifest, err := manifestfmt.ParseMnemonicManifestFile(manifestPath)
+	manifest, err := manifestfmt.ParseMnemonicManifestFromFile(manifestPath)
 	if err != nil {
 		return AddResult{}, err
 	}
@@ -395,7 +395,7 @@ func (s Service) Add(ctx context.Context, input AddInput) (AddResult, error) {
 // not written to disk — so callers can preview the would-be project metadata.
 func ensureManifest(manifestPath, resolvedPath string, dryRun bool) (*manifestfmt.Manifest, bool, error) {
 	if _, statErr := os.Stat(manifestPath); statErr == nil {
-		manifest, parseErr := manifestfmt.ParseMnemonicManifestFile(manifestPath)
+		manifest, parseErr := manifestfmt.ParseMnemonicManifestFromFile(manifestPath)
 		if parseErr != nil {
 			return nil, false, parseErr
 		}
@@ -630,27 +630,13 @@ func (s Service) knowledgeBaseFromEntry(entry registry.Entry) (kb.KnowledgeBase,
 		Kind:               resolved.Type,
 		Description:        resolved.Description,
 		CustomInstructions: resolved.CustomInstructions,
-		LinksStyle:         s.resolveLinksStyle(resolved.ManifestPath),
+		LinksStyle:         resolved.LinksStyle,
 		RootDir:            resolved.MemoriesAbs,
 		RepoRootDir:        resolved.RepoRootAbs,
 		ManifestPath:       resolved.ManifestPath,
 		StateDir:           stateDir,
 		IndexPath:          filepath.Join(stateDir, "index.sqlite"),
 	}, nil
-}
-
-func (s Service) resolveLinksStyle(manifestPath string) string {
-	if manifestPath == "" {
-		return "wiki"
-	}
-	m, err := manifestfmt.ParseMnemonicManifestFromFile(manifestPath)
-	if err != nil {
-		return "wiki"
-	}
-	if m.Format.LinksStyle == "" {
-		return "wiki"
-	}
-	return m.Format.LinksStyle
 }
 
 func (s Service) resolvePathsForKind(resolved *registry.Entry) error {
@@ -740,20 +726,25 @@ func (s Service) fillEntryFromManifest(resolved *registry.Entry) {
 	if strings.TrimSpace(resolved.CustomInstructions) == "" {
 		resolved.CustomInstructions = manifest.CustomInstructions
 	}
+	resolved.LinksStyle = manifest.Format.LinksStyle
 }
 
 func (s Service) fillMetadataOnly(resolved *registry.Entry) {
-	if strings.TrimSpace(resolved.Description) != "" && strings.TrimSpace(resolved.CustomInstructions) != "" {
+	if strings.TrimSpace(resolved.Description) != "" && strings.TrimSpace(resolved.CustomInstructions) != "" && resolved.LinksStyle != "" {
 		return
 	}
 	manifest, err := manifestfmt.ParseMnemonicManifestFromFile(resolved.ManifestPath)
-	if err == nil {
-		if strings.TrimSpace(resolved.Description) == "" {
-			resolved.Description = manifest.Description
-		}
-		if strings.TrimSpace(resolved.CustomInstructions) == "" {
-			resolved.CustomInstructions = manifest.CustomInstructions
-		}
+	if err != nil {
+		return
+	}
+	if strings.TrimSpace(resolved.Description) == "" {
+		resolved.Description = manifest.Description
+	}
+	if strings.TrimSpace(resolved.CustomInstructions) == "" {
+		resolved.CustomInstructions = manifest.CustomInstructions
+	}
+	if resolved.LinksStyle == "" {
+		resolved.LinksStyle = manifest.Format.LinksStyle
 	}
 }
 

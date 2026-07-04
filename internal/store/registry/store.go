@@ -18,6 +18,7 @@ type Entry struct {
 	Type               string // "central" or "local"
 	Description        string
 	CustomInstructions string
+	LinksStyle         string
 	ManifestPath       string
 	MemoriesAbs        string
 	RepoRootAbs        string

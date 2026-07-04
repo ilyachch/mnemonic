@@ -1,6 +1,7 @@
 package notesvc
 
 import (
+	"log/slog"
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
@@ -10,8 +11,9 @@ import (
 
 // Service owns runtime note operations for one selected knowledge base.
 type Service struct {
-	Notes markdownstore.Store
-	Index sqliteindex.Store
+	Notes  markdownstore.Store
+	Index  sqliteindex.Store
+	Logger *slog.Logger
 }
 
 // CreateInput configures note creation.
@@ -75,11 +77,28 @@ type DeleteResult struct {
 	IndexError  string `json:"index_error,omitempty"`
 }
 
-// NoteSummary mirrors the legacy note listing payload.
+// NoteSummary aliases the markdownstore note summary type.
 type NoteSummary = markdownstore.NoteSummary
 
-// ShowResult mirrors the legacy note show payload.
+// ShowResult aliases the markdownstore show result type.
 type ShowResult = markdownstore.ShowResult
+
+// ReadManyItem holds one resolved note from a batch read.
+type ReadManyItem struct {
+	ShowResult
+	ID string
+}
+
+// ReadManyInput configures a batch note read operation.
+type ReadManyInput struct {
+	Selectors []string
+}
+
+// ReadManyOutput is the result of a batch read including missing selectors.
+type ReadManyOutput struct {
+	Notes   []ReadManyItem
+	Missing []string
+}
 
 // New constructs the runtime notes service for one knowledge base.
 func New(k kb.KnowledgeBase) *Service {
@@ -117,9 +136,15 @@ func (s Service) Create(input CreateInput) (CreateResult, error) {
 	if err := s.rebuildIndex(); err != nil {
 		result.IndexStatus = "stale"
 		result.IndexError = err.Error()
-		return result, nil //nolint:nilerr // partial success: IndexError communicates the failure
+		if s.Logger != nil {
+			s.Logger.Warn("note created but index rebuild failed", "note_id", created.NoteID, "path", created.Path, "error", err)
+		}
+		return result, nil
 	}
 	result.IndexStatus = "ok"
+	if s.Logger != nil {
+		s.Logger.Info("note created", "note_id", created.NoteID, "slug", created.Slug, "path", created.Path)
+	}
 	return result, nil
 }
 
@@ -150,9 +175,15 @@ func (s Service) Edit(input EditInput) (EditResult, error) {
 	if err := s.rebuildIndex(); err != nil {
 		result.IndexStatus = "stale"
 		result.IndexError = err.Error()
-		return result, nil //nolint:nilerr // partial success: IndexError communicates the failure
+		if s.Logger != nil {
+			s.Logger.Warn("note edited but index rebuild failed", "note_id", edited.NoteID, "error", err)
+		}
+		return result, nil
 	}
 	result.IndexStatus = "ok"
+	if s.Logger != nil {
+		s.Logger.Info("note edited", "note_id", edited.NoteID, "slug", edited.Slug, "path", edited.Path)
+	}
 	return result, nil
 }
 
@@ -182,9 +213,15 @@ func (s Service) Delete(input DeleteInput) (DeleteResult, error) {
 	if err := s.rebuildIndex(); err != nil {
 		result.IndexStatus = "stale"
 		result.IndexError = err.Error()
-		return result, nil //nolint:nilerr // partial success: IndexError communicates the failure
+		if s.Logger != nil {
+			s.Logger.Warn("note deleted but index rebuild failed", "path", deleted.Path, "error", err)
+		}
+		return result, nil
 	}
 	result.IndexStatus = "ok"
+	if s.Logger != nil {
+		s.Logger.Info("note deleted", "path", deleted.Path, "mode", deleted.Mode)
+	}
 	return result, nil
 }
 
@@ -195,10 +232,36 @@ func (s Service) List() ([]NoteSummary, error) {
 
 // Show returns a parsed note from the bound store.
 func (s Service) Show(selector string) (ShowResult, error) {
-	return s.Notes.Show(selector)
+	result, err := s.Notes.Show(selector)
+	if s.Logger != nil {
+		if err != nil {
+			s.Logger.Debug("note read failed", "selector", selector, "error", err)
+		} else {
+			s.Logger.Debug("note read", "note_id", result.Note.MnemonicNoteID, "selector", selector)
+		}
+	}
+	return result, err
 }
 
-// HydrateResult mirrors the markdownstore hydration payload.
+// ShowMany resolves multiple selectors and returns found notes plus missing identifiers.
+func (s Service) ShowMany(input ReadManyInput) (ReadManyOutput, error) {
+	var notes []ReadManyItem
+	var missing []string
+	for _, identifier := range input.Selectors {
+		resolved, err := s.Show(identifier)
+		if err != nil {
+			missing = append(missing, identifier)
+			continue
+		}
+		notes = append(notes, ReadManyItem{
+			ShowResult: resolved,
+			ID:         identifier,
+		})
+	}
+	return ReadManyOutput{Notes: notes, Missing: missing}, nil
+}
+
+// HydrateResult aliases the markdownstore hydration payload.
 type HydrateResult = markdownstore.HydrateResult
 
 // Hydrate fills missing canonical frontmatter for raw notes via the bound

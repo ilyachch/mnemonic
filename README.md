@@ -16,11 +16,11 @@ Notes are indexed into a local SQLite database with FTS5 (Full-Text Search) for 
   - Inline hashtags (`#tag`) extracted alongside frontmatter tags.
   - Observations in `- [category] text` bulleted lists under a `## Observations` heading.
   - Explicit relationships declared under a `## Relations` heading (`depends_on [[Target]]`, `relates_to [[Target]]`).
-- **Multi-query Search**: Submit several FTS5 query variants per call; each contributes to the combined BM25 ranking. Filter by tags, creation time, and update time (absolute Unix timestamps or relative durations like `24h`).
-- **Graph-aware Reranking**: Results are reranked using page-rank over the [[Wiki-Link]] graph.
-- **Related Notes**: Opt-in per-query retrieval of backlinks and forward links with their `relation_type`.
-- **Batch Read**: Read multiple notes in a single `read_notes` call by providing an array of identifiers (note_id, slug, path, or title).
-- **Repository Diagnostics**: `diagnose_notes` scans for invalid frontmatter, missing required fields, duplicate slugs/aliases, unresolved or ambiguous wiki-links, and empty bodies. Optionally resolves broken links via search and suggests candidate targets.
+- **Multi-query Search**: Submit several FTS5 query variants per call; results are aggregated via Reciprocal Rank Fusion (RRF). Filter by tags (AND logic), creation time, and update time (absolute Unix timestamps or relative durations like `24h`).
+- **Graph-aware Reranking**: Top results are multiplicatively boosted based on link connections to higher-ranked documents.
+- **Related Notes**: Opt-in per-query retrieval of backlinks and forward links with `relation_type`, `source_kind`, and `direction`.
+- **Batch Read**: Read multiple notes in a single `read_notes` call by providing an array of identifiers (note_id, slug, path, or title). Optional field selection controls payload size.
+- **Repository Diagnostics**: `diagnose_notes` scans for invalid frontmatter, missing required fields, missing/invalid timestamps, duplicate slugs/aliases, unresolved or ambiguous wiki-links, and empty bodies. Optionally resolves broken links via search and suggests candidate targets.
 - **MCP Transport**: stdio and HTTP/SSE transport with optional Bearer token authentication.
 
 ---

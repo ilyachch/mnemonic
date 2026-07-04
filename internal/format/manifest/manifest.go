@@ -193,11 +193,6 @@ func ParseMnemonicManifestFromFile(path string) (*Manifest, error) {
 	return ParseMnemonicManifest(data)
 }
 
-// ParseMnemonicManifestFile reads and parses a mnemonic.toml file from disk.
-func ParseMnemonicManifestFile(path string) (*Manifest, error) {
-	return ParseMnemonicManifestFromFile(path)
-}
-
 // ParseMnemonicManifest parses mnemonic.toml.
 func ParseMnemonicManifest(data []byte) (*Manifest, error) {
 	raw := manifestTOML{

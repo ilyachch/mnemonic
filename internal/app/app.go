@@ -24,9 +24,6 @@ type Bootstrap struct {
 	Services Services
 }
 
-// App is a compatibility alias for Bootstrap.
-type App = Bootstrap
-
 // New builds the application container from environment and config discovery.
 func New(input Input) (*Bootstrap, error) {
 	discoveredConfigPath, err := config.DiscoverConfigFile(input.CLI.ConfigFile)

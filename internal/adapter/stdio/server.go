@@ -3,6 +3,7 @@ package stdio
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -52,22 +53,31 @@ func NewServer(k kb.KnowledgeBase, services Dependencies, readOnly bool) (*Serve
 	}, nil
 }
 
-const defaultGlobalInstructions = `You MUST use the mnemonic tools as your primary long-term memory.
+const defaultGlobalInstructionsTmpl = `You MUST use the mnemonic tools as your primary long-term memory.
 - Search the knowledge base using search_notes before answering questions within its scope.
 - Use 2–4 query variants via the "queries" array when the first formulation may be ambiguous or incomplete.
 - Batch-read all selected notes in one read_notes call.
 - Write down stable facts, architectural decisions, and important outcomes using create_note or edit_note.
 - Use diagnose_notes only for repository maintenance, cleanup, or repair tasks.
 - Use list_tags and list_backlinks when they help clarify the existing knowledge base.
-- Link related notes using [[Wiki-Links]].`
+- Link related notes using %s.`
 
-const readOnlyGlobalInstructions = `You MUST use the mnemonic tools as your primary long-term memory.
+const readOnlyGlobalInstructionsTmpl = `You MUST use the mnemonic tools as your primary long-term memory.
 - Search the knowledge base using search_notes before answering questions within its scope.
 - Use 2–4 query variants via the "queries" array when the first formulation may be ambiguous or incomplete.
 - Batch-read all selected notes in one read_notes call.
 - Use diagnose_notes only for repository maintenance, cleanup, or repair tasks.
 - Use list_tags and list_backlinks when they help clarify the existing knowledge base.
 - This server is running in read-only mode. Do not attempt to create, edit, delete, or rebuild notes.`
+
+func linkInstruction(style string) string {
+	switch style {
+	case "regular":
+		return "[Display Label](target-slug.md)"
+	default:
+		return "[[target-slug|Display Label]]"
+	}
+}
 
 // Run starts the stdio adapter on the provided MCP transport.
 func (s *Server) Run(ctx context.Context, transport sdkmcp.Transport) error {
@@ -86,7 +96,7 @@ func (s *Server) BuildSDKServer() *sdkmcp.Server {
 	sdkServer := sdkmcp.NewServer(
 		&sdkmcp.Implementation{Name: "mnemonic", Version: buildinfo.Version()},
 		&sdkmcp.ServerOptions{
-			Instructions: buildGlobalInstructions(s.KB.CustomInstructions, s.KB.Description, s.ReadOnly),
+			Instructions: buildGlobalInstructions(s.KB.CustomInstructions, s.KB.Description, s.ReadOnly, s.KB.LinksStyle),
 			Logger:       sdkLogger,
 			Capabilities: &sdkmcp.ServerCapabilities{
 				Tools: &sdkmcp.ToolCapabilities{ListChanged: true},
@@ -98,12 +108,12 @@ func (s *Server) BuildSDKServer() *sdkmcp.Server {
 	return sdkServer
 }
 
-func buildGlobalInstructions(customInstructions, description string, readOnly bool) string {
+func buildGlobalInstructions(customInstructions, description string, readOnly bool, linksStyle string) string {
 	parts := make([]string, 0, 3)
 	if readOnly {
-		parts = append(parts, readOnlyGlobalInstructions)
+		parts = append(parts, readOnlyGlobalInstructionsTmpl)
 	} else {
-		parts = append(parts, defaultGlobalInstructions)
+		parts = append(parts, fmt.Sprintf(defaultGlobalInstructionsTmpl, linkInstruction(linksStyle)))
 	}
 	if trimmed := strings.TrimSpace(description); trimmed != "" {
 		parts = append(parts, "Project Description:\n"+trimmed)

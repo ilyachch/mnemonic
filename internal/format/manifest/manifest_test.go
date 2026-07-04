@@ -427,7 +427,7 @@ func TestParseMnemonicManifestFile_Alias(t *testing.T) {
 	err := WriteMnemonicManifest(path, m)
 	require.NoError(t, err)
 
-	read, err := ParseMnemonicManifestFile(path)
+	read, err := ParseMnemonicManifestFromFile(path)
 	require.NoError(t, err)
 
 	assert.Equal(t, m.Name, read.Name)
