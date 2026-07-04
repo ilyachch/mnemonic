@@ -48,14 +48,15 @@ type observationRow struct {
 }
 
 type linkRow struct {
-	Label       string
-	LinkStyle   string
-	SourceKind  string
-	RawTarget   string
-	ToNoteID    sql.NullString
-	IsResolved  int
-	IsAmbiguous int
-	Line        int
+	Label        string
+	LinkStyle    string
+	SourceKind   string
+	RelationType string
+	RawTarget    string
+	ToNoteID     sql.NullString
+	IsResolved   int
+	IsAmbiguous  int
+	Line         int
 }
 
 // ScanNotes collects markdown notes from a project root.
@@ -150,11 +151,12 @@ func populateNoteDocData(info *NoteDoc, note markdown.Note, data []byte) {
 	for _, rel := range markdown.ParseRelations(note.Body) {
 		target := strings.TrimSpace(rel.Target.Target)
 		info.Links = append(info.Links, linkRow{
-			RawTarget:  target,
-			Label:      rel.Target.Alias,
-			LinkStyle:  rel.LinkStyle,
-			SourceKind: string(rel.Source),
-			Line:       rel.Line,
+			RawTarget:    target,
+			Label:        rel.Target.Alias,
+			LinkStyle:    rel.LinkStyle,
+			SourceKind:   string(rel.Source),
+			RelationType: rel.RelationType,
+			Line:         rel.Line,
 		})
 	}
 }

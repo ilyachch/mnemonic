@@ -60,9 +60,9 @@ func TestCountUnresolvedLinks(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	_, err := db.Exec(
-		`INSERT INTO links(link_id, note_id, to_note_id, target, label, link_style, source_kind, is_resolved, is_ambiguous, source_line)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		"link-unresolved", "gamma-id", nil, "missing-target", "", "", "wikilink", 0, 0, 4,
+		`INSERT INTO links(link_id, note_id, to_note_id, target, label, link_style, source_kind, relation_type, is_resolved, is_ambiguous, source_line)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"link-unresolved", "gamma-id", nil, "missing-target", "", "", "wikilink", "", 0, 0, 4,
 	)
 	require.NoError(t, err)
 
@@ -192,7 +192,8 @@ func TestSearchAdvancedRelatedNotes(t *testing.T) {
 		if r.Slug == "alpha" {
 			require.Len(t, r.RelatedNotes, 1)
 			assert.Equal(t, "gamma-id", r.RelatedNotes[0].NoteID)
-			assert.NotEmpty(t, r.RelatedNotes[0].RelationType)
+			assert.Equal(t, "wikilink", r.RelatedNotes[0].SourceKind)
+			assert.Equal(t, "outgoing", r.RelatedNotes[0].Direction)
 		}
 	}
 }
@@ -247,7 +248,8 @@ func TestSearchAdvancedTagFilter(t *testing.T) {
 		Limit:   10,
 	}, now)
 	require.NoError(t, err)
-	require.Len(t, results, 2)
+	require.Len(t, results, 1)
+	assert.Equal(t, "alpha", results[0].Slug)
 }
 
 func TestSearchAdvancedAbsoluteTimeBounds(t *testing.T) {
@@ -311,8 +313,8 @@ func seedQueryStore(t *testing.T) (Store, *sql.DB) {
 	insertQueryNote(t, db, "beta-id", "beta", "Beta", "beta.md", "queryterm in beta body", now, []string{"frontmatter:go"})
 	insertQueryNote(t, db, "gamma-id", "gamma", "Gamma", "gamma.md", "target body", now, nil)
 
-	insertQueryLink(t, db, "link-alpha", "alpha-id", "gamma-id", "gamma", "wikilink", 12)
-	insertQueryLink(t, db, "link-beta", "beta-id", "gamma-id", "gamma", "wikilink", 8)
+	insertQueryLink(t, db, "link-alpha", "alpha-id", "gamma-id", "gamma", "wikilink", "", 12)
+	insertQueryLink(t, db, "link-beta", "beta-id", "gamma-id", "gamma", "wikilink", "", 8)
 
 	return store, db
 }
@@ -340,13 +342,13 @@ func insertQueryNote(t *testing.T, db *sql.DB, noteID, slug, title, relPath, bod
 	}
 }
 
-func insertQueryLink(t *testing.T, db *sql.DB, linkID, noteID, toNoteID, target, sourceKind string, sourceLine int) {
+func insertQueryLink(t *testing.T, db *sql.DB, linkID, noteID, toNoteID, target, sourceKind, relationType string, sourceLine int) {
 	t.Helper()
 
 	_, err := db.Exec(
-		`INSERT INTO links(link_id, note_id, to_note_id, target, label, link_style, source_kind, is_resolved, is_ambiguous, source_line)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		linkID, noteID, toNoteID, target, "", "wiki", sourceKind, 1, 0, sourceLine,
+		`INSERT INTO links(link_id, note_id, to_note_id, target, label, link_style, source_kind, relation_type, is_resolved, is_ambiguous, source_line)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		linkID, noteID, toNoteID, target, "", "wiki", sourceKind, relationType, 1, 0, sourceLine,
 	)
 	require.NoError(t, err)
 }

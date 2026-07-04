@@ -74,6 +74,9 @@ func (s Service) Diagnose(ctx context.Context, input DiagnoseInput) (DiagnoseOut
 	if cursor < 0 {
 		cursor = 0
 	}
+	if cursor >= len(issues) {
+		return DiagnoseOutput{TotalCount: totalCount}, nil
+	}
 	limit := input.Limit
 	if limit <= 0 {
 		limit = 50

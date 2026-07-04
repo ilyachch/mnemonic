@@ -69,6 +69,7 @@ type Backlink struct {
 	Title        string `json:"title"`
 	Path         string `json:"path"`
 	RelationType string `json:"relation_type"`
+	SourceKind   string `json:"source_kind"`
 	SourceLine   int    `json:"source_line"`
 }
 
@@ -89,15 +90,18 @@ type SearchOptions struct {
 
 // SearchResult is an extended search hit that may carry related notes.
 type SearchResult struct {
-	NoteID       string        `json:"note_id"`
-	Slug         string        `json:"slug"`
-	Title        string        `json:"title"`
-	Path         string        `json:"path"`
-	Score        float64       `json:"score"`
-	Snippet      string        `json:"snippet"`
-	ContentHash  string        `json:"content_hash"`
-	RelatedNotes []RelatedNote `json:"related_notes,omitempty"`
-	MatchCount   int           `json:"-"`
+	NoteID         string        `json:"note_id"`
+	Slug           string        `json:"slug"`
+	Title          string        `json:"title"`
+	Path           string        `json:"path"`
+	Score          float64       `json:"score"`
+	Snippet        string        `json:"snippet"`
+	ContentHash    string        `json:"content_hash"`
+	Summary        string        `json:"summary"`
+	Tags           []string      `json:"tags,omitempty"`
+	RelatedNotes   []RelatedNote `json:"related_notes,omitempty"`
+	MatchCount     int           `json:"-"`
+	MatchedQueries []string      `json:"matched_queries,omitempty"`
 }
 
 // RelatedNote is a short linked-note reference.
@@ -107,6 +111,8 @@ type RelatedNote struct {
 	Title        string `json:"title"`
 	Path         string `json:"path"`
 	RelationType string `json:"relation_type"`
+	SourceKind   string `json:"source_kind"`
+	Direction    string `json:"direction"`
 }
 
 // Open opens the index database, creating parent directories and applying the
@@ -293,6 +299,11 @@ func (s Store) SearchAdvanced(db *sql.DB, opts SearchOptions, now time.Time) ([]
 		results = results[:opts.Limit]
 	}
 
+	if err := s.populateSearchTags(db, results); err != nil {
+		return nil, err
+	}
+	s.applySnippetFallback(results)
+
 	if opts.IncludeRelated {
 		if err := s.populateRelatedNotes(db, results); err != nil {
 			return nil, err
@@ -325,11 +336,19 @@ func searchParamsValid(hasQuery, hasTimeFilter, hasTagFilter bool) bool {
 	return hasQuery || hasTimeFilter || hasTagFilter
 }
 
+const rrfK = 60.0
+
 func (s Store) searchMultiQuery(db *sql.DB, opts SearchOptions, ca, cb, ua, ub *int64) ([]SearchResult, error) {
 	timeClause, timeArgs := buildTimeFilterClause(ca, cb, ua, ub)
 	tagClause, tagArgs := buildTagFilterClause(opts.Tags)
 
-	seen := make(map[string]*SearchResult)
+	type docEntry struct {
+		result         SearchResult
+		matchCount     int
+		matchedQueries map[string]bool
+	}
+	docs := make(map[string]*docEntry)
+
 	for _, q := range opts.Queries {
 		clean := sanitizeFTSQuery(q)
 		if strings.TrimSpace(clean) == "" {
@@ -339,77 +358,66 @@ func (s Store) searchMultiQuery(db *sql.DB, opts SearchOptions, ca, cb, ua, ub *
 		if err != nil {
 			return nil, err
 		}
-		mergeSearchHits(seen, hits)
+		for rank, hit := range hits {
+			entry, ok := docs[hit.NoteID]
+			if !ok {
+				r := hit
+				r.Score = 0.0
+				entry = &docEntry{result: r, matchedQueries: make(map[string]bool)}
+				docs[hit.NoteID] = entry
+			}
+			entry.result.Score += 1.0 / (rrfK + float64(rank+1))
+			entry.matchCount++
+			entry.matchedQueries[q] = true
+		}
 	}
 
-	results := applyMultiQueryBoost(seen)
+	results := make([]SearchResult, 0, len(docs))
+	for _, e := range docs {
+		e.result.MatchCount = e.matchCount
+		queries := make([]string, 0, len(e.matchedQueries))
+		for q := range e.matchedQueries {
+			queries = append(queries, q)
+		}
+		e.result.MatchedQueries = queries
+		results = append(results, e.result)
+	}
+
 	sortSearchResults(results)
 	return results, nil
 }
 
-func mergeSearchHits(seen map[string]*SearchResult, hits []SearchResult) {
-	for _, hit := range hits {
-		if existing, ok := seen[hit.NoteID]; ok {
-			if hit.Score < existing.Score {
-				existing.Score = hit.Score
-			}
-			existing.MatchCount++
-		} else {
-			r := hit
-			r.MatchCount = 1
-			seen[hit.NoteID] = &r
-		}
-	}
-}
-
-func applyMultiQueryBoost(seen map[string]*SearchResult) []SearchResult {
-	results := make([]SearchResult, 0, len(seen))
-	for _, r := range seen {
-		if r.MatchCount > 1 {
-			r.Score = r.Score * (1.0 - 0.1*float64(r.MatchCount-1))
-			if r.Score < 0 {
-				r.Score = 0
-			}
-		}
-		results = append(results, *r)
-	}
-	return results
-}
-
 func (s Store) searchNotesByFilter(db *sql.DB, opts SearchOptions, ca, cb, ua, ub *int64) ([]SearchResult, error) {
-	where := "WHERE 1=1"
+	var w strings.Builder
+	w.WriteString("WHERE 1=1")
 	var args []any
 
 	if ca != nil {
-		where += " AND n.created_at > ?"
+		w.WriteString(" AND n.created_at > ?")
 		args = append(args, *ca)
 	}
 	if cb != nil {
-		where += " AND n.created_at < ?"
+		w.WriteString(" AND n.created_at < ?")
 		args = append(args, *cb)
 	}
 	if ua != nil {
-		where += " AND n.updated_at > ?"
+		w.WriteString(" AND n.updated_at > ?")
 		args = append(args, *ua)
 	}
 	if ub != nil {
-		where += " AND n.updated_at < ?"
+		w.WriteString(" AND n.updated_at < ?")
 		args = append(args, *ub)
 	}
 
-	if len(opts.Tags) > 0 {
-		placeholders := make([]string, len(opts.Tags))
-		for i, t := range opts.Tags {
-			placeholders[i] = "?"
-			args = append(args, "%:"+strings.TrimSpace(t))
-		}
-		where += ` AND EXISTS (
-			SELECT 1 FROM note_tags nt
-			WHERE nt.note_id = n.note_id
-			  AND nt.tag LIKE ` + strings.Join(placeholders, " OR nt.tag LIKE ") + ")"
+	for _, t := range opts.Tags {
+		w.WriteString(` AND EXISTS (
+		SELECT 1 FROM note_tags nt
+		WHERE nt.note_id = n.note_id
+		  AND nt.tag LIKE ?)`)
+		args = append(args, "%:"+strings.TrimSpace(t))
 	}
 
-	query := "SELECT n.note_id, n.slug, n.title, n.rel_path, 0.0, '', n.content_hash FROM notes n " + where + " ORDER BY n.created_at DESC LIMIT ?"
+	query := "SELECT n.note_id, n.slug, n.title, n.rel_path, 0.0, '', n.content_hash, n.summary FROM notes n " + w.String() + " ORDER BY n.created_at DESC LIMIT ?"
 	args = append(args, opts.Limit)
 
 	rows, err := db.Query(query, args...)
@@ -421,7 +429,7 @@ func (s Store) searchNotesByFilter(db *sql.DB, opts SearchOptions, ca, cb, ua, u
 	results := make([]SearchResult, 0)
 	for rows.Next() {
 		var r SearchResult
-		if err := rows.Scan(&r.NoteID, &r.Slug, &r.Title, &r.Path, &r.Score, &r.Snippet, &r.ContentHash); err != nil {
+		if err := rows.Scan(&r.NoteID, &r.Slug, &r.Title, &r.Path, &r.Score, &r.Snippet, &r.ContentHash, &r.Summary); err != nil {
 			return nil, fmt.Errorf("scan filter result: %w", err)
 		}
 		results = append(results, r)
@@ -463,7 +471,7 @@ func (s Store) rerankByGraphLinks(db *sql.DB, results []SearchResult) []SearchRe
 
 	for i := range results {
 		if conn := connections[i]; conn > 0 {
-			results[i].Score = results[i].Score / (1.0 + 0.1*float64(conn))
+			results[i].Score += 0.1 * float64(conn)
 		}
 	}
 
@@ -516,6 +524,57 @@ func (s Store) countIncomingLinks(db *sql.DB, topList, allIDs []string, idToIdx 
 	_ = rows.Err()
 }
 
+func (s Store) populateSearchTags(db *sql.DB, results []SearchResult) error {
+	if len(results) == 0 {
+		return nil
+	}
+	ids := make([]string, len(results))
+	for i, r := range results {
+		ids[i] = r.NoteID
+	}
+	rows, err := db.Query(
+		`SELECT note_id, tag FROM note_tags WHERE note_id IN (`+placeholders(len(ids))+`) ORDER BY note_id, tag`,
+		stringSliceToAny(ids)...,
+	)
+	if err != nil {
+		return fmt.Errorf("query search tags: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	tagsByID := make(map[string][]string, len(results))
+	for rows.Next() {
+		var noteID, tag string
+		if err := rows.Scan(&noteID, &tag); err != nil {
+			return fmt.Errorf("scan search tag: %w", err)
+		}
+		tagsByID[noteID] = append(tagsByID[noteID], tag)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate search tags: %w", err)
+	}
+	for i := range results {
+		tags := tagsByID[results[i].NoteID]
+		if tags == nil {
+			tags = []string{}
+		}
+		results[i].Tags = tags
+	}
+	return nil
+}
+
+func (s Store) applySnippetFallback(results []SearchResult) {
+	for i := range results {
+		if strings.TrimSpace(results[i].Snippet) != "" {
+			continue
+		}
+		if strings.TrimSpace(results[i].Summary) != "" {
+			results[i].Snippet = results[i].Summary
+		} else {
+			results[i].Snippet = results[i].Title
+		}
+	}
+}
+
 func (s Store) populateRelatedNotes(db *sql.DB, results []SearchResult) error {
 	if len(results) == 0 {
 		return nil
@@ -526,12 +585,12 @@ func (s Store) populateRelatedNotes(db *sql.DB, results []SearchResult) error {
 		ids[i] = r.NoteID
 	}
 
-	query := "SELECT l.note_id, l.to_note_id, n.note_id, n.slug, n.title, n.rel_path, l.source_kind " +
+	query := "SELECT l.note_id, l.to_note_id, n.note_id, n.slug, n.title, n.rel_path, l.relation_type, l.source_kind, 'outgoing' " +
 		"FROM links l " +
 		"JOIN notes n ON n.note_id = l.to_note_id " +
 		"WHERE l.note_id IN (" + placeholders(len(ids)) + ") AND l.to_note_id IS NOT NULL " +
 		"UNION ALL " +
-		"SELECT l.to_note_id, l.note_id, n.note_id, n.slug, n.title, n.rel_path, l.source_kind " +
+		"SELECT l.to_note_id, l.note_id, n.note_id, n.slug, n.title, n.rel_path, l.relation_type, l.source_kind, 'incoming' " +
 		"FROM links l " +
 		"JOIN notes n ON n.note_id = l.note_id " +
 		"WHERE l.to_note_id IN (" + placeholders(len(ids)) + ") AND l.to_note_id IS NOT NULL"
@@ -546,8 +605,8 @@ func (s Store) populateRelatedNotes(db *sql.DB, results []SearchResult) error {
 
 	relatedByNoteID := make(map[string][]RelatedNote, len(results))
 	for rows.Next() {
-		var sourceID, targetID, nID, slug, title, path, rel string
-		if err := rows.Scan(&sourceID, &targetID, &nID, &slug, &title, &path, &rel); err != nil {
+		var sourceID, targetID, nID, slug, title, path, relType, sourceKind, direction string
+		if err := rows.Scan(&sourceID, &targetID, &nID, &slug, &title, &path, &relType, &sourceKind, &direction); err != nil {
 			return fmt.Errorf("scan related note: %w", err)
 		}
 		relatedByNoteID[sourceID] = append(relatedByNoteID[sourceID], RelatedNote{
@@ -555,7 +614,9 @@ func (s Store) populateRelatedNotes(db *sql.DB, results []SearchResult) error {
 			Slug:         slug,
 			Title:        title,
 			Path:         path,
-			RelationType: rel,
+			RelationType: relType,
+			SourceKind:   sourceKind,
+			Direction:    direction,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -579,7 +640,7 @@ func (s Store) populateRelatedNotes(db *sql.DB, results []SearchResult) error {
 func runFTSSearch(db *sql.DB, query string, limit int, timeClause string, timeArgs []any, tagClause string, tagArgs []any) ([]SearchResult, error) {
 	sqlQuery := `SELECT n.note_id, n.slug, n.title, n.rel_path, bm25(notes_fts, 10.0, 5.0, 5.0, 2.0, 1.0) AS score,
 		       snippet(notes_fts, 5, '[', ']', '...', 12) AS snippet,
-		       n.content_hash
+		       n.content_hash, n.summary
 		FROM notes_fts
 		JOIN notes n ON n.note_id = notes_fts.note_id
 		WHERE notes_fts MATCH ?`
@@ -605,7 +666,7 @@ func runFTSSearch(db *sql.DB, query string, limit int, timeClause string, timeAr
 	results := make([]SearchResult, 0)
 	for rows.Next() {
 		var r SearchResult
-		if err := rows.Scan(&r.NoteID, &r.Slug, &r.Title, &r.Path, &r.Score, &r.Snippet, &r.ContentHash); err != nil {
+		if err := rows.Scan(&r.NoteID, &r.Slug, &r.Title, &r.Path, &r.Score, &r.Snippet, &r.ContentHash, &r.Summary); err != nil {
 			return nil, fmt.Errorf("scan fts result: %w", err)
 		}
 		results = append(results, r)
@@ -684,13 +745,14 @@ func buildTagFilterClause(tags []string) (string, []any) {
 	if len(tags) == 0 {
 		return "", nil
 	}
-	placeholders := make([]string, len(tags))
+	parts := make([]string, len(tags))
 	args := make([]any, len(tags))
 	for i, t := range tags {
-		placeholders[i] = "?"
+		alias := fmt.Sprintf("nt%d", i)
+		parts[i] = fmt.Sprintf("EXISTS (SELECT 1 FROM note_tags %s WHERE %s.note_id = n.note_id AND %s.tag LIKE ?)", alias, alias, alias)
 		args[i] = "%:" + strings.TrimSpace(t)
 	}
-	return "EXISTS (SELECT 1 FROM note_tags nt WHERE nt.note_id = n.note_id AND nt.tag LIKE " + strings.Join(placeholders, " OR nt.tag LIKE ") + ")", args
+	return strings.Join(parts, " AND "), args
 }
 
 func placeholders(n int) string {
@@ -712,7 +774,7 @@ func stringSliceToAny(s []string) []any {
 func sortSearchResults(results []SearchResult) {
 	for i := 0; i < len(results); i++ {
 		for j := i + 1; j < len(results); j++ {
-			if results[j].Score < results[i].Score || (results[j].Score == results[i].Score && results[j].Title < results[i].Title) {
+			if results[j].Score > results[i].Score || (results[j].Score == results[i].Score && results[j].Title < results[i].Title) {
 				results[i], results[j] = results[j], results[i]
 			}
 		}
@@ -792,7 +854,7 @@ func (s Store) Backlinks(db *sql.DB, targetNoteID string, limit int) ([]Backlink
 		return nil, errors.New("target note id is required")
 	}
 
-	sqlQuery := `SELECT l.link_id, l.note_id, n.slug, n.title, n.rel_path, l.source_kind, l.source_line
+	sqlQuery := `SELECT l.link_id, l.note_id, n.slug, n.title, n.rel_path, l.relation_type, l.source_kind, l.source_line
 		 FROM links l
 		 JOIN notes n ON n.note_id = l.note_id
 		 WHERE l.to_note_id = ?
@@ -812,7 +874,7 @@ func (s Store) Backlinks(db *sql.DB, targetNoteID string, limit int) ([]Backlink
 	out := make([]Backlink, 0)
 	for rows.Next() {
 		var item Backlink
-		if err := rows.Scan(&item.LinkID, &item.NoteID, &item.Slug, &item.Title, &item.Path, &item.RelationType, &item.SourceLine); err != nil {
+		if err := rows.Scan(&item.LinkID, &item.NoteID, &item.Slug, &item.Title, &item.Path, &item.RelationType, &item.SourceKind, &item.SourceLine); err != nil {
 			return nil, fmt.Errorf("scan backlink: %w", err)
 		}
 		out = append(out, item)

@@ -53,17 +53,19 @@ func NewServer(k kb.KnowledgeBase, services Dependencies, readOnly bool) (*Serve
 }
 
 const defaultGlobalInstructions = `You MUST use the mnemonic tools as your primary long-term memory.
-- ALWAYS search the knowledge base using search_notes before starting a task. Provide multiple distinct query variants via the "queries" array to take advantage of multi-query search.
-- ALWAYS use read_notes with an array of identifiers to batch-read multiple notes in a single call.
-- ALWAYS write down stable facts, architectural decisions, and important outcomes using create_note or edit_note.
-- Run diagnose_notes periodically to detect metadata issues, broken links, and content problems in the repository.
+- Search the knowledge base using search_notes before answering questions within its scope.
+- Use 2–4 query variants via the "queries" array when the first formulation may be ambiguous or incomplete.
+- Batch-read all selected notes in one read_notes call.
+- Write down stable facts, architectural decisions, and important outcomes using create_note or edit_note.
+- Use diagnose_notes only for repository maintenance, cleanup, or repair tasks.
 - Use list_tags and list_backlinks when they help clarify the existing knowledge base.
-- ALWAYS link related notes using [[Wiki-Links]].`
+- Link related notes using [[Wiki-Links]].`
 
 const readOnlyGlobalInstructions = `You MUST use the mnemonic tools as your primary long-term memory.
-- ALWAYS search the knowledge base using search_notes before starting a task. Provide multiple distinct query variants via the "queries" array to take advantage of multi-query search.
-- ALWAYS use read_notes with an array of identifiers to batch-read multiple notes in a single call.
-- Run diagnose_notes periodically to detect metadata issues, broken links, and content problems in the repository.
+- Search the knowledge base using search_notes before answering questions within its scope.
+- Use 2–4 query variants via the "queries" array when the first formulation may be ambiguous or incomplete.
+- Batch-read all selected notes in one read_notes call.
+- Use diagnose_notes only for repository maintenance, cleanup, or repair tasks.
 - Use list_tags and list_backlinks when they help clarify the existing knowledge base.
 - This server is running in read-only mode. Do not attempt to create, edit, delete, or rebuild notes.`
 

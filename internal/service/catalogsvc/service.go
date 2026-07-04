@@ -630,12 +630,27 @@ func (s Service) knowledgeBaseFromEntry(entry registry.Entry) (kb.KnowledgeBase,
 		Kind:               resolved.Type,
 		Description:        resolved.Description,
 		CustomInstructions: resolved.CustomInstructions,
+		LinksStyle:         s.resolveLinksStyle(resolved.ManifestPath),
 		RootDir:            resolved.MemoriesAbs,
 		RepoRootDir:        resolved.RepoRootAbs,
 		ManifestPath:       resolved.ManifestPath,
 		StateDir:           stateDir,
 		IndexPath:          filepath.Join(stateDir, "index.sqlite"),
 	}, nil
+}
+
+func (s Service) resolveLinksStyle(manifestPath string) string {
+	if manifestPath == "" {
+		return "wiki"
+	}
+	m, err := manifestfmt.ParseMnemonicManifestFromFile(manifestPath)
+	if err != nil {
+		return "wiki"
+	}
+	if m.Format.LinksStyle == "" {
+		return "wiki"
+	}
+	return m.Format.LinksStyle
 }
 
 func (s Service) resolvePathsForKind(resolved *registry.Entry) error {

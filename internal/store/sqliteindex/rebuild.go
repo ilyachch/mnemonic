@@ -207,9 +207,9 @@ func insertDocLinks(db *sql.DB, doc NoteDoc, docs []NoteDoc, seenNorm map[string
 		} else if ambiguous {
 			isAmbiguous = 1
 		}
-		_, _ = db.Exec(`INSERT INTO links(link_id, note_id, to_note_id, target, label, link_style, source_kind, is_resolved, is_ambiguous, source_line) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			markdownstore.HashBytes([]byte(doc.NoteID+link.RawTarget+link.SourceKind+strconv.Itoa(link.Line))),
-			doc.NoteID, toID, link.RawTarget, link.Label, link.LinkStyle, link.SourceKind, isResolved, isAmbiguous, link.Line)
+		_, _ = db.Exec(`INSERT INTO links(link_id, note_id, to_note_id, target, label, link_style, source_kind, relation_type, is_resolved, is_ambiguous, source_line) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			markdownstore.HashBytes([]byte(doc.NoteID+link.RawTarget+link.SourceKind+link.RelationType+strconv.Itoa(link.Line))),
+			doc.NoteID, toID, link.RawTarget, link.Label, link.LinkStyle, link.SourceKind, link.RelationType, isResolved, isAmbiguous, link.Line)
 	}
 }
 
@@ -218,7 +218,7 @@ func resolveLinkTarget(docs []NoteDoc, norms map[string]int, aliasMap map[string
 	count  int
 }, target string) (noteID string, resolved bool, ambiguous bool) {
 	for _, doc := range docs {
-		if doc.NoteID == target || doc.Slug == target || doc.RelPath == target || doc.Title == target {
+		if doc.NoteID == target || doc.Slug == target || doc.RelPath == target {
 			return doc.NoteID, true, false
 		}
 	}
@@ -227,17 +227,6 @@ func resolveLinkTarget(docs []NoteDoc, norms map[string]int, aliasMap map[string
 			return entry.noteID, true, false
 		}
 		return "", false, true
-	}
-	norm := normalizeTitleSlug(target)
-	if norms[norm] > 1 {
-		return "", false, true
-	}
-	if norms[norm] == 1 {
-		for _, doc := range docs {
-			if n := normalizeTitleSlug(doc.Title); n == norm {
-				return doc.NoteID, true, false
-			}
-		}
 	}
 	return "", false, false
 }

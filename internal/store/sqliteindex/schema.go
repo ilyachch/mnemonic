@@ -49,6 +49,7 @@ func ApplySchema(db *sql.DB) error {
 			label TEXT DEFAULT '',
 			link_style TEXT DEFAULT '',
 			source_kind TEXT DEFAULT '',
+			relation_type TEXT DEFAULT '',
 			is_resolved INTEGER NOT NULL DEFAULT 0,
 			is_ambiguous INTEGER NOT NULL DEFAULT 0,
 			source_line INTEGER NOT NULL

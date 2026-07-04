@@ -60,6 +60,7 @@ type Backlink struct {
 	Title        string `json:"title"`
 	Path         string `json:"path"`
 	RelationType string `json:"relation_type"`
+	SourceKind   string `json:"source_kind"`
 	SourceLine   int    `json:"source_line"`
 }
 
@@ -81,14 +82,17 @@ type AdvancedSearchInput struct {
 // AdvancedSearchResult mirrors an advanced search hit with optional related
 // notes.
 type AdvancedSearchResult struct {
-	NoteID       string            `json:"note_id"`
-	Slug         string            `json:"slug"`
-	Title        string            `json:"title"`
-	Path         string            `json:"path"`
-	Score        float64           `json:"score"`
-	Snippet      string            `json:"snippet"`
-	ContentHash  string            `json:"content_hash"`
-	RelatedNotes []RelatedNoteItem `json:"related_notes,omitempty"`
+	NoteID         string            `json:"note_id"`
+	Slug           string            `json:"slug"`
+	Title          string            `json:"title"`
+	Path           string            `json:"path"`
+	Score          float64           `json:"score"`
+	Snippet        string            `json:"snippet"`
+	ContentHash    string            `json:"content_hash"`
+	Summary        string            `json:"summary"`
+	Tags           []string          `json:"tags,omitempty"`
+	MatchedQueries []string          `json:"matched_queries,omitempty"`
+	RelatedNotes   []RelatedNoteItem `json:"related_notes,omitempty"`
 }
 
 // RelatedNoteItem is a short linked-note reference for the service layer.
@@ -98,6 +102,8 @@ type RelatedNoteItem struct {
 	Title        string `json:"title"`
 	Path         string `json:"path"`
 	RelationType string `json:"relation_type"`
+	SourceKind   string `json:"source_kind"`
+	Direction    string `json:"direction"`
 }
 
 // New constructs the runtime search service for one knowledge base.
@@ -204,6 +210,7 @@ func (s Service) Backlinks(ctx context.Context, input BacklinksInput) ([]Backlin
 			Title:        link.Title,
 			Path:         link.Path,
 			RelationType: link.RelationType,
+			SourceKind:   link.SourceKind,
 			SourceLine:   link.SourceLine,
 		})
 	}
@@ -264,17 +271,22 @@ func (s Service) AdvancedSearch(ctx context.Context, input AdvancedSearchInput) 
 				Title:        rn.Title,
 				Path:         rn.Path,
 				RelationType: rn.RelationType,
+				SourceKind:   rn.SourceKind,
+				Direction:    rn.Direction,
 			})
 		}
 		out = append(out, AdvancedSearchResult{
-			NoteID:       hit.NoteID,
-			Slug:         hit.Slug,
-			Title:        hit.Title,
-			Path:         hit.Path,
-			Score:        hit.Score,
-			Snippet:      hit.Snippet,
-			ContentHash:  hit.ContentHash,
-			RelatedNotes: related,
+			NoteID:         hit.NoteID,
+			Slug:           hit.Slug,
+			Title:          hit.Title,
+			Path:           hit.Path,
+			Score:          hit.Score,
+			Snippet:        hit.Snippet,
+			ContentHash:    hit.ContentHash,
+			Summary:        hit.Summary,
+			Tags:           hit.Tags,
+			MatchedQueries: hit.MatchedQueries,
+			RelatedNotes:   related,
 		})
 	}
 	return out, nil

@@ -132,7 +132,7 @@ func newTestService(t *testing.T) (*Service, kb.KnowledgeBase) {
 		Slug:           "source-note",
 		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		Body:           []byte("See [[Target Note]].\n"),
+		Body:           []byte("See [[target-note]].\n"),
 	}))
 
 	trashDir := filepath.Join(root, ".trash")
