@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -379,6 +380,7 @@ func (s Store) searchMultiQuery(db *sql.DB, opts SearchOptions, ca, cb, ua, ub *
 		for q := range e.matchedQueries {
 			queries = append(queries, q)
 		}
+		sort.Strings(queries)
 		e.result.MatchedQueries = queries
 		results = append(results, e.result)
 	}
@@ -471,7 +473,11 @@ func (s Store) rerankByGraphLinks(db *sql.DB, results []SearchResult) []SearchRe
 
 	for i := range results {
 		if conn := connections[i]; conn > 0 {
-			results[i].Score += 0.1 * float64(conn)
+			n := float64(conn)
+			if n > 3 {
+				n = 3
+			}
+			results[i].Score *= 1.0 + 0.05*n
 		}
 	}
 
@@ -533,7 +539,9 @@ func (s Store) populateSearchTags(db *sql.DB, results []SearchResult) error {
 		ids[i] = r.NoteID
 	}
 	rows, err := db.Query(
-		`SELECT note_id, tag FROM note_tags WHERE note_id IN (`+placeholders(len(ids))+`) ORDER BY note_id, tag`,
+		`SELECT DISTINCT note_id,
+			CASE WHEN instr(tag, ':') > 0 THEN substr(tag, instr(tag, ':') + 1) ELSE tag END AS tag
+		 FROM note_tags WHERE note_id IN (`+placeholders(len(ids))+`) ORDER BY note_id, tag`,
 		stringSliceToAny(ids)...,
 	)
 	if err != nil {
@@ -625,9 +633,7 @@ func (s Store) populateRelatedNotes(db *sql.DB, results []SearchResult) error {
 
 	for i := range results {
 		rn := relatedByNoteID[results[i].NoteID]
-		if len(rn) > 3 {
-			rn = rn[:3]
-		}
+		rn = dedupRelatedNotes(rn)
 		if rn == nil {
 			rn = []RelatedNote{}
 		}
@@ -635,6 +641,42 @@ func (s Store) populateRelatedNotes(db *sql.DB, results []SearchResult) error {
 	}
 
 	return nil
+}
+
+const maxRelatedNotes = 3
+
+func dedupRelatedNotes(notes []RelatedNote) []RelatedNote {
+	seen := make(map[string]bool)
+	result := make([]RelatedNote, 0, maxRelatedNotes)
+
+	add := func(rn RelatedNote) {
+		if seen[rn.NoteID] {
+			return
+		}
+		seen[rn.NoteID] = true
+		result = append(result, rn)
+	}
+
+	collect := func(predicate func(RelatedNote) bool) bool {
+		for _, rn := range notes {
+			if predicate(rn) {
+				add(rn)
+				if len(result) >= maxRelatedNotes {
+					return false
+				}
+			}
+		}
+		return true
+	}
+
+	if !collect(func(rn RelatedNote) bool { return rn.SourceKind == "relations_section" }) {
+		return result
+	}
+	if !collect(func(rn RelatedNote) bool { return rn.Direction == "outgoing" && rn.SourceKind != "relations_section" }) {
+		return result
+	}
+	_ = collect(func(rn RelatedNote) bool { return rn.Direction == "incoming" })
+	return result
 }
 
 func runFTSSearch(db *sql.DB, query string, limit int, timeClause string, timeArgs []any, tagClause string, tagArgs []any) ([]SearchResult, error) {
