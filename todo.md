@@ -1,631 +1,436 @@
-## Общая оценка
+## Итог
 
-Направление правильное, и сделано заметно больше, чем косметическая правка API. Есть рабочий каркас для:
+Стало существенно лучше. Большая часть критики из прошлого ревью исправлена корректно:
 
-* multi-query поиска;
-* временных фильтров;
-* `summary` и `aliases`;
-* batch-read;
-* regular Markdown links;
-* diagnostics;
-* конфигурируемого логирования.
+* multi-query переведён на RRF;
+* tag-фильтры стали AND;
+* search-result получил `summary`, `tags`, `matched_queries`;
+* `read_notes.fields` реализован;
+* UTF-8 truncation исправлен;
+* default limit снижен до 10;
+* `relation_type`, `source_kind`, `direction` разделены;
+* title-based link resolution удалён;
+* diagnostics cursor больше не падает;
+* MCP instructions стали менее агрессивными.
 
-Но **повторный тест на реальных данных я бы пока не запускал**. В ранжировании есть критическая ошибка, несколько ключевых контрактов фактически не реализованы, а `links_style` пока является неработающей настройкой.
+По одному только diff это уже примерно **7.5/10**. Я не запускал компиляцию и тесты: загружен diff, а не актуальное дерево репозитория.
 
-Условно:
+# Что исправлено хорошо
 
-* архитектурное направление: **7/10**;
-* соответствие согласованным требованиям: **5/10**;
-* готовность к реальному evaluation: **4/10**.
+## RRF
 
-## Что сделано хорошо
-
-### Индекс стал содержательнее
-
-В SQLite появились отдельные `summary`, `aliases`, integer timestamps, индексы по времени и отдельные FTS-поля для title/summary/tags/aliases/body. Это правильная основа.
-
-### Временной поиск реализован адекватно
-
-Есть абсолютные границы и относительные интервалы `m/h/d`; допускается поиск без текстового запроса, если передан tag или временной фильтр. Это соответствует задаче автоматической чистки.
-
-### Batch API и diagnostics появились
-
-`read_note` заменён на `read_notes`, добавлен `diagnose_notes`, расширен `doctor`, появилась пагинация. Само направление верное.
-
-### Logging имеет нормальную базу
-
-Есть:
-
-```text
-CLI > env > config > defaults
-```
-
-поддержаны text/json и debug/info/warn/error, вывод идёт в stderr. Это хорошая база для stdio MCP.
-
----
-
-# Критические проблемы
-
-## 1. Multi-query boost работает в обратную сторону
-
-Это главный баг.
-
-SQLite FTS5 BM25 ранжируется так: **меньшее значение лучше**, на практике scores обычно отрицательные. Код тоже сортирует ascending.
-
-Но multi-query boost делает:
+Переход от арифметики над отрицательным BM25 к:
 
 ```go
-r.Score = r.Score * (1.0 - 0.1*float64(r.MatchCount-1))
-if r.Score < 0 {
-    r.Score = 0
-}
+entry.result.Score += 1.0 / (rrfK + float64(rank+1))
 ```
 
-Допустим:
+правильный. Результаты разных запросов теперь можно объединять без предположения, что их BM25 scores сопоставимы.
 
-```text
-документ A: score = -10, найден двумя queries
-документ B: score = -5, найден одним query
-```
+## Search payload
 
-После boost:
-
-```text
-A → -9 → 0
-B → -5
-```
-
-При сортировке ascending документ B окажется выше. То есть документ, найденный несколькими запросами, **штрафуется и почти наверняка уезжает вниз**.
-
-Graph boost имеет ту же проблему:
-
-```go
-score = score / (1 + boost)
-```
-
-Для отрицательного score это делает его ближе к нулю, то есть хуже.  
-
-### Как исправить
-
-Лучше вообще не выполнять арифметику над raw BM25. Использовать RRF:
-
-```text
-score = Σ 1 / (k + rank)
-score += graph_bonus
-```
-
-И сортировать descending.
-
-Это одновременно решит проблему несопоставимости BM25 между разными запросами.
-
----
-
-## 2. Tag filter заявлен как AND, но реализован как OR
-
-Документация и MCP description говорят:
-
-```text
-tags: every listed tag, AND logic
-```
-
-Но SQL строится так:
-
-```sql
-nt.tag LIKE ? OR nt.tag LIKE ? OR nt.tag LIKE ?
-```
-
-Поэтому запрос:
-
-```json
-{"tags": ["spei", "deposit"]}
-```
-
-вернёт заметки с `spei` **или** `deposit`, а не с обоими тегами.
-
-Та же ошибка есть в search-only-by-filters и FTS search.
-
-Нужен либо отдельный `EXISTS` на каждый tag, либо:
-
-```sql
-GROUP BY note_id
-HAVING COUNT(DISTINCT normalized_tag) = ?
-```
-
----
-
-## 3. Search-result всё ещё не решает исходную проблему
-
-Главная цель была сделать search-result самодостаточным, чтобы агент мог понять, какие заметки читать. Но сейчас результат содержит:
+Теперь агент получает достаточно информации для выбора документов:
 
 ```json
 {
-  "note_id": "...",
-  "slug": "...",
-  "title": "...",
-  "snippet": "..."
-}
-```
-
-В нём по-прежнему нет:
-
-* `summary`;
-* `tags`;
-* `matched_queries`.
-
-Хотя `summary` и aliases уже индексируются, наружу они не передаются. `AdvancedSearchResult` всё ещё повторяет старый минимальный payload.
-
-Кроме того, snippet всегда строится из FTS-колонки body:
-
-```sql
-snippet(notes_fts, 5, ...)
-```
-
-Если заметка найдена по title, summary или alias, snippet может быть пустым или не объяснять совпадение.
-
-### Что нужно вернуть
-
-```json
-{
-  "note_id": "...",
-  "slug": "...",
   "title": "...",
   "summary": "...",
   "tags": ["..."],
   "snippet": "...",
-  "matched_queries": ["...", "..."]
+  "matched_queries": ["..."]
 }
 ```
 
-Fallback для snippet:
+Это прямо решает значительную часть исходной проблемы с лишними `read_note` вызовами.
 
-```text
-matched body excerpt
-→ summary
-→ title
-```
+## `read_notes`
 
-Default limit остался `20`, хотя задача была уменьшить payload. Для MCP разумнее `8` или `10`.
+Хорошо сделаны:
 
----
+* компактные default fields;
+* optional expensive fields;
+* rune-safe truncation;
+* pointers для условно возвращаемых scalar-полей.
 
-## 4. `links_style` сейчас ничего не делает
+## Links
 
-Настройка добавлена в manifest:
-
-```toml
-[format]
-links_style = "wiki"
-```
-
-и существует `FormatLink()`, но:
-
-* `KnowledgeBase` не содержит `LinksStyle`;
-* manifest value не передаётся runtime-сервисам;
-* `FormatLink()` нигде не вызывается;
-* ни create, ни edit, ни MCP instructions не учитывают настройку.
-
-Фактически это мёртвая конфигурация. В коде `FormatLink` встречается только в месте определения.
-
-Нужно протянуть:
-
-```text
-manifest.Format.LinksStyle
-→ kb.KnowledgeBase.LinksStyle
-→ notes service / MCP instructions / link renderer
-```
-
-И решить, где именно приложение генерирует ссылки. Пока приложение лишь парсит пользовательский body, `links_style` не имеет наблюдаемого эффекта.
-
----
-
-## 5. Title-based wiki links по-прежнему резолвятся
-
-Мы договорились, что wiki target — это slug/machine identifier. Однако resolver всё ещё принимает:
+Удаление:
 
 ```go
 doc.Title == target
+normalizeTitleSlug(doc.Title)
 ```
 
-и затем выполняет normalized-title fallback.
+из link resolver — нужное изменение. Note selector всё ещё может работать по title, но wiki-link больше не должен автоматически разрешаться по нему.
 
-То есть:
+## Related metadata
 
-```md
-[[Chargebacks - Process & Provider Handling]]
+Теперь:
+
+```text
+relation_type = depends_on / relates_to
+source_kind   = wikilink / relations_section
+direction     = incoming / outgoing
 ```
 
-по-прежнему может успешно резолвиться по title. Следовательно:
-
-* старый неявный формат фактически продолжает поддерживаться;
-* diagnostics не покажет его как проблему;
-* переход на slug-based links не обеспечен.
-
-Нужно отделить:
-
-### Note selector
-
-Может принимать:
-
-* id;
-* slug;
-* path;
-* title.
-
-### Link resolver
-
-Должен принимать только:
-
-* slug;
-* возможно note_id;
-* regular-link path;
-* явно оговорённые aliases.
-
-Без title/fuzzy auto-resolution.
+не смешиваются в одном поле. Это правильная модель.
 
 ---
 
-## 6. `relation_type` теряется при индексировании
+# Что ещё нужно исправить
 
-`RelationRef` содержит:
+## 1. Graph boost теперь правильного знака, но огромного масштаба
 
-```go
-RelationType string
-Source       RelationSource
-LinkStyle    string
-```
-
-Но при построении `linkRow` сохраняются:
-
-```go
-RawTarget
-Label
-LinkStyle
-SourceKind
-Line
-```
-
-`RelationType` туда не копируется.
-
-Позже `populateRelatedNotes` берёт `links.source_kind` и возвращает его как:
-
-```json
-"relation_type": "relations_section"
-```
-
-или:
-
-```json
-"relation_type": "wikilink"
-```
-
-То есть агент ожидает:
+RRF score имеет примерно такой масштаб:
 
 ```text
-depends_on
-relates_to
+rank 1, один query:  1 / 61 ≈ 0.0164
+rank 1, четыре query:         ≈ 0.0656
 ```
 
-а получает место, откуда ссылка была извлечена.
+Graph boost:
 
-Нужно хранить отдельно:
+```go
+results[i].Score += 0.1 * float64(conn)
+```
+
+Одна связь даёт `+0.1`, то есть перевешивает даже четыре идеальных текстовых совпадения.
+
+В результате слабый документ с одной связью может подняться выше лучшего FTS-result.
+
+### Лучше
+
+Например:
+
+```go
+const graphBoostPerConnection = 0.002
+const maxGraphBoost = 0.01
+```
+
+или мультипликативно:
+
+```go
+connections := min(conn, 3)
+score *= 1.0 + 0.05*float64(connections)
+```
+
+Второй вариант безопаснее: graph влияет на порядок близких результатов, но не уничтожает текстовую релевантность.
+
+**Это основной оставшийся blocker перед evaluation.**
+
+---
+
+## 2. Search tags возвращаются во внутреннем формате
+
+В индекс tags записываются как:
+
+```text
+frontmatter:payment
+inline:payment
+observation:payment
+```
+
+Новый `populateSearchTags()` возвращает `tag` напрямую:
 
 ```sql
-source_kind
-relation_type
-link_style
+SELECT note_id, tag FROM note_tags
 ```
 
-И добавить `direction`:
+Поэтому MCP, вероятно, получит:
 
 ```json
 {
-  "relation_type": "depends_on",
-  "direction": "outgoing"
+  "tags": [
+    "frontmatter:payment",
+    "inline:spei"
+  ]
 }
 ```
 
----
-
-# Проблемы `read_notes`
-
-## 7. Параметр `fields` полностью игнорируется
-
-Контракт объявляет:
+а не:
 
 ```json
 {
-  "fields": ["title", "summary", "body"]
+  "tags": [
+    "payment",
+    "spei"
+  ]
 }
 ```
 
-Но handler всегда возвращает:
+Кроме того, одна и та же tag может повториться из разных источников.
 
-* note_id;
-* slug;
-* title;
-* path;
-* весь frontmatter;
-* body;
-* content_hash;
-* updated_at.
+Используй ту же нормализацию, что уже есть в `ListTags`:
 
-То есть исходная задача сокращения токенов не выполнена.
-
-Более того, `summary`, `tags` и `aliases` не представлены отдельными управляемыми полями.
-
-### Правильнее
-
-Вынести это из stdio adapter в:
-
-```go
-notesvc.ReadMany(input)
+```sql
+CASE
+    WHEN instr(tag, ':') > 0
+    THEN substr(tag, instr(tag, ':') + 1)
+    ELSE tag
+END
 ```
 
-А adapter только преобразует DTO.
+и дедупликацию:
 
-Default fields я бы сделал:
-
-```text
-note_id
-slug
-title
-summary
-tags
-body
+```sql
+SELECT DISTINCT note_id, normalized_tag
 ```
-
-И только по явному запросу:
-
-```text
-path
-frontmatter
-content_hash
-aliases
-timestamps
-```
-
-## 8. `max_body_chars` режет строку по байтам
-
-Сейчас:
-
-```go
-body = body[:input.MaxBodyChars]
-```
-
-Это может разрезать UTF-8 символ посередине и вернуть невалидный текст, особенно на русской базе.
-
-Нужно либо:
-
-```go
-[]rune(body)
-```
-
-либо безопасное ограничение по UTF-8 boundary.
-
-## 9. Batch-read выполняется последовательно внутри adapter
-
-Один MCP call экономится, но каждую заметку `deps.Notes.Show()` читает отдельно и последовательно.
-
-Это пока терпимо, однако бизнес-сценарий batch-read должен находиться в service layer. Там можно:
-
-* дедуплицировать identifiers;
-* читать параллельно с ограничением;
-* сохранять порядок;
-* централизованно применять fields/truncation;
-* логировать duration и found/missing counts.
 
 ---
 
-# Diagnostics
+## 3. `links_style` всё ещё не влияет на поведение
 
-## 10. Cursor может вызвать panic
+Теперь значение протянуто:
 
-В `Diagnose`:
-
-```go
-cursor := input.Cursor
-end := cursor + limit
-if end > len(issues) {
-    end = len(issues)
-}
-
-issues[cursor:end]
+```text
+manifest
+→ KnowledgeBase.LinksStyle
 ```
 
-Если `cursor > len(issues)`, получится slice вроде:
+Но дальше оно нигде не используется.
 
-```go
-issues[100:10]
+В частности:
+
+* MCP instructions всё ещё говорят только `[[Wiki-Links]]`;
+* `FormatLink()` не вызывается;
+* create/edit tools не знают, какой формат предпочитать;
+* regular mode не отражается в prompt.
+
+То есть настройка уже не полностью мёртвая, но всё ещё **не имеет наблюдаемого эффекта**.
+
+Минимально нужно динамически формировать instructions:
+
+```text
+wiki:
+Link related notes using [[target-slug|Display Label]].
+
+regular:
+Link related notes using [Display Label](target-slug.md).
 ```
 
-и процесс упадёт.
+Причём стандартные links можно продолжать парсить в обоих режимах.
 
-Нужно:
+### Дополнительно
+
+`resolveLinksStyle()` не должен молча возвращать `wiki` при ошибке чтения manifest:
 
 ```go
-if cursor >= len(issues) {
-    return empty page
+m, err := ...
+if err != nil {
+    return "wiki"
 }
 ```
 
-## 11. Missing timestamps не диагностируются
+Это скрывает повреждённую конфигурацию. Лучше распарсить manifest один раз и передавать значение из уже валидированной структуры.
 
-`missing_required_field` проверяет только:
+---
 
-* `mnemonic_note_id`;
-* `title`;
-* `slug`.
+## 4. Related notes всё ещё могут раздуть payload
 
-Но `created_at` и `updated_at` не проверяются. При индексировании отсутствующий timestamp бесшумно заменяется на mtime файла.
+`populateRelatedNotes()` возвращает все incoming и outgoing links для каждого результата.
 
-Для твоего cron-cleanup это опасно: «создана заметка» превращается в «последний mtime файла», что семантически другое.
+Проблемы:
 
-Я бы сделал timestamps обязательными и:
+* нет лимита, например 3–5;
+* нет дедупликации;
+* один target может появиться несколько раз через разные ссылки;
+* при 10 search hits payload снова может стать большим.
 
-* missing → `missing_required_field`;
-* wrong type / `<= 0` → `invalid_timestamp`;
-* не индексировать такую заметку как валидную либо явно помечать её degraded.
+Я бы возвращал максимум 3 related notes на hit по умолчанию:
 
-## 12. `invalid_timestamp` часто станет `invalid_frontmatter`
+```text
+1. explicit relations_section
+2. outgoing regular/wiki links
+3. backlinks
+```
 
-Если timestamp записан строкой, `ParseNote()` завершится ошибкой, а diagnostics классифицирует весь файл как `invalid_frontmatter`. До `invalid_timestamp` выполнение не дойдёт.
+Либо добавить:
 
-Если отдельная diagnostic category нужна, форматный parser должен возвращать структурированную ошибку с полем/kind, а не только текст.
+```json
+{
+  "include_related": true,
+  "related_limit": 3
+}
+```
 
-## 13. Suggestions построены слишком хрупко
+Но отдельный параметр, вероятно, избыточен. Фиксированного небольшого лимита достаточно.
 
-MCP adapter:
+---
 
-1. извлекает target парсингом строки `Detail`;
-2. ожидает конкретный английский текст `target "..."`;
-3. вызывает legacy `Search`;
-4. делает отдельный поиск на каждую issue.
+# Меньшие замечания
 
-Это:
+## `matched_queries` недетерминирован
 
-* business logic в adapter;
-* зависимость от human-readable error string;
-* N+1 searches;
-* использование старого search API.
-
-Лучше, чтобы issue содержала:
+Список собирается из Go map:
 
 ```go
-Target string
-Line   int
-Column int
+for q := range e.matchedQueries {
+    queries = append(queries, q)
+}
 ```
 
-А suggestions строились внутри diagnostics service одним batch-запросом.
+Порядок будет случайным. Нужно:
+
+```go
+sort.Strings(queries)
+```
+
+Либо лучше сохранять порядок исходного `opts.Queries`.
+
+Также стоит дедуплицировать входные queries. Сейчас:
+
+```json
+{
+  "queries": ["chargeback", "chargeback"]
+}
+```
+
+удвоит RRF contribution.
 
 ---
 
-# Logging
+## RRF candidate pool слишком узкий
 
-Основа есть, но заявленные условия выполнены частично.
+Каждый query получает только:
 
-### Уже хорошо
-
-* CLI/env/config precedence;
-* stderr;
-* text/json;
-* level validation.
-
-### Не хватает
-
-* `read_notes` не логируется;
-* notes create/edit/delete не логируются;
-* search log не содержит duration;
-* diagnostics suggestions не логируются;
-* logger не внедряется в notes service;
-* web MCP SDK server не получает CLI logger;
-* runtime-сервисы, созданные через `Maint.RuntimeFactory` для `--all`, не получают logger.
-
-То есть текущий DI:
-
-```text
-CLI adapter вручную мутирует Search.Logger и Index.Logger
+```go
+runFTSSearch(..., opts.Limit, ...)
 ```
 
-работает только для части execution paths.
+При итоговом limit 10 RRF объединяет только top-10 каждого запроса. Документ, стоящий на 11-м месте по нескольким queries, вообще не попадёт в fusion.
 
-Лучше передавать logger в `app.RuntimeInput` и конструкторы сервисов.
+Лучше:
+
+```go
+candidateLimit := max(opts.Limit*3, 30)
+```
+
+а уже после fusion обрезать до `opts.Limit`.
 
 ---
 
-# Prompt instructions сейчас слишком агрессивны
+## `read_notes.fields` имеет не совсем честный контракт
 
-Сейчас агенту говорится:
+Даже при:
 
-```text
-ALWAYS provide multiple distinct query variants
-ALWAYS use read_notes
-Run diagnose_notes periodically
+```json
+{
+  "fields": ["body"]
+}
 ```
 
-Это может увеличить именно те расходы, которые ты пытаешься сократить.
+ответ всегда содержит:
 
-Например, для вопроса «что такое CLABE?» один точный query может быть достаточен. А `diagnose_notes` вообще не относится к обычному QA.
+* `note_id`;
+* `slug`;
+* `title`.
 
-Я бы заменил на:
+Я считаю это разумным: identity должна присутствовать всегда. Но описание сейчас говорит, что `fields` выбирает поля вообще.
+
+Лучше зафиксировать:
 
 ```text
-- Search the knowledge base before answering questions within its scope.
-- Use 2–4 query variants when the first formulation may be ambiguous or incomplete.
-- Batch-read all selected notes in one read_notes call.
-- Use diagnose_notes only for repository maintenance, cleanup, or repair tasks.
+note_id, slug and title are always returned.
+fields controls optional fields.
 ```
+
+Также неизвестные поля сейчас молча игнорируются:
+
+```json
+{
+  "fields": ["summery"]
+}
+```
+
+Лучше вернуть ошибку со списком допустимых значений.
 
 ---
 
-# Остатки того, что ты просил не делать
+## Empty slices с `omitempty`
 
-В коде всё ещё присутствуют:
+Для:
 
-* `PRAGMA user_version = 2`;
-* schema version 2;
-* `legacy search payload`;
-* старые `Search` / `SearchInput`;
-* `permalink` fallback;
-* “Backward-compatible aliases … during migration”;
-* compatibility alias `App = Bootstrap`.
+```go
+Tags []string `json:"tags,omitempty"`
+```
 
-Это не обязательно ломает поведение, но прямо противоречит последнему решению «никаких v2, compatibility и migration». Код стал одновременно новым и частично старым. Лучше удалить эти ветки сейчас, пока API не опубликован.
+даже явно созданный `[]string{}` будет удалён из JSON.
+
+Если нужно различать:
+
+* поле не запрошено;
+* поле запрошено, но список пуст;
+
+используй:
+
+```go
+Tags *[]string `json:"tags,omitempty"`
+```
+
+То же относится к `Aliases`.
+
+Это не blocker, но pointers уже используются для строк, поэтому модель можно сделать последовательной.
 
 ---
 
-# Документация заметно разошлась с кодом
+## Debug score может исчезнуть
 
-В README указано:
-
-```bash
-mnemonic notes diagnose
-mnemonic index rebuild
-mnemonic doctor
+```go
+Score float64 `json:"score,omitempty"`
 ```
 
-Но command tree содержит:
+Для filter-only search score равен `0`, поэтому даже при `debug=true` поле будет скрыто.
+
+Надёжнее:
+
+```go
+Score *float64 `json:"score,omitempty"`
+```
+
+или убрать `omitempty`, если debug DTO отделён.
+
+---
+
+## Snippet хранится от первого совпавшего query
+
+При RRF `SearchResult` инициализируется первым query, где встретилась заметка. Последующие более качественные hits увеличивают RRF score, но snippet не обновляют.
+
+Можно сохранять snippet от query, где документ имел минимальный rank. Не критично, поскольку теперь есть summary fallback.
+
+---
+
+# Что осталось без изменений из прошлого ревью
+
+Этот diff не закрывает:
+
+* missing `created_at` / `updated_at` diagnostics;
+* отдельную классификацию `invalid_timestamp`;
+* N+1 suggestions в `diagnose_notes`;
+* parsing target из human-readable `Detail`;
+* перенос batch-read из stdio adapter в service;
+* полноценный logging для read/create/edit/delete;
+* legacy/compatibility остатки;
+* рассинхронизацию README/PROMPTS с командами и контрактами.
+
+Это можно делать после retrieval evaluation, кроме diagnostics timestamps — они важны для запланированной cron-cleanup логики.
+
+# Приоритет
+
+Перед повторным тестом я бы исправил только четыре пункта:
+
+1. уменьшить и ограничить graph boost;
+2. нормализовать tags в search output;
+3. ограничить и дедуплицировать related notes;
+4. сделать `matched_queries` детерминированным.
+
+После этого уже имеет смысл прогнать те же реальные сценарии и сравнить:
 
 ```text
-mnemonic project doctor
-mnemonic project reindex
+expected note rank
+количество search/read calls
+размер search payload
+общее число токенов
+качество итогового ответа
 ```
 
-и не содержит `notes diagnose`.  
-
-Также:
-
-* manifest example не содержит `[format] links_style`;
-* README заявляет PageRank, хотя реализован локальный boost по числу связей;
-* `PROMPTS.md` всё ещё описывает `read_note` и старый `search_notes(query, tag)`;
-* документация заявляет tag AND, код реализует OR.
-
-Перед следующим evaluation лучше генерировать MCP reference из Go schemas или хотя бы добавить consistency tests.
-
-# Рекомендуемый порядок исправлений
-
-## ✅ Выполнено
-
-### P0 — критические исправления
-
-1. ✅ Заменить BM25 arithmetic на RRF.
-2. ✅ Исправить tag filtering на AND.
-3. ✅ Добавить в search output `summary`, `tags`, `matched_queries`.
-4. ✅ Реализовать `read_notes.fields`.
-5. ✅ Исправить diagnostics cursor panic.
-6. ✅ Перестать выдавать `source_kind` как `relation_type`.
-
-### P1 — оптимизация токенов
-
-1. ✅ Default search limit → 10.
-2. ✅ Summary fallback для snippet.
-3. ✅ Path из related notes только в debug.
-4. ✅ Default `read_notes` без frontmatter и hash.
-5. ✅ Rune-safe body truncation.
-6. ✅ Ограничить prompt-инструкции.
-
-### P2 — модель ссылок и инфраструктура
-
-1. ✅ Протянуть `links_style` в runtime (в KnowledgeBase).
-2. ✅ Удалить title-based link resolution.
-3. ✅ Хранить `relation_type`, `source_kind`, `direction` отдельно.
+`links_style` можно завершить параллельно, но на качество текущего retrieval-теста он почти не влияет.
