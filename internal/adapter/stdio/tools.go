@@ -185,8 +185,8 @@ type EditNoteInput struct {
 	Append           string            `json:"append,omitempty"`
 	ReplaceBody      string            `json:"replace_body,omitempty"`
 	MergeFrontmatter map[string]string `json:"merge_frontmatter,omitempty"`
-	Tags             []string          `json:"tags,omitempty"`
-	Aliases          []string          `json:"aliases,omitempty"`
+	Tags             *[]string         `json:"tags,omitempty"`
+	Aliases          *[]string         `json:"aliases,omitempty"`
 	IfMatchHash      string            `json:"if_match_hash,omitempty"`
 }
 
@@ -519,7 +519,7 @@ func validateEditInput(input EditNoteInput) error {
 	if len(input.MergeFrontmatter) > 0 {
 		modeCount++
 	}
-	if len(input.Tags) > 0 || len(input.Aliases) > 0 {
+	if input.Tags != nil || input.Aliases != nil {
 		modeCount++
 	}
 	if modeCount == 0 {
@@ -545,15 +545,9 @@ func buildEditInput(input EditNoteInput) notesvc.EditInput {
 		editInput.HasBody = true
 	case input.Append != "":
 		editInput.Append = []byte(input.Append)
-	case len(input.Tags) > 0 || len(input.Aliases) > 0:
-		if len(input.Tags) > 0 {
-			tags := input.Tags
-			editInput.Tags = &tags
-		}
-		if len(input.Aliases) > 0 {
-			aliases := input.Aliases
-			editInput.Aliases = &aliases
-		}
+	case input.Tags != nil || input.Aliases != nil:
+		editInput.Tags = input.Tags
+		editInput.Aliases = input.Aliases
 	default:
 		editInput.Set = input.MergeFrontmatter
 	}

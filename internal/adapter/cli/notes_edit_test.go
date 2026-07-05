@@ -361,6 +361,260 @@ func TestNotesEditCommandEnforcesIfMatch(t *testing.T) {
 	require.NotContains(t, string(data), "B")
 }
 
+func TestNotesEditCommandSetsTags(t *testing.T) {
+	projectRoot := testutil.CleanEnvForTest(t)
+
+	testClock := testutil.NewClock(
+		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		"550e8400-e29b-41d4-a716-446655440000",
+	)
+	restoreClock := clockpkg.SetClock(testClock)
+	defer restoreClock()
+
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
+	restoreWD := chdirForNotesTest(t, projectRoot)
+	defer restoreWD()
+
+	note := markdown.Note{
+		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440000",
+		Title:          "Auth migration",
+		Slug:           "auth-migration",
+		Tags:           []string{"old-tag"},
+		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		Body:           []byte("## Summary\n"),
+	}
+	rendered, err := markdown.RenderNote(note)
+	require.NoError(t, err)
+	notePath := filepath.Join(projectRoot, ".mnemonic-memories", "personal", "auth-migration.md")
+	require.NoError(t, os.MkdirAll(filepath.Dir(notePath), 0o755))
+	require.NoError(t, os.WriteFile(notePath, rendered, 0o644))
+	seedLocalProjectIndex(t, projectRoot, "550e8400-e29b-41d4-a716-446655440000",
+		seededIndexNote{
+			NoteID:      note.MnemonicNoteID,
+			Slug:        note.Slug,
+			Title:       note.Title,
+			RelPath:     "auth-migration.md",
+			ContentHash: "seeded-auth-migration",
+			CreatedAt:   note.CreatedAt,
+			UpdatedAt:   note.UpdatedAt,
+		},
+	)
+
+	result := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--set-tags", "new-tag", "--set-tags", "other-tag", "--json")
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
+
+	parsed, err := markdown.ParseNote(readNoteFile(t, notePath))
+	require.NoError(t, err)
+	require.Equal(t, []string{"new-tag", "other-tag"}, parsed.Tags)
+}
+
+func TestNotesEditCommandSetsAliases(t *testing.T) {
+	projectRoot := testutil.CleanEnvForTest(t)
+
+	testClock := testutil.NewClock(
+		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		"550e8400-e29b-41d4-a716-446655440000",
+	)
+	restoreClock := clockpkg.SetClock(testClock)
+	defer restoreClock()
+
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
+	restoreWD := chdirForNotesTest(t, projectRoot)
+	defer restoreWD()
+
+	note := markdown.Note{
+		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440000",
+		Title:          "Auth migration",
+		Slug:           "auth-migration",
+		Aliases:        []string{"old-alias"},
+		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		Body:           []byte("## Summary\n"),
+	}
+	rendered, err := markdown.RenderNote(note)
+	require.NoError(t, err)
+	notePath := filepath.Join(projectRoot, ".mnemonic-memories", "personal", "auth-migration.md")
+	require.NoError(t, os.MkdirAll(filepath.Dir(notePath), 0o755))
+	require.NoError(t, os.WriteFile(notePath, rendered, 0o644))
+	seedLocalProjectIndex(t, projectRoot, "550e8400-e29b-41d4-a716-446655440000",
+		seededIndexNote{
+			NoteID:      note.MnemonicNoteID,
+			Slug:        note.Slug,
+			Title:       note.Title,
+			RelPath:     "auth-migration.md",
+			ContentHash: "seeded-auth-migration",
+			CreatedAt:   note.CreatedAt,
+			UpdatedAt:   note.UpdatedAt,
+		},
+	)
+
+	result := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--set-aliases", "first", "--set-aliases", "second", "--json")
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
+
+	parsed, err := markdown.ParseNote(readNoteFile(t, notePath))
+	require.NoError(t, err)
+	require.Equal(t, []string{"first", "second"}, parsed.Aliases)
+}
+
+func TestNotesEditCommandClearsTags(t *testing.T) {
+	projectRoot := testutil.CleanEnvForTest(t)
+
+	testClock := testutil.NewClock(
+		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		"550e8400-e29b-41d4-a716-446655440000",
+	)
+	restoreClock := clockpkg.SetClock(testClock)
+	defer restoreClock()
+
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
+	restoreWD := chdirForNotesTest(t, projectRoot)
+	defer restoreWD()
+
+	note := markdown.Note{
+		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440000",
+		Title:          "Auth migration",
+		Slug:           "auth-migration",
+		Tags:           []string{"old-tag", "another-tag"},
+		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		Body:           []byte("## Summary\n"),
+	}
+	rendered, err := markdown.RenderNote(note)
+	require.NoError(t, err)
+	notePath := filepath.Join(projectRoot, ".mnemonic-memories", "personal", "auth-migration.md")
+	require.NoError(t, os.MkdirAll(filepath.Dir(notePath), 0o755))
+	require.NoError(t, os.WriteFile(notePath, rendered, 0o644))
+	seedLocalProjectIndex(t, projectRoot, "550e8400-e29b-41d4-a716-446655440000",
+		seededIndexNote{
+			NoteID:      note.MnemonicNoteID,
+			Slug:        note.Slug,
+			Title:       note.Title,
+			RelPath:     "auth-migration.md",
+			ContentHash: "seeded-auth-migration",
+			CreatedAt:   note.CreatedAt,
+			UpdatedAt:   note.UpdatedAt,
+		},
+	)
+
+	result := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--clear-tags", "--json")
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
+
+	parsed, err := markdown.ParseNote(readNoteFile(t, notePath))
+	require.NoError(t, err)
+	require.Empty(t, parsed.Tags)
+}
+
+func TestNotesEditCommandClearsAliases(t *testing.T) {
+	projectRoot := testutil.CleanEnvForTest(t)
+
+	testClock := testutil.NewClock(
+		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		"550e8400-e29b-41d4-a716-446655440000",
+	)
+	restoreClock := clockpkg.SetClock(testClock)
+	defer restoreClock()
+
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
+	restoreWD := chdirForNotesTest(t, projectRoot)
+	defer restoreWD()
+
+	note := markdown.Note{
+		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440000",
+		Title:          "Auth migration",
+		Slug:           "auth-migration",
+		Aliases:        []string{"old-alias"},
+		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		Body:           []byte("## Summary\n"),
+	}
+	rendered, err := markdown.RenderNote(note)
+	require.NoError(t, err)
+	notePath := filepath.Join(projectRoot, ".mnemonic-memories", "personal", "auth-migration.md")
+	require.NoError(t, os.MkdirAll(filepath.Dir(notePath), 0o755))
+	require.NoError(t, os.WriteFile(notePath, rendered, 0o644))
+	seedLocalProjectIndex(t, projectRoot, "550e8400-e29b-41d4-a716-446655440000",
+		seededIndexNote{
+			NoteID:      note.MnemonicNoteID,
+			Slug:        note.Slug,
+			Title:       note.Title,
+			RelPath:     "auth-migration.md",
+			ContentHash: "seeded-auth-migration",
+			CreatedAt:   note.CreatedAt,
+			UpdatedAt:   note.UpdatedAt,
+		},
+	)
+
+	result := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--clear-aliases", "--json")
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
+
+	parsed, err := markdown.ParseNote(readNoteFile(t, notePath))
+	require.NoError(t, err)
+	require.Empty(t, parsed.Aliases)
+}
+
+func TestNotesEditCommandClearTagsAndSetAliases(t *testing.T) {
+	projectRoot := testutil.CleanEnvForTest(t)
+
+	testClock := testutil.NewClock(
+		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		"550e8400-e29b-41d4-a716-446655440000",
+	)
+	restoreClock := clockpkg.SetClock(testClock)
+	defer restoreClock()
+
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
+	restoreWD := chdirForNotesTest(t, projectRoot)
+	defer restoreWD()
+
+	note := markdown.Note{
+		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440000",
+		Title:          "Auth migration",
+		Slug:           "auth-migration",
+		Tags:           []string{"old-tag"},
+		Aliases:        []string{"old-alias"},
+		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+		Body:           []byte("## Summary\n"),
+	}
+	rendered, err := markdown.RenderNote(note)
+	require.NoError(t, err)
+	notePath := filepath.Join(projectRoot, ".mnemonic-memories", "personal", "auth-migration.md")
+	require.NoError(t, os.MkdirAll(filepath.Dir(notePath), 0o755))
+	require.NoError(t, os.WriteFile(notePath, rendered, 0o644))
+	seedLocalProjectIndex(t, projectRoot, "550e8400-e29b-41d4-a716-446655440000",
+		seededIndexNote{
+			NoteID:      note.MnemonicNoteID,
+			Slug:        note.Slug,
+			Title:       note.Title,
+			RelPath:     "auth-migration.md",
+			ContentHash: "seeded-auth-migration",
+			CreatedAt:   note.CreatedAt,
+			UpdatedAt:   note.UpdatedAt,
+		},
+	)
+
+	result := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--clear-tags", "--set-aliases", "current-name", "--json")
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
+
+	parsed, err := markdown.ParseNote(readNoteFile(t, notePath))
+	require.NoError(t, err)
+	require.Empty(t, parsed.Tags)
+	require.Equal(t, []string{"current-name"}, parsed.Aliases)
+}
+
+func TestNotesEditCommandRejectsClearTagsWithSetTags(t *testing.T) {
+	result := executeCommand("notes", "edit", "note", "--project", "p", "--clear-tags", "--set-tags", "one", "--json")
+	require.Error(t, result.Err)
+	require.Contains(t, result.Stderr, "--set-tags and --clear-tags cannot be combined")
+}
+
+func TestNotesEditCommandRejectsClearAliasesWithSetAliases(t *testing.T) {
+	result := executeCommand("notes", "edit", "note", "--project", "p", "--clear-aliases", "--set-aliases", "one", "--json")
+	require.Error(t, result.Err)
+	require.Contains(t, result.Stderr, "--set-aliases and --clear-aliases cannot be combined")
+}
+
 func readNoteFile(t *testing.T, path string) []byte {
 	t.Helper()
 
