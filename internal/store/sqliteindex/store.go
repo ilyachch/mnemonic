@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -815,13 +816,15 @@ func stringSliceToAny(s []string) []any {
 }
 
 func sortSearchResults(results []SearchResult) {
-	for i := 0; i < len(results); i++ {
-		for j := i + 1; j < len(results); j++ {
-			if results[j].Score > results[i].Score || (results[j].Score == results[i].Score && results[j].Title < results[i].Title) {
-				results[i], results[j] = results[j], results[i]
+	slices.SortFunc(results, func(a, b SearchResult) int {
+		if a.Score != b.Score {
+			if b.Score > a.Score {
+				return 1
 			}
+			return -1
 		}
-	}
+		return strings.Compare(a.Title, b.Title)
+	})
 }
 
 // ListTags returns grouped tags and note counts.
