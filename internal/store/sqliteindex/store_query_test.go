@@ -921,3 +921,16 @@ func TestOpenReadonlyAfterReindexSearchSucceeds(t *testing.T) {
 	require.NotEmpty(t, results)
 	assert.Equal(t, "hello", results[0].Slug)
 }
+
+func TestSearchCandidatesByTargetsDoesNotMutateInput(t *testing.T) {
+	store, db := seedQueryStore(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	original := []string{"z", "a", "m"}
+	input := append([]string(nil), original...)
+
+	_, err := store.SearchCandidatesByTargets(db, input, 3)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"z", "a", "m"}, input, "input slice must not be mutated")
+}

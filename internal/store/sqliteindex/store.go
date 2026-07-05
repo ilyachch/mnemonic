@@ -1020,11 +1020,12 @@ func (s Store) SearchCandidatesByTargets(db *sql.DB, targets []string, limitPerT
 		limitPerTarget = 3
 	}
 
-	sort.Strings(targets)
+	sortedTargets := append([]string(nil), targets...)
+	sort.Strings(sortedTargets)
 
-	parts := make([]string, 0, len(targets))
-	args := make([]any, 0, len(targets)*3)
-	for _, target := range targets {
+	parts := make([]string, 0, len(sortedTargets))
+	args := make([]any, 0, len(sortedTargets)*3)
+	for _, target := range sortedTargets {
 		ftsQuery := sanitizeFTSQuery(target)
 		if strings.TrimSpace(ftsQuery) == "" {
 			continue
