@@ -182,6 +182,29 @@ func (s Store) Create(input CreateInput) (CreateResult, error) {
 	}, nil
 }
 
+func applyEditInput(edited *markdown.Note, input EditInput) error {
+	if err := applyEditSet(edited, input.Set); err != nil {
+		return err
+	}
+	if input.Tags != nil {
+		edited.Tags = *input.Tags
+	}
+	if input.Aliases != nil {
+		edited.Aliases = *input.Aliases
+	}
+	now := input.Now
+	if now == nil {
+		now = clock.NowUTC
+	}
+	if input.HasBody {
+		edited.Body = append([]byte(nil), input.Body...)
+	} else {
+		edited.Body = append(append([]byte(nil), edited.Body...), input.Append...)
+	}
+	edited.UpdatedAt = now().UTC()
+	return nil
+}
+
 // Edit applies an append edit to a note.
 func (s Store) Edit(input EditInput) (EditResult, error) {
 	root := s.rootDir()
@@ -220,28 +243,9 @@ func (s Store) Edit(input EditInput) (EditResult, error) {
 		}
 	}
 
-	if err = applyEditSet(&edited, input.Set); err != nil {
+	if err = applyEditInput(&edited, input); err != nil {
 		return EditResult{}, err
 	}
-
-	if input.Tags != nil {
-		edited.Tags = *input.Tags
-	}
-	if input.Aliases != nil {
-		edited.Aliases = *input.Aliases
-	}
-
-	now := input.Now
-	if now == nil {
-		now = clock.NowUTC
-	}
-
-	if input.HasBody {
-		edited.Body = append([]byte(nil), input.Body...)
-	} else {
-		edited.Body = append(append([]byte(nil), edited.Body...), input.Append...)
-	}
-	edited.UpdatedAt = now().UTC()
 
 	rendered, err := markdown.RenderNote(edited)
 	if err != nil {

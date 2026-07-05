@@ -365,28 +365,35 @@ func RegisterReadNotes(server *sdkmcp.Server, deps Dependencies) {
 	})
 }
 
+func validateSearchNotesInput(input *SearchNotesInput) error {
+	if input.Limit < 0 {
+		return apperr.CLIUsage("limit must be >= 0", nil)
+	}
+	if input.Limit == 0 {
+		input.Limit = 10
+	}
+	if input.Limit > maxSearchLimit {
+		return apperr.CLIUsage("limit exceeds maximum", nil)
+	}
+	if len(input.Queries) > maxQueryCount {
+		return apperr.CLIUsage("too many queries", nil)
+	}
+	for _, q := range input.Queries {
+		if utf8.RuneCountInString(q) > maxQueryLength {
+			return apperr.CLIUsage("query too long", nil)
+		}
+	}
+	return nil
+}
+
 func RegisterSearchNotes(server *sdkmcp.Server, deps Dependencies, description string) {
 	sdkmcp.AddTool(server, &sdkmcp.Tool{
 		Name:        "search_notes",
 		Description: buildToolDescription(description, searchNotesDescription),
 		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input SearchNotesInput) (*sdkmcp.CallToolResult, SearchNotesOutput, error) {
-		if input.Limit < 0 {
-			return nil, SearchNotesOutput{}, apperr.CLIUsage("limit must be >= 0", nil)
-		}
-		if input.Limit == 0 {
-			input.Limit = 10
-		}
-		if input.Limit > maxSearchLimit {
-			return nil, SearchNotesOutput{}, apperr.CLIUsage("limit exceeds maximum", nil)
-		}
-		if len(input.Queries) > maxQueryCount {
-			return nil, SearchNotesOutput{}, apperr.CLIUsage("too many queries", nil)
-		}
-		for _, q := range input.Queries {
-			if utf8.RuneCountInString(q) > maxQueryLength {
-				return nil, SearchNotesOutput{}, apperr.CLIUsage("query too long", nil)
-			}
+		if err := validateSearchNotesInput(&input); err != nil {
+			return nil, SearchNotesOutput{}, err
 		}
 		advancedInput := searchsvc.AdvancedSearchInput{
 			Queries:        input.Queries,
@@ -788,28 +795,24 @@ func toSearchNotesHit(hit searchsvc.AdvancedSearchResult, debug bool) SearchNote
 	return s
 }
 
-func buildReadNotesNote(fields map[string]bool, resolved notesvc.ShowResult, maxBodyChars int) ReadNotesNote {
-	note := ReadNotesNote{
-		NoteID: resolved.Note.MnemonicNoteID,
-		Slug:   resolved.Note.EffectiveSlug(),
-		Title:  resolved.Note.Title,
+func setOptionalSliceField(list []string) []string {
+	if list == nil {
+		return []string{}
 	}
+	return list
+}
+
+func setReadNotesBasicFields(note *ReadNotesNote, fields map[string]bool, resolved notesvc.ShowResult, maxBodyChars int) {
 	if fields["summary"] {
 		s := resolved.Note.Summary
 		note.Summary = &s
 	}
 	if fields["tags"] {
-		tags := resolved.Note.Tags
-		if tags == nil {
-			tags = []string{}
-		}
+		tags := setOptionalSliceField(resolved.Note.Tags)
 		note.Tags = &tags
 	}
 	if fields["aliases"] {
-		aliases := resolved.Note.Aliases
-		if aliases == nil {
-			aliases = []string{}
-		}
+		aliases := setOptionalSliceField(resolved.Note.Aliases)
 		note.Aliases = &aliases
 	}
 	if fields["body"] {
@@ -823,6 +826,9 @@ func buildReadNotesNote(fields map[string]bool, resolved notesvc.ShowResult, max
 		p := resolved.Path
 		note.Path = &p
 	}
+}
+
+func setReadNotesExtraFields(note *ReadNotesNote, fields map[string]bool, resolved notesvc.ShowResult) {
 	if fields["frontmatter"] {
 		fm := resolved.Note.Frontmatter
 		note.Frontmatter = &fm
@@ -839,5 +845,15 @@ func buildReadNotesNote(fields map[string]bool, resolved notesvc.ShowResult, max
 		ua := resolved.Note.UpdatedAt.Unix()
 		note.UpdatedAt = &ua
 	}
+}
+
+func buildReadNotesNote(fields map[string]bool, resolved notesvc.ShowResult, maxBodyChars int) ReadNotesNote {
+	note := ReadNotesNote{
+		NoteID: resolved.Note.MnemonicNoteID,
+		Slug:   resolved.Note.EffectiveSlug(),
+		Title:  resolved.Note.Title,
+	}
+	setReadNotesBasicFields(&note, fields, resolved, maxBodyChars)
+	setReadNotesExtraFields(&note, fields, resolved)
 	return note
 }
