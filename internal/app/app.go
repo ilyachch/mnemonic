@@ -73,9 +73,9 @@ func New(input Input) (*Bootstrap, error) {
 		},
 	}
 
-	b.Services.Maint.RuntimeFactory = func(ctx context.Context, k kb.KnowledgeBase) (maintsvc.Runtime, error) {
+	b.Services.Maint.RuntimeFactory = func(ctx context.Context, k kb.KnowledgeBase, logger *slog.Logger) (maintsvc.Runtime, error) {
 		_ = ctx
-		return NewRuntimeApp(RuntimeInput{Config: cfg, KB: k, Logger: b.Logger})
+		return NewRuntimeApp(RuntimeInput{Config: cfg, KB: k, Logger: logger})
 	}
 
 	return b, nil

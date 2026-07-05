@@ -45,6 +45,8 @@ type EditInput struct {
 	Body     []byte
 	HasBody  bool
 	Set      map[string]string
+	Tags     *[]string
+	Aliases  *[]string
 	IfMatch  string
 	Now      func() time.Time
 }
@@ -169,6 +171,8 @@ func (s Service) Edit(input EditInput) (EditResult, error) {
 		Body:     input.Body,
 		HasBody:  input.HasBody,
 		Set:      input.Set,
+		Tags:     input.Tags,
+		Aliases:  input.Aliases,
 		IfMatch:  input.IfMatch,
 		Now:      input.Now,
 	})
@@ -291,7 +295,7 @@ func (s Service) ShowMany(input ReadManyInput) (ReadManyOutput, error) {
 			"found_count", len(notes),
 			"missing_count", len(missing),
 			"issue_count", len(issues),
-			"duration", time.Since(start),
+			"duration", clock.NowUTC().Sub(start),
 		)
 	}
 

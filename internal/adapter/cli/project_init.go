@@ -60,7 +60,7 @@ func runProjectInit(cmd *cobra.Command, args []string) error {
 		Name:        args[0],
 		Description: description,
 		Mode:        mode,
-	})
+	}, loggerFromContext(commandContext(cmd)))
 	if err != nil {
 		return err
 	}

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -108,7 +109,7 @@ func buildMaintAllBootstrap(t *testing.T, memoriesHome, stateHome, mode string) 
 		Services: app.Services{
 			Maint: &maintsvc.Service{
 				Catalog: catalog,
-				RuntimeFactory: func(ctx context.Context, resolved kb.KnowledgeBase) (maintsvc.Runtime, error) {
+				RuntimeFactory: func(ctx context.Context, resolved kb.KnowledgeBase, logger *slog.Logger) (maintsvc.Runtime, error) {
 					_ = ctx
 					if resolved.Slug == "bravo" {
 						switch mode {

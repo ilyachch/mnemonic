@@ -17,7 +17,7 @@ func newProjectShowCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			result, err := container.Services.Catalog.Show(args[0])
+			result, err := container.Services.Catalog.Show(args[0], loggerFromContext(commandContext(cmd)))
 			if err != nil {
 				return err
 			}

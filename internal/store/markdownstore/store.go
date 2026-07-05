@@ -60,6 +60,8 @@ type EditInput struct {
 	Body     []byte
 	HasBody  bool
 	Set      map[string]string
+	Tags     *[]string
+	Aliases  *[]string
 	IfMatch  string
 	Now      func() time.Time
 }
@@ -220,6 +222,13 @@ func (s Store) Edit(input EditInput) (EditResult, error) {
 
 	if err = applyEditSet(&edited, input.Set); err != nil {
 		return EditResult{}, err
+	}
+
+	if input.Tags != nil {
+		edited.Tags = *input.Tags
+	}
+	if input.Aliases != nil {
+		edited.Aliases = *input.Aliases
 	}
 
 	now := input.Now
@@ -882,6 +891,8 @@ func applyEditSet(note *markdown.Note, set map[string]string) error {
 		switch key {
 		case "mnemonic_note_id", "created_at":
 			return apperr.Unsafe(fmt.Sprintf("frontmatter %q is protected", key), nil)
+		case "tags", "aliases":
+			return apperr.CLIUsage(fmt.Sprintf("frontmatter %q must be updated as a list, not a string", key), nil)
 		case "title":
 			note.Title = value
 			note.Frontmatter[key] = value

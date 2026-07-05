@@ -67,7 +67,6 @@ func NewRootCommand(boot *app.Bootstrap) *cobra.Command {
 			}
 
 			state.logger = logging.New(level, format)
-			injectLoggerToBootstrap(boot, state.logger)
 			return nil
 		},
 		Run: func(cmd *cobra.Command, args []string) {

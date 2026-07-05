@@ -166,7 +166,10 @@ func (s Service) Backlinks(ctx context.Context, input BacklinksInput) ([]Backlin
 func (s Service) AdvancedSearch(ctx context.Context, input AdvancedSearchInput) ([]AdvancedSearchResult, error) {
 	_ = ctx
 
-	if input.Limit <= 0 {
+	if input.Limit < 0 {
+		return nil, apperr.CLIUsage("limit must be >= 0", nil)
+	}
+	if input.Limit == 0 {
 		input.Limit = 10
 	}
 	if err := validateAdvancedSearchInput(input); err != nil {

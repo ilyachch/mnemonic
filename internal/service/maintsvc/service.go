@@ -3,6 +3,7 @@ package maintsvc
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
@@ -22,7 +23,7 @@ type Runtime interface {
 }
 
 // RuntimeFactory builds a runtime for one selected knowledge base.
-type RuntimeFactory func(context.Context, kb.KnowledgeBase) (Runtime, error)
+type RuntimeFactory func(context.Context, kb.KnowledgeBase, *slog.Logger) (Runtime, error)
 
 // Service owns maintenance operations across many knowledge bases.
 type Service struct {
@@ -65,8 +66,8 @@ func New(catalog *catalogsvc.Service, runtimeFactory RuntimeFactory) *Service {
 }
 
 // ReindexAll rebuilds the indexes for every catalog project.
-func (s Service) ReindexAll(ctx context.Context) (ReindexAllResult, error) {
-	entries, err := s.catalogEntries()
+func (s Service) ReindexAll(ctx context.Context, logger *slog.Logger) (ReindexAllResult, error) {
+	entries, err := s.catalogEntries(logger)
 	if err != nil {
 		return ReindexAllResult{}, err
 	}
@@ -78,7 +79,7 @@ func (s Service) ReindexAll(ctx context.Context) (ReindexAllResult, error) {
 			Slug:      item.Slug,
 		}
 
-		resolved, err := s.resolveKnowledgeBase(item.Slug)
+		resolved, err := s.resolveKnowledgeBase(item.Slug, logger)
 		if err != nil {
 			projectResult.Status = "error"
 			projectResult.Error = err.Error()
@@ -87,7 +88,7 @@ func (s Service) ReindexAll(ctx context.Context) (ReindexAllResult, error) {
 			continue
 		}
 
-		runtime, err := s.runtimeFor(ctx, resolved)
+		runtime, err := s.runtimeFor(ctx, resolved, logger)
 		if err != nil {
 			projectResult.ProjectID = resolved.ID
 			projectResult.Status = "error"
@@ -130,26 +131,26 @@ func (s Service) ReindexAll(ctx context.Context) (ReindexAllResult, error) {
 }
 
 // DoctorAll runs the runtime doctor checks for every catalog project.
-func (s Service) DoctorAll(ctx context.Context) (DoctorAllResult, error) {
-	entries, err := s.catalogEntries()
+func (s Service) DoctorAll(ctx context.Context, logger *slog.Logger) (DoctorAllResult, error) {
+	entries, err := s.catalogEntries(logger)
 	if err != nil {
 		return DoctorAllResult{}, err
 	}
 	result := DoctorAllResult{Total: len(entries)}
 	for _, item := range entries {
-		s.doctorOne(ctx, item, &result)
+		s.doctorOne(ctx, item, logger, &result)
 	}
 	return result, nil
 }
 
-func (s Service) doctorOne(ctx context.Context, item catalogsvc.ListItem, result *DoctorAllResult) {
+func (s Service) doctorOne(ctx context.Context, item catalogsvc.ListItem, logger *slog.Logger, result *DoctorAllResult) {
 	projectResult := ProjectResult{ProjectID: item.ProjectID, Slug: item.Slug}
-	resolved, err := s.resolveKnowledgeBase(item.Slug)
+	resolved, err := s.resolveKnowledgeBase(item.Slug, logger)
 	if err != nil {
 		doctorFail(result, &projectResult, err.Error())
 		return
 	}
-	runtime, err := s.runtimeFor(ctx, resolved)
+	runtime, err := s.runtimeFor(ctx, resolved, logger)
 	if err != nil {
 		projectResult.ProjectID = resolved.ID
 		doctorFail(result, &projectResult, err.Error())
@@ -194,28 +195,28 @@ func (s Service) accumulateDoctorStatus(result *DoctorAllResult, status string) 
 	}
 }
 
-func (s Service) catalogEntries() ([]catalogsvc.ListItem, error) {
+func (s Service) catalogEntries(logger *slog.Logger) ([]catalogsvc.ListItem, error) {
 	if s.Catalog == nil {
 		return nil, errors.New("catalog service is not configured")
 	}
-	projects, err := s.Catalog.List()
+	projects, err := s.Catalog.List(logger)
 	if err != nil {
 		return nil, err
 	}
 	return projects.Projects, nil
 }
 
-func (s Service) resolveKnowledgeBase(selector string) (kb.KnowledgeBase, error) {
+func (s Service) resolveKnowledgeBase(selector string, logger *slog.Logger) (kb.KnowledgeBase, error) {
 	selector = strings.TrimSpace(selector)
 	if selector == "" {
 		return kb.KnowledgeBase{}, errors.New("project selector is required")
 	}
-	return s.Catalog.Resolve(selector)
+	return s.Catalog.Resolve(selector, logger)
 }
 
-func (s Service) runtimeFor(ctx context.Context, resolved kb.KnowledgeBase) (Runtime, error) {
+func (s Service) runtimeFor(ctx context.Context, resolved kb.KnowledgeBase, logger *slog.Logger) (Runtime, error) {
 	if s.RuntimeFactory == nil {
 		return nil, errors.New("runtime factory is not configured")
 	}
-	return s.RuntimeFactory(ctx, resolved)
+	return s.RuntimeFactory(ctx, resolved, logger)
 }

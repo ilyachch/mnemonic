@@ -73,7 +73,10 @@ type DiagnosticCandidate struct {
 func (s Service) Diagnose(ctx context.Context, input DiagnoseInput) (DiagnoseOutput, error) {
 	_ = ctx
 
-	if input.Limit <= 0 {
+	if input.Limit < 0 {
+		return DiagnoseOutput{}, apperr.CLIUsage("limit must be >= 0", nil)
+	}
+	if input.Limit == 0 {
 		input.Limit = 50
 	}
 	if err := validateDiagnoseInput(input); err != nil {
@@ -92,7 +95,7 @@ func (s Service) Diagnose(ctx context.Context, input DiagnoseInput) (DiagnoseOut
 		return DiagnoseOutput{TotalCount: totalCount}, nil
 	}
 	limit := input.Limit
-	if limit <= 0 {
+	if limit == 0 {
 		limit = 50
 	}
 
@@ -146,6 +149,9 @@ func validateDiagnoseInput(input DiagnoseInput) error {
 	}
 	if input.Cursor < 0 {
 		return apperr.CLIUsage("cursor must be >= 0", nil)
+	}
+	if len(input.Kinds) > len(validDiagnosticKinds) {
+		return apperr.CLIUsage("too many diagnostic kinds", nil)
 	}
 	for _, k := range input.Kinds {
 		if !validDiagnosticKinds[k] {

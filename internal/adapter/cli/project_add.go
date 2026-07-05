@@ -29,7 +29,7 @@ func runProjectAdd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	result, err := container.Services.Catalog.Add(commandContext(cmd), catalogsvc.AddInput{Path: pathArg})
+	result, err := container.Services.Catalog.Add(commandContext(cmd), catalogsvc.AddInput{Path: pathArg}, loggerFromContext(commandContext(cmd)))
 	if err != nil {
 		return wrapAddError(err)
 	}

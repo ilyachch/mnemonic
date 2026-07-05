@@ -185,6 +185,8 @@ type EditNoteInput struct {
 	Append           string            `json:"append,omitempty"`
 	ReplaceBody      string            `json:"replace_body,omitempty"`
 	MergeFrontmatter map[string]string `json:"merge_frontmatter,omitempty"`
+	Tags             []string          `json:"tags,omitempty"`
+	Aliases          []string          `json:"aliases,omitempty"`
 	IfMatchHash      string            `json:"if_match_hash,omitempty"`
 }
 
@@ -291,6 +293,9 @@ func RegisterListNotes(server *sdkmcp.Server, deps Dependencies) {
 		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input ListNotesInput) (*sdkmcp.CallToolResult, ListNotesOutput, error) {
 		_ = ctx
+		if input.Limit < 0 {
+			return nil, ListNotesOutput{}, apperr.CLIUsage("limit must be >= 0", nil)
+		}
 		notes, err := deps.Notes.List()
 		if err != nil {
 			return nil, ListNotesOutput{}, err
@@ -301,8 +306,11 @@ func RegisterListNotes(server *sdkmcp.Server, deps Dependencies) {
 
 func paginateNotes(notes []notesvc.NoteSummary, input ListNotesInput) ListNotesOutput {
 	limit := input.Limit
-	if limit <= 0 {
+	if limit == 0 {
 		limit = 20
+	}
+	if limit < 0 {
+		return ListNotesOutput{}
 	}
 	cursor := parseCursor(input.Cursor, len(notes))
 	end := cursor + limit
@@ -363,7 +371,10 @@ func RegisterSearchNotes(server *sdkmcp.Server, deps Dependencies, description s
 		Description: buildToolDescription(description, searchNotesDescription),
 		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input SearchNotesInput) (*sdkmcp.CallToolResult, SearchNotesOutput, error) {
-		if input.Limit <= 0 {
+		if input.Limit < 0 {
+			return nil, SearchNotesOutput{}, apperr.CLIUsage("limit must be >= 0", nil)
+		}
+		if input.Limit == 0 {
 			input.Limit = 10
 		}
 		if input.Limit > maxSearchLimit {
@@ -508,11 +519,14 @@ func validateEditInput(input EditNoteInput) error {
 	if len(input.MergeFrontmatter) > 0 {
 		modeCount++
 	}
+	if len(input.Tags) > 0 || len(input.Aliases) > 0 {
+		modeCount++
+	}
 	if modeCount == 0 {
-		return apperr.CLIUsage("edit requires append, replace_body, or merge_frontmatter", nil)
+		return apperr.CLIUsage("edit requires append, replace_body, merge_frontmatter, tags, or aliases", nil)
 	}
 	if modeCount > 1 {
-		return apperr.CLIUsage("edit modes append, replace_body, and merge_frontmatter are mutually exclusive", nil)
+		return apperr.CLIUsage("edit modes append, replace_body, merge_frontmatter, tags, and aliases are mutually exclusive", nil)
 	}
 	if input.ReplaceBody != "" && input.IfMatchHash == "" {
 		return apperr.Unsafe("replace_body requires if_match_hash from read_notes", nil)
@@ -531,6 +545,15 @@ func buildEditInput(input EditNoteInput) notesvc.EditInput {
 		editInput.HasBody = true
 	case input.Append != "":
 		editInput.Append = []byte(input.Append)
+	case len(input.Tags) > 0 || len(input.Aliases) > 0:
+		if len(input.Tags) > 0 {
+			tags := input.Tags
+			editInput.Tags = &tags
+		}
+		if len(input.Aliases) > 0 {
+			aliases := input.Aliases
+			editInput.Aliases = &aliases
+		}
 	default:
 		editInput.Set = input.MergeFrontmatter
 	}
@@ -812,11 +835,11 @@ func buildReadNotesNote(fields map[string]bool, resolved notesvc.ShowResult, max
 		h := resolved.ContentHash
 		note.ContentHash = &h
 	}
-	if fields["created_at"] {
+	if fields["created_at"] && !resolved.Note.CreatedAt.IsZero() {
 		ca := resolved.Note.CreatedAt.Unix()
 		note.CreatedAt = &ca
 	}
-	if fields["updated_at"] {
+	if fields["updated_at"] && !resolved.Note.UpdatedAt.IsZero() {
 		ua := resolved.Note.UpdatedAt.Unix()
 		note.UpdatedAt = &ua
 	}

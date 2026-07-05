@@ -1013,22 +1013,26 @@ func (s Store) SearchCandidatesByTargets(db *sql.DB, targets []string, limitPerT
 		limitPerTarget = 3
 	}
 
+	sort.Strings(targets)
+
 	parts := make([]string, 0, len(targets))
-	args := make([]any, 0, len(targets)*2)
+	args := make([]any, 0, len(targets)*3)
 	for _, target := range targets {
 		ftsQuery := sanitizeFTSQuery(target)
 		if strings.TrimSpace(ftsQuery) == "" {
 			continue
 		}
-		parts = append(parts, `SELECT ? AS _target, n.note_id, n.slug, n.title, n.rel_path,
-			bm25(notes_fts, 10.0, 5.0, 5.0, 2.0, 1.0) AS score,
-			snippet(notes_fts, 5, '[', ']', '...', 12) AS snippet,
-			n.content_hash, n.summary
-		FROM notes_fts
-		JOIN notes n ON n.note_id = notes_fts.note_id
-		WHERE notes_fts MATCH ?
-		ORDER BY score ASC
-		LIMIT ?`)
+		parts = append(parts, `SELECT * FROM (
+			SELECT ? AS _target, n.note_id, n.slug, n.title, n.rel_path,
+				bm25(notes_fts, 10.0, 5.0, 5.0, 2.0, 1.0) AS score,
+				snippet(notes_fts, 5, '[', ']', '...', 12) AS snippet,
+				n.content_hash, n.summary
+			FROM notes_fts
+			JOIN notes n ON n.note_id = notes_fts.note_id
+			WHERE notes_fts MATCH ?
+			ORDER BY score ASC, n.slug ASC, n.note_id ASC
+			LIMIT ?
+		)`)
 		args = append(args, target, ftsQuery, limitPerTarget)
 	}
 

@@ -36,7 +36,7 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	result, err := container.Services.Catalog.Import(commandContext(cmd), catalogsvc.ImportInput{Path: pathArg, DryRun: dryRun})
+	result, err := container.Services.Catalog.Import(commandContext(cmd), catalogsvc.ImportInput{Path: pathArg, DryRun: dryRun}, loggerFromContext(commandContext(cmd)))
 	if err != nil {
 		return wrapImportError(err)
 	}

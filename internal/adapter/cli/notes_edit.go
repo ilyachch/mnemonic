@@ -21,6 +21,8 @@ func newNotesEditCommand() *cobra.Command {
 	cmd.Flags().String("body-file", "", "replace the note body with the contents of a file")
 	cmd.Flags().String("if-match", "", "only update if the current content hash matches")
 	cmd.Flags().StringArray("set", nil, "set a frontmatter field")
+	cmd.Flags().StringArray("set-tags", nil, "set the tags list")
+	cmd.Flags().StringArray("set-aliases", nil, "set the aliases list")
 	return cmd
 }
 
@@ -39,6 +41,14 @@ func runNotesEdit(cmd *cobra.Command, args []string) error {
 		Selector: args[0],
 		Set:      parsed.setFields,
 		IfMatch:  parsed.ifMatch,
+	}
+	if len(parsed.setTags) > 0 {
+		tags := parsed.setTags
+		editInput.Tags = &tags
+	}
+	if len(parsed.setAliases) > 0 {
+		aliases := parsed.setAliases
+		editInput.Aliases = &aliases
 	}
 	if parsed.bodyFile != "" {
 		body, readErr := os.ReadFile(parsed.bodyFile)
@@ -67,6 +77,8 @@ type notesEditFlags struct {
 	bodyFile   string
 	ifMatch    string
 	setFields  map[string]string
+	setTags    []string
+	setAliases []string
 }
 
 func parseNotesEditFlags(cmd *cobra.Command) (notesEditFlags, error) {
@@ -82,24 +94,41 @@ func parseNotesEditFlags(cmd *cobra.Command) (notesEditFlags, error) {
 	if err != nil {
 		return notesEditFlags{}, err
 	}
-	var setFields map[string]string
-	if cmd.Flags().Changed("set") {
-		setValues, setErr := cmd.Flags().GetStringArray("set")
-		if setErr != nil {
-			return notesEditFlags{}, setErr
-		}
-		setFields, err = parseEditSetValues(setValues)
-		if err != nil {
-			return notesEditFlags{}, err
-		}
+	setFields, err := parseSetFieldsFlag(cmd)
+	if err != nil {
+		return notesEditFlags{}, err
 	}
-	if appendText == "" && bodyFile == "" && len(setFields) == 0 {
-		return notesEditFlags{}, apperr.CLIUsage("edit requires --append, --body-file, or --set", nil)
+	setTags, err := cmd.Flags().GetStringArray("set-tags")
+	if err != nil {
+		return notesEditFlags{}, err
+	}
+	setAliases, err := cmd.Flags().GetStringArray("set-aliases")
+	if err != nil {
+		return notesEditFlags{}, err
+	}
+	return validateEditFlags(appendText, bodyFile, setFields, setTags, setAliases, ifMatch)
+}
+
+func parseSetFieldsFlag(cmd *cobra.Command) (map[string]string, error) {
+	if !cmd.Flags().Changed("set") {
+		return nil, nil
+	}
+	setValues, err := cmd.Flags().GetStringArray("set")
+	if err != nil {
+		return nil, err
+	}
+	return parseEditSetValues(setValues)
+}
+
+func validateEditFlags(appendText, bodyFile string, setFields map[string]string, setTags, setAliases []string, ifMatch string) (notesEditFlags, error) {
+	hasContent := appendText != "" || bodyFile != "" || len(setFields) > 0 || len(setTags) > 0 || len(setAliases) > 0
+	if !hasContent {
+		return notesEditFlags{}, apperr.CLIUsage("edit requires --append, --body-file, --set, --set-tags, or --set-aliases", nil)
 	}
 	if appendText != "" && bodyFile != "" {
 		return notesEditFlags{}, apperr.CLIUsage("--append and --body-file cannot be combined", nil)
 	}
-	return notesEditFlags{appendText: appendText, bodyFile: bodyFile, ifMatch: ifMatch, setFields: setFields}, nil
+	return notesEditFlags{appendText: appendText, bodyFile: bodyFile, ifMatch: ifMatch, setFields: setFields, setTags: setTags, setAliases: setAliases}, nil
 }
 
 func parseEditSetValues(values []string) (map[string]string, error) {

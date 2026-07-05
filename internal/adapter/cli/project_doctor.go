@@ -52,7 +52,7 @@ func handleDoctorAll(cmd *cobra.Command, container *app.Bootstrap) error {
 	if container.Services.Maint == nil {
 		return errors.New("maintenance service is not configured")
 	}
-	maintResult, maintErr := container.Services.Maint.DoctorAll(commandContext(cmd))
+	maintResult, maintErr := container.Services.Maint.DoctorAll(commandContext(cmd), loggerFromContext(commandContext(cmd)))
 	if maintErr != nil {
 		return maintErr
 	}

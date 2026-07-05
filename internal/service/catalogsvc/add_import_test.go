@@ -31,7 +31,7 @@ func TestAddRegistersStructuredProjectAndRebuildsIndex(t *testing.T) {
 	manifest.UpdatedAt = manifest.CreatedAt
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(repoRoot, "mnemonic.toml"), manifest))
 
-	result, err := svc.Add(context.Background(), AddInput{Path: repoRoot})
+	result, err := svc.Add(context.Background(), AddInput{Path: repoRoot}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "structured", result.Slug)
 	assert.Equal(t, manifest.ProjectID, result.ProjectID)
@@ -50,7 +50,7 @@ func TestAddRejectsMissingManifest(t *testing.T) {
 
 	repoRoot := t.TempDir()
 
-	_, err := svc.Add(context.Background(), AddInput{Path: repoRoot})
+	_, err := svc.Add(context.Background(), AddInput{Path: repoRoot}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "mnemonic.toml not found")
 }
@@ -71,7 +71,7 @@ func TestImportGeneratesManifestAndHydratesRawDirectory(t *testing.T) {
 	})
 	t.Cleanup(restore)
 
-	result, err := svc.Import(context.Background(), ImportInput{Path: repoRoot})
+	result, err := svc.Import(context.Background(), ImportInput{Path: repoRoot}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.Imported)
 	assert.Equal(t, 1, result.Indexed)
@@ -111,7 +111,7 @@ func TestImportPreservesExistingManifest(t *testing.T) {
 	})
 	t.Cleanup(restore)
 
-	result, err := svc.Import(context.Background(), ImportInput{Path: repoRoot})
+	result, err := svc.Import(context.Background(), ImportInput{Path: repoRoot}, nil)
 	require.NoError(t, err)
 	assert.False(t, result.ManifestCreated)
 	assert.Equal(t, "existing", result.Candidates[0].Slug)
@@ -135,7 +135,7 @@ func TestImportDryRunDoesNotWrite(t *testing.T) {
 	})
 	t.Cleanup(restore)
 
-	result, err := svc.Import(context.Background(), ImportInput{Path: repoRoot, DryRun: true})
+	result, err := svc.Import(context.Background(), ImportInput{Path: repoRoot, DryRun: true}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "skipped", result.IndexStatus)
 	assert.True(t, result.ManifestCreated)
@@ -166,10 +166,10 @@ func TestImportRejectsDuplicateSlug(t *testing.T) {
 	})
 	t.Cleanup(restore)
 
-	_, err := svc.Import(context.Background(), ImportInput{Path: repoRoot})
+	_, err := svc.Import(context.Background(), ImportInput{Path: repoRoot}, nil)
 	require.NoError(t, err)
 
-	_, err = svc.Import(context.Background(), ImportInput{Path: repoRoot})
+	_, err = svc.Import(context.Background(), ImportInput{Path: repoRoot}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "already exists")
 }

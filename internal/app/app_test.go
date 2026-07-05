@@ -36,7 +36,7 @@ func TestNewBuildsConfigPathsRegistryAndServices(t *testing.T) {
 	require.NotNil(t, container.Services.Maint.Catalog)
 	require.NotNil(t, container.Services.Maint.RuntimeFactory)
 
-	runtime, err := container.Services.Maint.RuntimeFactory(context.Background(), kb.KnowledgeBase{ID: "550e8400-e29b-41d4-a716-446655440999"})
+	runtime, err := container.Services.Maint.RuntimeFactory(context.Background(), kb.KnowledgeBase{ID: "550e8400-e29b-41d4-a716-446655440999"}, nil)
 	require.NoError(t, err)
 	require.NotNil(t, runtime)
 	require.NotNil(t, runtime.IndexService())

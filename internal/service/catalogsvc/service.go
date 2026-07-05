@@ -37,7 +37,6 @@ type Service struct {
 	MemoriesHome string
 	StateHome    string
 	Registry     registry.Store
-	Logger       *slog.Logger
 }
 
 // ListResult mirrors the project list payload.
@@ -167,7 +166,7 @@ type InitResult struct {
 }
 
 // Resolve returns the selected knowledge base for a project selector.
-func (s Service) Resolve(selector string) (kb.KnowledgeBase, error) {
+func (s Service) Resolve(selector string, logger *slog.Logger) (kb.KnowledgeBase, error) {
 	selector = strings.TrimSpace(selector)
 	if selector == "" {
 		return kb.KnowledgeBase{}, apperr.CLIUsage("no project selected; specify --project or set MNEMONIC_PROJECT", nil)
@@ -183,8 +182,8 @@ func (s Service) Resolve(selector string) (kb.KnowledgeBase, error) {
 		return kb.KnowledgeBase{}, err
 	}
 
-	if s.Logger != nil {
-		s.Logger.Info("project selected",
+	if logger != nil {
+		logger.Info("project selected",
 			"slug", resolved.Slug,
 			"kind", resolved.Kind,
 			"root_dir", resolved.RootDir,
@@ -195,7 +194,7 @@ func (s Service) Resolve(selector string) (kb.KnowledgeBase, error) {
 }
 
 // List returns the registered projects with state paths and issue status.
-func (s Service) List() (ListResult, error) {
+func (s Service) List(logger *slog.Logger) (ListResult, error) {
 	entries, issues, err := s.registryStore().Scan()
 	if err != nil {
 		return ListResult{}, fmt.Errorf("scan registry: %w", err)
@@ -227,8 +226,8 @@ func (s Service) List() (ListResult, error) {
 			item.Issue = issue.Error
 			projects = append(projects, item)
 
-			if s.Logger != nil {
-				s.Logger.Warn("project issue detected",
+			if logger != nil {
+				logger.Warn("project issue detected",
 					"slug", entry.Slug,
 					"status", item.Status,
 					"error", issue.Error,
@@ -254,8 +253,8 @@ func (s Service) List() (ListResult, error) {
 }
 
 // Show returns the registered project details for a selector.
-func (s Service) Show(selector string) (ShowResult, error) {
-	resolved, err := s.Resolve(selector)
+func (s Service) Show(selector string, logger *slog.Logger) (ShowResult, error) {
+	resolved, err := s.Resolve(selector, logger)
 	if err != nil {
 		return ShowResult{}, err
 	}
@@ -281,7 +280,7 @@ func (s Service) Show(selector string) (ShowResult, error) {
 // ecosystem. When mnemonic.toml is missing it is generated in-place; all
 // notes lacking canonical frontmatter are hydrated; the project is
 // registered via a pointer file and the search index is rebuilt.
-func (s Service) Import(ctx context.Context, input ImportInput) (ImportResult, error) {
+func (s Service) Import(ctx context.Context, input ImportInput, logger *slog.Logger) (ImportResult, error) {
 	resolvedPath, err := resolveImportPath(input)
 	if err != nil {
 		return ImportResult{}, err
@@ -324,8 +323,8 @@ func (s Service) Import(ctx context.Context, input ImportInput) (ImportResult, e
 	result.Hydrated = hydrateResult.Hydrated
 	result.Skipped = hydrateResult.Skipped
 
-	if s.Logger != nil {
-		s.Logger.Info("import hydration complete",
+	if logger != nil {
+		logger.Info("import hydration complete",
 			"slug", candidate.Slug,
 			"hydrated", len(hydrateResult.Hydrated),
 			"skipped", len(hydrateResult.Skipped),
@@ -341,12 +340,12 @@ func (s Service) Import(ctx context.Context, input ImportInput) (ImportResult, e
 		return ImportResult{}, err
 	}
 
-	return s.finalizeImportIndexStatus(ctx, result), nil
+	return s.finalizeImportIndexStatus(ctx, result, logger), nil
 }
 
 // Add registers an existing structured project (one that already contains a
 // valid mnemonic.toml) and rebuilds its search index.
-func (s Service) Add(ctx context.Context, input AddInput) (AddResult, error) {
+func (s Service) Add(ctx context.Context, input AddInput, logger *slog.Logger) (AddResult, error) {
 	resolvedPath, err := resolveAddPath(input)
 	if err != nil {
 		return AddResult{}, err
@@ -376,12 +375,12 @@ func (s Service) Add(ctx context.Context, input AddInput) (AddResult, error) {
 		IndexStatus: "skipped",
 	}
 
-	resolved, err := s.Resolve(manifest.Slug)
+	resolved, err := s.Resolve(manifest.Slug, logger)
 	if err != nil {
 		result.IndexError = err.Error()
 		return result, nil //nolint:nilerr // partial success: IndexError communicates the failure
 	}
-	if _, err := indexsvc.New(resolved, s.Logger).Rebuild(ctx); err != nil {
+	if _, err := indexsvc.New(resolved, logger).Rebuild(ctx); err != nil {
 		result.IndexStatus = "stale"
 		result.IndexError = err.Error()
 		return result, nil //nolint:nilerr // partial success: IndexError communicates the failure
@@ -458,7 +457,7 @@ func resolveAddPath(input AddInput) (string, error) {
 	return absPath, nil
 }
 
-func (s Service) finalizeImportIndexStatus(ctx context.Context, result ImportResult) ImportResult {
+func (s Service) finalizeImportIndexStatus(ctx context.Context, result ImportResult, logger *slog.Logger) ImportResult {
 	if result.IndexErrors == nil {
 		result.IndexErrors = []ImportIndexError{}
 	}
@@ -468,7 +467,7 @@ func (s Service) finalizeImportIndexStatus(ctx context.Context, result ImportRes
 	}
 
 	for _, candidate := range result.Candidates {
-		resolved, err := s.Resolve(candidate.Slug)
+		resolved, err := s.Resolve(candidate.Slug, logger)
 		if err != nil {
 			result.IndexErrors = append(result.IndexErrors, ImportIndexError{
 				ProjectID: candidate.ProjectID,
@@ -477,7 +476,7 @@ func (s Service) finalizeImportIndexStatus(ctx context.Context, result ImportRes
 			})
 			continue
 		}
-		if _, err := indexsvc.New(resolved, s.Logger).Rebuild(ctx); err != nil {
+		if _, err := indexsvc.New(resolved, logger).Rebuild(ctx); err != nil {
 			result.IndexErrors = append(result.IndexErrors, ImportIndexError{
 				ProjectID: resolved.ID,
 				Slug:      resolved.Slug,
@@ -496,7 +495,7 @@ func (s Service) finalizeImportIndexStatus(ctx context.Context, result ImportRes
 }
 
 // Init creates a project, resolves it, and builds the initial index.
-func (s Service) Init(ctx context.Context, input InitInput) (InitResult, error) {
+func (s Service) Init(ctx context.Context, input InitInput, logger *slog.Logger) (InitResult, error) {
 	slugValue, err := slug.Slugify(input.Name)
 	if err != nil {
 		return InitResult{}, err
@@ -512,7 +511,7 @@ func (s Service) Init(ctx context.Context, input InitInput) (InitResult, error) 
 		return InitResult{}, wrapInitError(err)
 	}
 
-	resolved, err := s.Resolve(slugValue)
+	resolved, err := s.Resolve(slugValue, logger)
 	if err != nil {
 		return InitResult{}, err
 	}
@@ -530,7 +529,7 @@ func (s Service) Init(ctx context.Context, input InitInput) (InitResult, error) 
 		IndexPath:    resolved.IndexPath,
 		IndexStatus:  "stale",
 	}
-	_, err = indexsvc.New(resolved, s.Logger).Rebuild(ctx)
+	_, err = indexsvc.New(resolved, logger).Rebuild(ctx)
 	if err != nil {
 		result.IndexError = err.Error()
 		return result, nil //nolint:nilerr // partial success: IndexError communicates the failure
@@ -540,8 +539,8 @@ func (s Service) Init(ctx context.Context, input InitInput) (InitResult, error) 
 }
 
 // Remove removes a project from the registry and state directories.
-func (s Service) Remove(selector string, wipe bool) (RemoveResult, error) {
-	resolved, err := s.Resolve(selector)
+func (s Service) Remove(selector string, wipe bool, logger *slog.Logger) (RemoveResult, error) {
+	resolved, err := s.Resolve(selector, logger)
 	if err != nil {
 		return RemoveResult{}, err
 	}
