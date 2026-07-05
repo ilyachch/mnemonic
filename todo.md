@@ -1,808 +1,787 @@
-# Remaining Tasks `fixes-and-improvements`
+# Оставшиеся задачи для ветки `fixes-and-improvements`
 
-## General Rules
+## Общие ограничения
 
-- Do not add migrations.
-- Do not support old contracts and formats.
-- Do not add compatibility wrappers.
-- Do not distinguish between specific old versions of data.
-- Treat the SQLite index as a derived artifact that can be completely recreated from scratch.
-- Do not classify errors by parsing their message text.
-- Do not use direct `time.Now()` calls if a clock abstraction is available in the project.
+При выполнении задач соблюдать следующие правила:
+
+- не добавлять миграции SQLite;
+- не добавлять поддержку старых форматов и контрактов;
+- не определять версию существующего индекса;
+- не запускать reindex автоматически;
+- считать SQLite-индекс полностью пересоздаваемым производным артефактом;
+- не классифицировать ошибки через анализ `err.Error()`;
+- не менять существующую семантику без необходимости;
+- обновить или добавить тестовые сценарии для каждого изменённого поведения.
 
 ---
 
-# MNEMONIC-201 — Remove Version-Based SQLite Index Upgrades
+# MNEMONIC-301 — Подключить structural validation SQLite-индекса
 
-## Objective
+**Приоритет:** P0, блокирует merge.
 
-Remove the mechanism that detects legacy index versions and automatically adapts existing installations.
+## Цель
 
-## Context
+Проверять структуру существующего SQLite-индекса до выполнения обычных поисковых запросов.
 
-Currently, the schema version is incremented to `3`, and `CheckSchemaStatus` returns `NeedsRebuild` if any other version number is detected.
+## Проблема
 
-This establishes an upgrade path for previously created indexes, even though the project does not require backward compatibility.
+Функция `ValidateSchema` уже реализована, но не вызывается при открытии существующего индекса.
 
-## Requirements
+Из-за этого несовместимый индекс может привести к низкоуровневой SQL-ошибке:
 
-Remove all usage of:
+```text
+no such column: l.relation_type
+```
+
+вместо понятного сообщения с требованием выполнить явный reindex.
+
+Кроме того, таблица `note_aliases` используется текущим индексом, но отсутствует в списке обязательных таблиц.
+
+## Что нужно сделать
+
+### 1. Подключить проверку к `OpenReadonly`
+
+После успешных `sql.Open` и `Ping` вызвать:
+
+```go
+ValidateSchema(db)
+```
+
+Если проверка завершилась ошибкой:
+
+1. закрыть открытое соединение;
+2. вернуть типизированную application error;
+3. не выполнять никаких SQL-запросов поиска;
+4. не изменять файл индекса;
+5. не запускать rebuild.
+
+Рекомендуемый тип ошибки:
+
+```go
+apperr.Corrupted(...)
+```
+
+Сообщение верхнего уровня должно быть стабильным:
+
+```text
+index is invalid; run `mnemonic project reindex`
+```
+
+Детали отсутствующей таблицы или колонки можно сохранить во вложенной ошибке.
+
+### 2. Дополнить structural contract
+
+Добавить в `requiredTables` таблицу:
+
+```text
+note_aliases
+```
+
+с колонками:
+
+```text
+note_id
+alias
+```
+
+Обязательный набор должен включать таблицы, которые реально используются обычными read/search operations:
+
+- `notes`;
+- `note_tags`;
+- `note_aliases`;
+- `observations`;
+- `links`;
+- `notes_fts`.
+
+`index_runs` не добавлять в обязательный read contract, если она используется только как служебная информация процесса rebuild.
+
+### 3. Не добавлять версии схемы
+
+Запрещено возвращать:
+
+- `schema version mismatch`;
+- номер найденной версии;
+- номер ожидаемой версии.
+
+Запрещено использовать:
 
 ```sql
 PRAGMA user_version
-
 ```
 
-Remove the following record:
+или отдельное поле `schema_version`.
 
-```text
-meta.schema_version
+## Как проверить
 
-```
+Добавить или обновить тестовые сценарии:
 
-Delete:
+1. Полностью валидный индекс успешно открывается.
 
-- comments such as `schema version 3`;
-- comparisons of the current version with previous versions;
-- the `version != N → rebuild` logic;
-- phrases regarding "upgrading existing installations."
+2. Индекс без таблицы `note_aliases` отклоняется.
 
-`ApplySchema` must only create the current schema in a new, empty database.
+3. Индекс без колонки `links.relation_type` отклоняется.
 
-`reindex` must perform the following steps:
+4. Индекс без `notes_fts` отклоняется.
 
-1. create a new temporary database;
-2. apply the current schema;
-3. fully populate the index;
-4. atomically replace the old file.
+5. Ошибка распознаётся через:
 
-The application must not attempt to convert an existing index.
+   ```go
+   errors.As(err, *apperr.Error)
+   ```
 
-If an incompatible or corrupted index is encountered, it is permitted to return a generic error:
+   и имеет код `CodeCorrupted`.
 
-```text
-index is invalid; rebuild it
+6. Текст верхнего уровня содержит команду:
 
-```
+   ```text
+   mnemonic project reindex
+   ```
 
-However, you must not determine exactly which old version was detected or execute separate logic for it.
+7. После ошибки:
 
-## Acceptance Criteria
+   - индекс не пересоздан;
+   - timestamp и содержимое файла не изменены;
+   - новые таблицы или колонки не появились.
 
-- `PRAGMA user_version` is completely absent from the code.
-- `schema_version` is no longer stored in `meta`.
-- There are no numeric SQLite schema versions in the code.
-- No code branches exist for legacy schemas or upgrades.
-- `reindex` always builds the index from scratch.
-- The new index includes the `relation_type` field.
-- A corrupted or incompatible index is never migrated automatically.
+8. После явного вызова `mnemonic project reindex` операция поиска успешно выполняется.
 
-## Key Files
+## Ключевые файлы
 
+- `internal/store/sqliteindex/schema_check.go`
+- `internal/store/sqliteindex/store.go`
 - `internal/store/sqliteindex/schema.go`
-- `internal/store/sqliteindex/rebuild.go`
-- Call sites of `CheckSchemaStatus`
-- Documentation describing the rebuild process
+- `internal/adapter/cli/query.go`
+- тесты `sqliteindex` и CLI error mapping
 
 ---
 
-# MNEMONIC-202 — Complete Logger Dependency Injection
+# MNEMONIC-302 — Удалить классификацию ошибок по тексту сообщений
 
-## Objective
+**Приоритет:** P0, блокирует merge.
 
-Pass the configured logger to all runtime paths without passing `nil` and without mutating services after instantiation.
+## Цель
 
-## Issues
+Классифицировать ошибки только по типам, sentinel errors или `apperr.Code`.
 
-The Web adapter currently creates the stdio/MCP server as follows:
+## Проблема
 
-```go
-stdio.NewServer(..., input.ReadOnly, nil)
-
-```
-
-`catalogsvc` initializes the index service with a `nil` logger during:
-
-- `project add`;
-- `project init`;
-- import/reindex operations after import.
-
-## Requirements
-
-Add the logger to the input web server struct:
+В проекте остаются места, где тип ошибки определяется через проверки вида:
 
 ```go
-type ServerInput struct {
-    // existing fields
-    Logger *slog.Logger
-}
-
+strings.HasPrefix(err.Error(), ...)
+strings.HasSuffix(err.Error(), ...)
+strings.Contains(err.Error(), ...)
 ```
 
-Pass it to:
+Примеры текущих мест:
 
-```go
-stdio.NewServer(...)
+- `wrapAddError`;
+- `wrapImportError`;
+- обработка результата `LookupNoteByIdentifier` в `searchsvc.Backlinks`;
+- возможно другие аналогичные места.
 
+Такой код зависит от текста сообщения и ломается при изменении формулировок.
+
+## Что нужно сделать
+
+### 1. Найти все подобные места
+
+Проверить проект на конструкции:
+
+```text
+err.Error()
+HasPrefix
+HasSuffix
+Contains
 ```
 
-When instantiating `indexsvc.Service` inside `catalogsvc`, use `s.Logger`:
+Нужно исправить только те места, где результат `err.Error()` используется для определения категории ошибки.
 
-```go
-indexsvc.New(resolved, s.Logger)
+Логирование или вывод уже классифицированной ошибки не запрещены.
 
+### 2. Типизировать ошибки в месте возникновения
+
+В месте, где причина уже известна, возвращать подходящий тип:
+
+- отсутствующий файл или проект — `apperr.NotFound`;
+- неоднозначный selector или конфликтующий slug — `apperr.Ambiguous`;
+- некорректный пользовательский ввод — `apperr.CLIUsage`;
+- повреждённый формат — `apperr.Corrupted`;
+- ошибка файловой системы — `apperr.IO`;
+- внутренний сбой — исходная ошибка или `apperr.Internal`.
+
+Например, `LookupNoteByIdentifier` при `sql.ErrNoRows` должен возвращать типизированный `NotFound`, а не строку `"note ... not found"`.
+
+### 3. Упростить adapters
+
+После типизации ошибок:
+
+- удалить `wrapAddError`, если он больше ничего не делает;
+- удалить `wrapImportError`, если он больше ничего не делает;
+- не создавать новую ошибку только из `err.Error()` с `nil` в качестве cause;
+- передавать уже типизированную ошибку наверх без повторной классификации.
+
+### 4. Исправить `wrapSyncError`
+
+Не превращать любую ошибку sync в `CLIUsage`.
+
+Ошибка должна сохранять исходный тип.
+
+Если конкретная ошибка действительно вызвана пользовательским вводом, она должна быть превращена в `CLIUsage` там, где причина известна.
+
+## Как проверить
+
+Добавить или обновить тестовые сценарии:
+
+1. Отсутствующий путь в `project add` возвращает `CodeNotFound`.
+2. Отсутствующий manifest возвращает `CodeNotFound`.
+3. Дублирующийся slug возвращает `CodeAmbiguous`.
+4. Неизвестная заметка в backlinks возвращает `CodeNotFound`.
+5. Ошибка чтения файла сохраняет `CodeIO`.
+6. Вложенная исходная ошибка доступна через `errors.Is` или `errors.As`.
+7. Изменение текста сообщения ошибки не меняет её exit code.
+8. Поиск по production-коду не находит условной классификации через `err.Error()`.
+
+Пример команды для ручной проверки:
+
+```bash
+rg 'err\.Error\(\)' internal
 ```
 
-The configured logger must be passed via constructors to:
+Каждое найденное место проверить вручную: допустимы логирование и вывод, недопустима классификация по строке.
 
-- CLI runtime;
-- stdio MCP;
-- web MCP;
-- maintenance runtime;
-- catalog operations;
-- notes service;
-- search service;
-- index service.
+## Ключевые файлы
 
-Do not assign the logger by modifying public fields after a service has been created.
-
-## Acceptance Criteria
-
-- The Web MCP receives the configured logger.
-- `project add`, `project init`, and import operations utilize the configured logger.
-- The runtime code contains no `New(..., nil)` calls if the logger is available in the calling service.
-- Stdio logs do not leak into stdout.
-- The logger is set exclusively during object construction.
-
-## Key Files
-
-- `internal/adapter/web/manager.go`
-- Web server startup command
+- `internal/adapter/cli/project_add.go`
+- `internal/adapter/cli/project_import.go`
+- `internal/adapter/cli/project_sync.go`
 - `internal/service/catalogsvc/service.go`
+- `internal/service/searchsvc/service.go`
+- `internal/store/sqliteindex/store.go`
+- `internal/apperr/errors.go`
+
+---
+
+# MNEMONIC-303 — Поддержать очистку `tags` и `aliases`
+
+**Приоритет:** P0, блокирует merge.
+
+## Цель
+
+Позволить явно заменить `tags` или `aliases` пустым списком.
+
+## Проблема
+
+Текущий MCP-контракт использует:
+
+```go
+Tags    []string
+Aliases []string
+```
+
+и определяет наличие параметра через:
+
+```go
+len(input.Tags) > 0
+len(input.Aliases) > 0
+```
+
+Поэтому невозможно отличить:
+
+- поле не передано;
+- передан пустой массив для очистки.
+
+Аналогичная проблема есть в CLI: факт передачи флага определяется через длину списка.
+
+## Что нужно сделать
+
+### 1. Изменить MCP input
+
+Использовать presence-aware поля:
+
+```go
+Tags    *[]string `json:"tags,omitempty"`
+Aliases *[]string `json:"aliases,omitempty"`
+```
+
+Семантика:
+
+- `nil` — поле не изменять;
+- `&[]string{}` — очистить поле;
+- `&[]string{"one", "two"}` — заменить поле указанным списком.
+
+### 2. Обновить validation edit mode
+
+Metadata edit mode считается выбранным, если:
+
+```go
+input.Tags != nil || input.Aliases != nil
+```
+
+а не если длина списка больше нуля.
+
+Должна быть разрешена одна операция, одновременно меняющая оба поля:
+
+```json
+{
+  "identifier": "note",
+  "tags": [],
+  "aliases": ["old-name"]
+}
+```
+
+### 3. Обновить преобразование в `notesvc.EditInput`
+
+Передавать указатели без проверки длины:
+
+```go
+editInput.Tags = input.Tags
+editInput.Aliases = input.Aliases
+```
+
+### 4. Добавить явную очистку в CLI
+
+Рекомендуемый CLI-контракт:
+
+```text
+--set-tags TAG
+--set-aliases ALIAS
+--clear-tags
+--clear-aliases
+```
+
+Правила:
+
+- `--clear-tags` устанавливает `Tags = &[]string{}`;
+- `--clear-aliases` устанавливает `Aliases = &[]string{}`;
+- `--set-tags` нельзя комбинировать с `--clear-tags`;
+- `--set-aliases` нельзя комбинировать с `--clear-aliases`;
+- разрешено одновременно изменить tags и aliases;
+- наличие `--set-tags` и `--set-aliases` определять через `cmd.Flags().Changed(...)`, а не через длину результата.
+
+Не использовать пустую строку как специальный marker очистки.
+
+### 5. Сохранить strict list contract
+
+Поля `tags` и `aliases` должны по-прежнему записываться только как YAML arrays.
+
+Не добавлять scalar-to-list conversion.
+
+Generic операции:
+
+```text
+--set tags=...
+--set aliases=...
+merge_frontmatter.tags
+merge_frontmatter.aliases
+```
+
+должны оставаться запрещёнными.
+
+## Как проверить
+
+### MCP
+
+1. Поле отсутствует — существующие tags не изменяются.
+2. `"tags": []` — все tags удаляются.
+3. `"aliases": []` — все aliases удаляются.
+4. Непустой массив полностью заменяет старое значение.
+5. Tags и aliases можно изменить одним вызовом.
+6. После повторного чтения frontmatter содержит YAML list.
+7. Попытка использовать `merge_frontmatter` для `tags` или `aliases` возвращает `CodeCLIUsage`.
+
+### CLI
+
+Проверить сценарии:
+
+```bash
+mnemonic notes edit note --clear-tags
+mnemonic notes edit note --clear-aliases
+mnemonic notes edit note --set-tags one --set-tags two
+mnemonic notes edit note --set-aliases first --set-aliases second
+mnemonic notes edit note --clear-tags --set-aliases current-name
+```
+
+Должны завершаться ошибкой:
+
+```bash
+mnemonic notes edit note --clear-tags --set-tags one
+mnemonic notes edit note --clear-aliases --set-aliases one
+```
+
+После очистки `read_notes` должен вернуть:
+
+```json
+{
+  "tags": []
+}
+```
+
+или:
+
+```json
+{
+  "aliases": []
+}
+```
+
+## Ключевые файлы
+
+- `internal/adapter/stdio/tools.go`
+- `internal/adapter/cli/notes_edit.go`
+- `internal/service/notesvc/service.go`
+- `internal/store/markdownstore/store.go`
+- тесты CLI и MCP edit contracts
+
+---
+
+# MNEMONIC-304 — Удалить неиспользуемый `Bootstrap.Logger`
+
+**Приоритет:** P1.
+
+## Цель
+
+Окончательно закрепить immutable logger wiring.
+
+## Проблема
+
+Command-specific logger уже передаётся явным аргументом в runtime, catalog и maintenance operations.
+
+Однако в `app.Bootstrap` всё ещё осталось поле:
+
+```go
+Logger *slog.Logger
+```
+
+Оно больше не используется и создаёт возможность случайно вернуть mutable setter-style wiring.
+
+## Что нужно сделать
+
+1. Удалить поле `Logger` из `app.Bootstrap`.
+2. Удалить ненужный импорт `log/slog` из `internal/app/app.go`, если после этого он не используется.
+3. Не менять `RuntimeInput.Logger`.
+4. Не менять параметр logger в `Bootstrap.Runtime`.
+5. Не менять logger-параметр `maintsvc.RuntimeFactory`.
+6. Убедиться, что нигде нет:
+
+   - `boot.Logger = ...`;
+   - чтения `boot.Logger`;
+   - мутации logger в уже созданных service instances.
+
+## Как проверить
+
+1. Проект компилируется после удаления поля.
+
+2. Поиск не возвращает обращений к полю:
+
+   ```bash
+   rg '\.Logger' internal/app internal/adapter/cli
+   ```
+
+   Допустимы поля logger у runtime services и adapters, но не у `Bootstrap`.
+
+3. Два runtime, созданные с разными logger, получают соответствующие logger.
+
+4. Создание второго runtime не меняет logger первого.
+
+5. `go test -race ./...` не обнаруживает гонок вокруг logger wiring.
+
+## Ключевые файлы
+
 - `internal/app/app.go`
 - `internal/app/runtime.go`
+- `internal/service/maintsvc/service.go`
+- `internal/adapter/cli/runtime.go`
 
 ---
 
-# MNEMONIC-203 — Remove String-Based Error Classification in `ShowMany`
+# MNEMONIC-305 — Валидировать отрицательные limits для tags и backlinks
 
-## Objective
+**Приоритет:** P1.
 
-Make batch-read error classification resilient to modifications in error message text.
+## Цель
 
-## Issue
+Не принимать отрицательный `limit` как неявное отсутствие ограничения.
 
-The application currently relies on string matching checks:
+## Проблема
 
-```go
-strings.Contains(msg, "parse note")
-strings.Contains(msg, "parse frontmatter")
-strings.Contains(msg, "read note")
+`list_tags` и `list_backlinks` сейчас не отклоняют отрицательные значения.
 
-```
+В результате `limit = -1` может молча означать «вернуть всё».
 
-Altering the error phrasing will break the external contract of `read_notes`.
+## Что нужно сделать
 
-## Requirements
+### Общая семантика
 
-`markdownstore.Show()` must return a typed `apperr.Error` for all expected errors.
-
-Minimum classification mapping:
+Для обеих операций:
 
 ```text
-CodeNotFound   → missing
-CodeAmbiguous  → issue kind "ambiguous"
-CodeCorrupted  → issue kind "corrupted"
-CodeIO         → issue kind "io_error"
-all others     → issue kind "internal"
-
+limit == 0  → не применять явное ограничение
+limit > 0   → вернуть не больше limit элементов
+limit < 0   → вернуть CodeCLIUsage
 ```
 
-If a dedicated `CodeIO` does not currently exist, add it or use an alternative existing code with unambiguous semantics.
+Существующую семантику `0` сохранить.
 
-Inside `notesvc.classifyShowError`, you are strictly allowed to use only:
+### `list_tags`
+
+Перед выполнением запроса проверить `input.Limit`.
+
+При отрицательном значении вернуть:
 
 ```go
-errors.As
-errors.Is
-
+apperr.CLIUsage("limit must be >= 0", nil)
 ```
 
-Do not use:
+Ограничение должно применяться до формирования ответа.
 
-- `strings.Contains`;
-- direct comparisons with `err.Error()`;
-- assumptions regarding the error message text.
+Предпочтительно перенести limit в service input, чтобы adapter не был единственным владельцем validation.
 
-## Acceptance Criteria
-
-- Not found errors map exclusively to `missing`.
-- Ambiguous selectors map to `issues` as `ambiguous`.
-- Parsing errors map to `issues` as `corrupted`.
-- Read or permission errors map to `issues` as `io_error`.
-- Changing the message string does not alter the error classification.
-- `classifyShowError` contains no string analysis logic.
-
-## Key Files
-
-- `internal/store/markdownstore/store.go`
-- `internal/service/notesvc/service.go`
-- `internal/apperr/*`
-
----
-
-# MNEMONIC-204 — Add Duration to Batch-Read Logging
-
-## Objective
-
-Complete operational logging for `read_notes`.
-
-## Requirements
-
-At the beginning of `ShowMany`, capture the current time using the project's clock abstraction.
-
-After execution, record a single aggregated event:
-
-```text
-batch read completed
-requested_count
-found_count
-missing_count
-issue_count
-duration
-
-```
-
-Do not log:
-
-- note bodies;
-- frontmatter;
-- the full text of the notes.
-
-Do not trigger a separate info event for each selector.
-
-Individual selector errors may be logged at the debug level.
-
-## Acceptance Criteria
-
-- The aggregated event includes the `duration` field.
-- The duration is computed using the project clock.
-- A single batch-read creates exactly one aggregated operational event.
-- Note contents do not appear in the log.
-
-## Key Files
-
-- `internal/service/notesvc/service.go`
-- The project's clock package
-
----
-
-# MNEMONIC-205 — Remove Direct `time.Now()` Calls from Diagnostics Suggestions
-
-## Objective
-
-Use a single source of time to ensure deterministic service behavior.
-
-## Issue
-
-`searchCandidatesByTarget` currently invokes:
+Например:
 
 ```go
-now := time.Now()
-
-```
-
-## Requirements
-
-Pass the clock into `indexsvc.Service` or utilize the existing project clock.
-
-Target interface:
-
-```go
-type Clock interface {
-    Now() time.Time
-}
-
-```
-
-`indexsvc.New` must receive the clock via dependency injection or use the shared project-wide `clock.NowUTC()`.
-
-The time must always be in UTC.
-
-You must not call:
-
-```go
-time.Now()
-
-```
-
-directly within the diagnostics service.
-
-## Acceptance Criteria
-
-- Diagnostics contains no direct `time.Now()` calls.
-- Candidate search retrieves time from the injected clock.
-- The production runtime utilizes the real clock.
-- Behavior can be reliably reproduced using a fixed time stub.
-
-## Key Files
-
-- `internal/service/indexsvc/service.go`
-- `internal/service/indexsvc/diagnostics.go`
-- `internal/app/runtime.go`
-- The project's clock package
-
----
-
-# MNEMONIC-206 — Enforce `tags` and `aliases` Strictly as Lists
-
-## Objective
-
-Maintain a single canonical frontmatter format and drop support for alternative legacy syntax styles.
-
-## Issue
-
-Currently, a single string value is accepted:
-
-```yaml
-tags: payment
-```
-
-and automatically converted into:
-
-```go
-[]string{"payment"}
-
-```
-
-## Requirements
-
-The following fields:
-
-```text
-tags
-aliases
-
-```
-
-must exclusively accept a YAML list of strings:
-
-```yaml
-tags:
-  - payment
-  - spei
-```
-
-The following variations must be treated as invalid:
-
-```yaml
-tags: payment
-aliases: "old title"
-tags: 123
-tags:
-  - payment
-  - 123
-```
-
-Upon encountering an error, return a `FrontmatterFieldError`:
-
-```text
-Kind = invalid_string_list
-Field = tags | aliases
-
-```
-
-Do not perform implicit scalar-to-list conversions.
-
-## Acceptance Criteria
-
-- A list of strings parses successfully.
-- A single string scalar is rejected.
-- A numeric value is rejected.
-- A list containing non-string elements is rejected.
-- The renderer always outputs a list format.
-- Diagnostics correctly returns the field name.
-
-## Key Files
-
-- `internal/format/markdown/note.go`
-- `internal/format/markdown/render.go`
-- `internal/format/markdown/errors.go`
-
----
-
-# MNEMONIC-207 — Centralize Input Validation Limits
-
-## Objective
-
-Enforce identical input validation rules across the MCP, CLI, and service layers.
-
-## Issues
-
-Currently, the majority of input constraints are located solely within the stdio adapter.
-
-The following are not fully handled:
-
-- negative values;
-- the maximum number of diagnostic kinds;
-- Unicode query length;
-- excessive CLI limits.
-
-## Requirements
-
-Extract validation logic into the service layer or a shared package.
-
-### Search
-
-Validate that:
-
-```text
-1 <= limit <= 100
-queries count <= 8
-query length <= 500 Unicode characters
-
-```
-
-If `limit` is missing, apply a default value of `10`.
-
-Compute length using:
-
-```go
-utf8.RuneCountInString
-
-```
-
-### Read Notes
-
-Validate that:
-
-```text
-identifiers count: 1..50
-max_body_chars: 0..100000
-
-```
-
-A negative `max_body_chars` value must return an error.
-
-### Diagnostics
-
-Validate that:
-
-```text
-limit: 1..200
-cursor >= 0
-number of kinds does not exceed the count of supported kinds
-
-```
-
-An unrecognized kind must trigger a validation error.
-
-### General Regulations
-
-- Do not silently truncate values.
-- The MCP and CLI must receive the same error structure.
-- The adapter may validate inputs early, but the service layer remains the single source of truth.
-
-## Acceptance Criteria
-
-- The CLI cannot bypass MCP layer constraints.
-- A Russian language query of 500 characters is accepted.
-- A Russian language query of 501 characters is rejected.
-- A negative `max_body_chars` value is rejected.
-- A negative `cursor` value is rejected.
-- An unknown diagnostic kind is rejected.
-- Errors expose a stable application error code.
-
-## Key Files
-
-- `internal/service/searchsvc/service.go`
-- `internal/service/notesvc/service.go`
-- `internal/service/indexsvc/service.go`
-- `internal/adapter/stdio/tools.go`
-- `internal/adapter/cli/notes_search.go`
-- `internal/adapter/cli/project_doctor.go`
-
----
-
-# MNEMONIC-208 — Execute Candidate Suggestions in a Single Batch Query
-
-## Objective
-
-Avoid executing a separate SQLite search operation for each unique broken-link target.
-
-## Issue
-
-Targets are already deduplicated and the database is opened once, but a separate call is made for every target:
-
-```go
-SearchAdvanced(...)
-
-```
-
-## Requirements
-
-Add a store-level method:
-
-```go
-SearchCandidatesByTargets(
-    db *sql.DB,
-    targets []string,
-    limitPerTarget int,
-    now time.Time,
-) (map[string][]SearchResult, error)
-
-```
-
-This method must:
-
-- accept all unique targets;
-- run a single composite SQL query or a bounded, fixed number of queries;
-- return a maximum of 3 candidates per target;
-- preserve deterministic ordering;
-- skip related-notes expansion;
-- skip graph reranking if it is unnecessary for suggestions.
-
-`indexsvc` must invoke this method exactly once.
-
-Remove the loop that runs an individual `SearchAdvanced` call per target.
-
-## Acceptance Criteria
-
-- The number of SQL search operations does not grow linearly with the count of targets.
-- No more than 3 candidates are returned for any single target.
-- The same target is looked up only once.
-- A failure in suggestions does not suppress the core diagnostics output.
-- Candidate ordering remains stable.
-
-## Key Files
-
-- `internal/store/sqliteindex/store.go`
-- `internal/service/indexsvc/diagnostics.go`
-
----
-
-# MNEMONIC-209 — Return Original `matched_queries`
-
-## Objective
-
-Expose original query variants to the agent instead of internal FTS syntax.
-
-## Issue
-
-`dedupQueries` currently returns values modified by `sanitizeFTSQuery`, which flow directly into:
-
-```json
-matched_queries
-
-```
-
-## Requirements
-
-Introduce a distinct structure:
-
-```go
-type normalizedQuery struct {
-    Original string
-    FTS      string
-}
-
-```
-
-Rules:
-
-1. `Original` — the trimmed, initial user query string.
-2. `FTS` — the result after sanitization.
-3. Deduplication is performed based on the `FTS` value.
-4. If multiple original queries yield the same FTS query, preserve the first one.
-5. Pass `FTS` to SQLite.
-6. Return `Original` in the `matched_queries` output.
-
-Do not expose internal escaping patterns or FTS operators appended by the application.
-
-## Acceptance Criteria
-
-Input:
-
-```json
-{
-  "queries": ["chargeback process", " chargeback process "]
+type ListTagsInput struct {
+    Limit int
 }
 ```
 
-triggers a single FTS search and returns:
+### `list_backlinks`
 
-```json
-{
-  "matched_queries": ["chargeback process"]
+Добавить validation в `searchsvc.Backlinks`, а не только в MCP adapter:
+
+```go
+if input.Limit < 0 {
+    return nil, apperr.CLIUsage("limit must be >= 0", nil)
 }
 ```
 
-`matched_queries` contains no internal sanitized syntax elements.
+Store не должен самостоятельно превращать отрицательное значение в отсутствие `LIMIT`.
 
-## Key Files
+## Как проверить
 
-- `internal/store/sqliteindex/store.go`
-- `internal/service/searchsvc/service.go`
+Для обеих операций проверить:
 
----
+1. `limit = -1` возвращает `CodeCLIUsage`.
+2. `limit = 0` сохраняет текущее поведение без явного ограничения.
+3. `limit = 1` возвращает не более одного элемента.
+4. Service validation нельзя обойти прямым вызовом сервиса.
+5. MCP и прямой вызов сервиса возвращают одинаковую категорию ошибки.
 
-# MNEMONIC-210 — Unify Timestamp Contract in MCP
-
-## Objective
-
-Enforce a single format across all timestamp fields sharing the same semantic name.
-
-## Issue
-
-Frontmatter, the index database, and search filters all utilize Unix seconds, whereas `read_notes` returns RFC3339 formatted strings.
-
-## Requirements
-
-Modify the DTO fields:
-
-```go
-CreatedAt *int64 `json:"created_at,omitempty"`
-UpdatedAt *int64 `json:"updated_at,omitempty"`
-
-```
-
-Populate them using:
-
-```go
-createdAt := resolved.Note.CreatedAt.Unix()
-updatedAt := resolved.Note.UpdatedAt.Unix()
-
-```
-
-Stop formatting dates via RFC3339 strings.
-
-Identically named fields across all external contracts must uniformly represent Unix timestamp seconds.
-
-## Acceptance Criteria
-
-`read_notes` returns:
-
-```json
-{
-  "created_at": 1783024200,
-  "updated_at": 1783025200
-}
-```
-
-The values are serialized as JSON numbers.
-
-The tool description contains no references to RFC3339.
-
-## Key Files
+## Ключевые файлы
 
 - `internal/adapter/stdio/tools.go`
-- CLI note output formatting (if it outputs identical fields)
-- User-facing documentation
+- `internal/service/searchsvc/service.go`
+- `internal/store/sqliteindex/store.go`
 
 ---
 
-# MNEMONIC-211 — Finalize Legacy Search API Removal
+# MNEMONIC-306 — Не мутировать входной slice в candidate search
 
-## Objective
+**Приоритет:** P2.
 
-Remove the residual legacy single-query API from the SQLite store.
+## Цель
 
-## Context
+Не менять входные аргументы store-метода.
 
-`searchsvc.Search` has been removed, but the `sqliteindex.Store` still retains the old method:
+## Проблема
+
+`SearchCandidatesByTargets` выполняет:
 
 ```go
-Search(db, query, limit, tag)
-
+sort.Strings(targets)
 ```
 
-## Requirements
+Это сортирует исходный slice, переданный caller-ом.
 
-Locate all call sites of `sqliteindex.Store.Search`.
+Сейчас caller создаёт отдельный список, поэтому видимой ошибки нет, но контракт функции неожиданно мутирует входные данные.
 
-If zero call sites remain:
+## Что нужно сделать
 
-- remove the method;
-- remove associated private helpers used exclusively by it;
-- drop the obsolete payload schemas and comments.
+Перед сортировкой создать копию:
 
-If any call sites remain:
+```go
+sortedTargets := append([]string(nil), targets...)
+sort.Strings(sortedTargets)
+```
 
-- refactor them to use `SearchAdvanced`;
-- then safely remove the old method.
+Далее использовать `sortedTargets`.
 
-Do not leave compatibility wrappers for the legacy API behind.
+Не менять остальные свойства запроса:
 
-## Acceptance Criteria
+- один batch query;
+- не более `limitPerTarget` результатов;
+- сортировка по `score`, `slug`, `note_id`;
+- детерминированный порядок targets.
 
-- The single-query `Search` method is absent from `sqliteindex.Store`.
-- All search call sites interact via `SearchAdvanced` or modern specialized methods.
-- The codebase is free of the term `legacy search`.
-- No adapters for the old search contract exist.
+## Как проверить
 
-## Key Files
+1. Передать slice:
+
+   ```go
+   targets := []string{"z", "a", "m"}
+   ```
+
+2. Вызвать `SearchCandidatesByTargets`.
+
+3. После вызова `targets` должен остаться:
+
+   ```go
+   []string{"z", "a", "m"}
+   ```
+
+4. SQL-результат должен оставаться детерминированным.
+
+5. Одинаковый набор targets в разном входном порядке должен возвращать эквивалентный результат.
+
+## Ключевой файл
 
 - `internal/store/sqliteindex/store.go`
-- All call sites identified via code search
 
 ---
 
-# MNEMONIC-212 — Update Documentation for Active Contracts
+# MNEMONIC-307 — Синхронизировать документацию с финальными контрактами
 
-## Objective
+**Приоритет:** P2, выполнить до merge.
 
-Synchronize all project documentation with the actual implementation details.
+## Цель
 
-## Requirements
+Зафиксировать итоговое поведение индекса, edit API и application errors.
 
-Update:
+## Что нужно сделать
 
-- `README.md`;
-- `PROMPTS.md`;
-- `ARCHITECTURE.md`;
-- `AGENTS.md`;
-- CLI reference manuals;
-- Markdown format specifications.
+### 1. Документировать disposable index
 
-The documentation must accurately describe:
+Добавить в пользовательскую или архитектурную документацию:
 
-- `search_notes.queries`;
-- RRF and graph-aware reranking;
-- the default limit value of 10;
-- `summary`, `tags`, and `matched_queries`;
-- `read_notes.fields`;
-- `read_notes.missing` and `read_notes.issues`;
-- Unix timestamps usage;
-- strict list formatting for tags and aliases;
-- `links_style`;
-- `missing_timestamp`;
-- structured diagnostic fields;
-- current operational CLI commands;
-- request validation limits;
-- full index rebuild behavior without legacy upgrade/migration tracks.
+- индекс является производным артефактом;
 
-Completely purge references to:
+- несовместимый индекс не мигрируется;
 
-- `read_note`;
-- permalink;
-- PageRank;
-- schema upgrade paths;
-- migrations;
-- backward compatibility;
-- the legacy single-query API;
-- schema versions 2 and 3.
+- приложение не выполняет автоматический rebuild;
 
-## Acceptance Criteria
+- пользователь должен явно выполнить:
 
-- All commands documented actually exist in the runtime.
-- All MCP parameters match their respective DTO fields perfectly.
-- There are no statements claiming automatic upgrades of existing indexes.
-- No schema version history remains.
-- Manifest and note examples align perfectly with the parser.
-- Timestamp examples strictly showcase Unix seconds.
+  ```bash
+  mnemonic project reindex
+  ```
 
-## Key Files
+- стандартное сообщение:
+
+  ```text
+  index is invalid; run `mnemonic project reindex`
+  ```
+
+### 2. Обновить документацию `edit_note`
+
+Указать, что edit поддерживает:
+
+- `append`;
+- `replace_body`;
+- `merge_frontmatter`;
+- typed `tags`;
+- typed `aliases`.
+
+Добавить семантику:
+
+```text
+поле отсутствует → не изменять
+пустой массив → очистить
+непустой массив → заменить
+```
+
+Указать, что `tags` и `aliases` запрещено передавать через `merge_frontmatter`.
+
+### 3. Обновить CLI reference
+
+Добавить новые flags:
+
+```text
+--set-tags
+--set-aliases
+--clear-tags
+--clear-aliases
+```
+
+### 4. Обновить developer guide
+
+В `AGENTS.md`:
+
+- добавить `apperr.IO()` в список стандартных error helpers;
+- явно указать, что запрещено классифицировать ошибки по `err.Error()`;
+- указать, что structural validation не является системой версий или миграций.
+
+### 5. Задокументировать limit semantics
+
+Для `list_tags` и `list_backlinks` указать:
+
+```text
+0 — без явного ограничения
+положительное значение — maximum result count
+отрицательное значение — validation error
+```
+
+## Как проверить
+
+Выполнить поиск по актуальной документации:
+
+```bash
+rg 'schema version|automatic rebuild|auto.?rebuild|permalink|read_note\b|PageRank'
+```
+
+В актуальных документах продукта не должно остаться описаний:
+
+- версий SQLite-схемы;
+- автоматической миграции;
+- автоматического rebuild;
+- `permalink`;
+- старого инструмента `read_note`;
+- PageRank.
+
+Исторические diff или release notes можно не изменять.
+
+Также проверить:
+
+```bash
+rg 'edit_note|tags|aliases|project reindex|apperr.IO' README.md ARCHITECTURE.md AGENTS.md README.cli.md
+```
+
+Новые контракты должны быть отражены в документации.
+
+## Ключевые файлы
 
 - `README.md`
-- `PROMPTS.md`
+- `README.cli.md`
 - `ARCHITECTURE.md`
 - `AGENTS.md`
-- `README.cli.md`
 - `internal/format/markdown/README.md`
+- MCP tool descriptions в `internal/adapter/stdio/tools.go`
 
 ---
 
-## Recommended Order of Execution
+# Общая финальная проверка
 
-1. [x] `MNEMONIC-201` — Strip schema upgrades and versioning logic.
-2. [x] `MNEMONIC-203` — Implement typed errors for `ShowMany`.
-3. [x] `MNEMONIC-206` — Enforce strict validation rules for tags/aliases lists.
-4. [x] `MNEMONIC-207` — Centralize shared input validation limits.
-5. [x] `MNEMONIC-202` — Fix logger dependency injection paths.
-6. [x] `MNEMONIC-204` — Append duration metrics to batch-read logging events.
-7. [x] `MNEMONIC-205` — Inject the clock abstraction into the diagnostics path.
-8. [x] `MNEMONIC-209` — Retain original queries in matched results.
-9. [x] `MNEMONIC-210` — Unify Unix timestamp utilization across MCP tools.
-10. [x] `MNEMONIC-208` — Batch candidate suggestions query execution.
-11. [x] `MNEMONIC-211` — Clean up the legacy store search engine.
-12. [x] `MNEMONIC-212` — Overhaul documentation assets.
+После выполнения всех задач запустить:
+
+```bash
+go test ./...
+go test -race ./...
+golangci-lint run
+```
+
+Дополнительно проверить отсутствие запрещённых подходов:
+
+```bash
+rg 'PRAGMA user_version|schema_version' .
+rg 'HasPrefix\(.*Error\(\)|HasSuffix\(.*Error\(\)|Contains\(.*Error\(\)' internal
+rg 'boot\.Logger|Bootstrap.*Logger' internal
+```
+
+Критерий готовности ветки:
+
+- structural validation вызывается на обычном read-path;
+- несовместимый индекс требует только явного reindex;
+- ошибки не классифицируются по строкам;
+- `tags` и `aliases` можно устанавливать и очищать;
+- command logger не хранится в mutable Bootstrap;
+- отрицательные limits отклоняются;
+- тесты, race-check и linter проходят.
