@@ -1008,7 +1008,7 @@ func (s Store) UnresolvedLinkCount() (int, error) {
 }
 
 // SearchCandidatesByTargets looks up candidate notes for multiple link targets in a single
-// composite query. Returns at most 3 candidates per target with deterministic ordering.
+// composite query. Returns at most limitPerTarget candidates per target with deterministic ordering.
 func (s Store) SearchCandidatesByTargets(db *sql.DB, targets []string, limitPerTarget int) (map[string][]SearchResult, error) {
 	if db == nil {
 		return nil, errors.New("db is required")

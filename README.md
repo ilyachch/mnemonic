@@ -240,18 +240,16 @@ mnemonic tags list
 ### Repository Diagnostics
 
 ```bash
-# Full scan
+# Full health check
 mnemonic project doctor
 
-# Filter by kind
-mnemonic project doctor --kinds unresolved_link,ambiguous_link
-
-# Paginate
-mnemonic project doctor --limit 20
-
-# With candidate suggestions for broken links
-mnemonic project doctor --include-suggestions
+# Filter diagnostics by kind
+mnemonic project doctor \
+  --kind unresolved_link \
+  --kind ambiguous_link
 ```
+
+Pagination (`--limit`, `--cursor`) and candidate resolution (`--include-suggestions`) are available through the MCP `diagnose_notes` tool.
 
 ### Rebuild Index
 
