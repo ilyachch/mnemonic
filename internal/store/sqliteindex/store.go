@@ -896,6 +896,9 @@ func (s Store) Backlinks(db *sql.DB, targetNoteID string, limit int) ([]Backlink
 	if targetNoteID == "" {
 		return nil, errors.New("target note id is required")
 	}
+	if limit < 0 {
+		return nil, errors.New("limit must be >= 0")
+	}
 
 	sqlQuery := `SELECT l.link_id, l.note_id, n.slug, n.title, n.rel_path, l.relation_type, l.source_kind, l.source_line
 		 FROM links l

@@ -17,6 +17,11 @@ type Service struct {
 	Logger *slog.Logger
 }
 
+// ListTagsInput configures tag listing.
+type ListTagsInput struct {
+	Limit int
+}
+
 // ListTagsOutput wraps a tag listing result.
 type ListTagsOutput struct {
 	Tags []ListTagsItem `json:"tags"`
@@ -102,8 +107,11 @@ func New(k kb.KnowledgeBase, logger *slog.Logger) *Service {
 }
 
 // ListTags returns tag counts from the bound index.
-func (s Service) ListTags(ctx context.Context) (ListTagsOutput, error) {
+func (s Service) ListTags(ctx context.Context, input ListTagsInput) (ListTagsOutput, error) {
 	_ = ctx
+	if input.Limit < 0 {
+		return ListTagsOutput{}, apperr.CLIUsage("limit must be >= 0", nil)
+	}
 	db, err := s.Index.OpenReadonly()
 	if err != nil {
 		return ListTagsOutput{}, err
@@ -119,12 +127,18 @@ func (s Service) ListTags(ctx context.Context) (ListTagsOutput, error) {
 	for _, tag := range tags {
 		out.Tags = append(out.Tags, ListTagsItem{Tag: tag.Tag, Count: tag.Count})
 	}
+	if input.Limit > 0 && len(out.Tags) > input.Limit {
+		out.Tags = out.Tags[:input.Limit]
+	}
 	return out, nil
 }
 
 // Backlinks resolves a note identifier and returns inbound links.
 func (s Service) Backlinks(ctx context.Context, input BacklinksInput) ([]Backlink, error) {
 	_ = ctx
+	if input.Limit < 0 {
+		return nil, apperr.CLIUsage("limit must be >= 0", nil)
+	}
 	db, err := s.Index.OpenReadonly()
 	if err != nil {
 		return nil, err

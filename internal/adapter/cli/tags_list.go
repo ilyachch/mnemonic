@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ilyachch/mnemonic/internal/service/searchsvc"
 	"github.com/spf13/cobra"
 )
 
@@ -22,31 +23,31 @@ func newTagsListCommand() *cobra.Command {
 		Use:   "list",
 		Short: "List tags",
 		RunE: func(cmd *cobra.Command, args []string) error {
-		runtime, err := runtimeAppForSelectedProject(cmd)
-		if err != nil {
-			return err
-		}
+			runtime, err := runtimeAppForSelectedProject(cmd)
+			if err != nil {
+				return err
+			}
 
-		if err = requireRuntimeSearchIndex(runtime); err != nil {
-			return err
-		}
+			if err = requireRuntimeSearchIndex(runtime); err != nil {
+				return err
+			}
 
-		tags, err := runtime.Services.Search.ListTags(commandContext(cmd))
-		if err != nil {
-			return err
-		}
+			tags, err := runtime.Services.Search.ListTags(commandContext(cmd), searchsvc.ListTagsInput{})
+			if err != nil {
+				return err
+			}
 
-		output := tagsListOutput{Tags: make([]tagsListItem, 0, len(tags.Tags))}
-		for _, tag := range tags.Tags {
-			output.Tags = append(output.Tags, tagsListItem{Tag: tag.Tag, Count: tag.Count})
-		}
-		if output.Tags == nil {
-			output.Tags = []tagsListItem{}
-		}
+			output := tagsListOutput{Tags: make([]tagsListItem, 0, len(tags.Tags))}
+			for _, tag := range tags.Tags {
+				output.Tags = append(output.Tags, tagsListItem{Tag: tag.Tag, Count: tag.Count})
+			}
+			if output.Tags == nil {
+				output.Tags = []tagsListItem{}
+			}
 
-		human := formatTagsListHuman(output.Tags)
-		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, output)
-	},
+			human := formatTagsListHuman(output.Tags)
+			return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, output)
+		},
 	}
 }
 

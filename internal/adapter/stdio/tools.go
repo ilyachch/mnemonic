@@ -418,15 +418,14 @@ func RegisterListTags(server *sdkmcp.Server, deps Dependencies) {
 		Description: listTagsDescription,
 		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input ListTagsInput) (*sdkmcp.CallToolResult, ListTagsOutput, error) {
-		out, err := deps.Search.ListTags(ctx)
+		if input.Limit < 0 {
+			return nil, ListTagsOutput{}, apperr.CLIUsage("limit must be >= 0", nil)
+		}
+		out, err := deps.Search.ListTags(ctx, searchsvc.ListTagsInput{Limit: input.Limit})
 		if err != nil {
 			return nil, ListTagsOutput{}, err
 		}
-		tags := out.Tags
-		if input.Limit > 0 && len(tags) > input.Limit {
-			tags = tags[:input.Limit]
-		}
-		return nil, ListTagsOutput{Tags: tags}, nil
+		return nil, ListTagsOutput{Tags: out.Tags}, nil
 	})
 }
 
@@ -436,6 +435,9 @@ func RegisterListBacklinks(server *sdkmcp.Server, deps Dependencies) {
 		Description: listBacklinksDescription,
 		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input ListBacklinksInput) (*sdkmcp.CallToolResult, ListBacklinksOutput, error) {
+		if input.Limit < 0 {
+			return nil, ListBacklinksOutput{}, apperr.CLIUsage("limit must be >= 0", nil)
+		}
 		links, err := deps.Search.Backlinks(ctx, searchsvc.BacklinksInput{Identifier: input.Identifier, Limit: input.Limit})
 		if err != nil {
 			return nil, ListBacklinksOutput{}, err
