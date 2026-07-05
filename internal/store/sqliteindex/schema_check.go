@@ -5,13 +5,12 @@ import (
 	"fmt"
 )
 
-const reindexHint = "; run `mnemonic project reindex` to resolve"
-
 var requiredTables = map[string][]string{
 	"notes":        {"note_id", "project_id", "slug", "rel_path", "title", "content_hash", "summary", "created_at", "updated_at"},
 	"note_tags":    {"note_id", "tag"},
-	"links":        {"link_id", "note_id", "to_note_id", "target", "label", "link_style", "source_kind", "relation_type", "is_resolved", "is_ambiguous", "source_line"},
+	"note_aliases": {"note_id", "alias"},
 	"observations": {"observation_id", "note_id", "kind", "value"},
+	"links":        {"link_id", "note_id", "to_note_id", "target", "label", "link_style", "source_kind", "relation_type", "is_resolved", "is_ambiguous", "source_line"},
 	"notes_fts":    {"note_id", "title", "summary", "tags", "aliases", "body"},
 }
 
@@ -21,11 +20,11 @@ func ValidateSchema(db *sql.DB) error {
 	for table, columns := range requiredTables {
 		existing, err := tableColumns(db, table)
 		if err != nil {
-			return fmt.Errorf("index is invalid: table %q is missing%s", table, reindexHint)
+			return fmt.Errorf("table %q is missing", table)
 		}
 		for _, col := range columns {
 			if !existing[col] {
-				return fmt.Errorf("index is invalid: column %q.%q is missing%s", table, col, reindexHint)
+				return fmt.Errorf("column %q.%q is missing", table, col)
 			}
 		}
 	}

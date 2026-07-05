@@ -120,6 +120,10 @@ func (s Store) OpenReadonly() (*sql.DB, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping index database: %w", err)
 	}
+	if err := ValidateSchema(db); err != nil {
+		_ = db.Close()
+		return nil, apperr.Corrupted("index is invalid; run `mnemonic project reindex`", err)
+	}
 	return db, nil
 }
 

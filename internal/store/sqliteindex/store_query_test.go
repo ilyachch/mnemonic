@@ -3,6 +3,7 @@ package sqliteindex
 import (
 	"database/sql"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -758,4 +759,152 @@ func findBySlug(results []SearchResult, slug string) *SearchResult {
 		}
 	}
 	return nil
+}
+
+func TestOpenReadonlyValidSchema(t *testing.T) {
+	dir := t.TempDir()
+	store := Store{IndexPath: filepath.Join(dir, "index.sqlite")}
+
+	db, err := store.Open()
+	require.NoError(t, err)
+	require.NoError(t, ApplySchema(db))
+	require.NoError(t, db.Close())
+
+	db, err = store.OpenReadonly()
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+}
+
+func TestOpenReadonlyRejectsMissingNoteAliases(t *testing.T) {
+	dir := t.TempDir()
+	store := Store{IndexPath: filepath.Join(dir, "index.sqlite")}
+
+	db, err := store.Open()
+	require.NoError(t, err)
+	require.NoError(t, ApplySchema(db))
+	_, err = db.Exec(`DROP TABLE note_aliases`)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	_, err = store.OpenReadonly()
+	require.Error(t, err)
+
+	var appErr *apperr.Error
+	require.True(t, errors.As(err, &appErr), "expected apperr.Error, got: %v", err)
+	assert.Equal(t, apperr.CodeCorrupted, appErr.Code)
+	assert.Contains(t, appErr.Message, "mnemonic project reindex")
+	assert.Contains(t, appErr.Error(), "note_aliases")
+}
+
+func TestOpenReadonlyRejectsMissingRelationTypeColumn(t *testing.T) {
+	dir := t.TempDir()
+	store := Store{IndexPath: filepath.Join(dir, "index.sqlite")}
+
+	db, err := store.Open()
+	require.NoError(t, err)
+	require.NoError(t, ApplySchema(db))
+	_, err = db.Exec(`ALTER TABLE links DROP COLUMN relation_type`)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	_, err = store.OpenReadonly()
+	require.Error(t, err)
+
+	var appErr *apperr.Error
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, apperr.CodeCorrupted, appErr.Code)
+	assert.Contains(t, appErr.Message, "mnemonic project reindex")
+	assert.Contains(t, appErr.Error(), "links")
+	assert.Contains(t, appErr.Error(), "relation_type")
+}
+
+func TestOpenReadonlyRejectsMissingNotesFTS(t *testing.T) {
+	dir := t.TempDir()
+	store := Store{IndexPath: filepath.Join(dir, "index.sqlite")}
+
+	db, err := store.Open()
+	require.NoError(t, err)
+	require.NoError(t, ApplySchema(db))
+	_, err = db.Exec(`DROP TABLE notes_fts`)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	_, err = store.OpenReadonly()
+	require.Error(t, err)
+
+	var appErr *apperr.Error
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, apperr.CodeCorrupted, appErr.Code)
+	assert.Contains(t, appErr.Message, "mnemonic project reindex")
+	assert.Contains(t, appErr.Error(), "notes_fts")
+}
+
+func TestOpenReadonlyDoesNotModifyIndexFile(t *testing.T) {
+	dir := t.TempDir()
+	store := Store{IndexPath: filepath.Join(dir, "index.sqlite")}
+
+	db, err := store.Open()
+	require.NoError(t, err)
+	require.NoError(t, ApplySchema(db))
+	_, err = db.Exec(`INSERT INTO notes(note_id, project_id, slug, rel_path, title, content_hash, created_at, updated_at) VALUES ('n1', 'p1', 'test', 'test.md', 'Test', 'hash', 0, 0)`)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO links(link_id, note_id, target, is_resolved, is_ambiguous, source_line) VALUES ('l1', 'n1', 't1', 0, 0, 1)`)
+	require.NoError(t, err)
+	_, err = db.Exec(`DROP TABLE notes_fts`)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	origStat := statIndexFile(t, store.IndexPath)
+
+	_, err = store.OpenReadonly()
+	require.Error(t, err)
+
+	afterStat := statIndexFile(t, store.IndexPath)
+	assert.Equal(t, origStat.size, afterStat.size, "index file size changed")
+	assert.True(t, origStat.modTime.Equal(afterStat.modTime), "index file mod time changed")
+}
+
+func statIndexFile(t *testing.T, path string) struct {
+	size    int64
+	modTime time.Time
+} {
+	t.Helper()
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	return struct {
+		size    int64
+		modTime time.Time
+	}{size: info.Size(), modTime: info.ModTime()}
+}
+
+func TestOpenReadonlyAfterReindexSearchSucceeds(t *testing.T) {
+	dir := t.TempDir()
+	store := Store{IndexPath: filepath.Join(dir, "index.sqlite")}
+
+	db, err := store.Open()
+	require.NoError(t, err)
+	require.NoError(t, ApplySchema(db))
+	_, err = db.Exec(`DROP TABLE notes_fts`)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	_, err = store.OpenReadonly()
+	require.Error(t, err)
+
+	db, err = store.Open()
+	require.NoError(t, err)
+	require.NoError(t, ApplySchema(db))
+
+	now := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC)
+	insertQueryNote(t, db, "n1", "hello", "Hello", "hello.md", "hello world", now, []string{"frontmatter:test"})
+	require.NoError(t, db.Close())
+
+	db, err = store.OpenReadonly()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	results, err := store.SearchAdvanced(db, SearchOptions{Queries: []string{"hello"}, Limit: 10}, now)
+	require.NoError(t, err)
+	require.NotEmpty(t, results)
+	assert.Equal(t, "hello", results[0].Slug)
 }
