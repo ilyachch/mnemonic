@@ -172,7 +172,22 @@ mnemonic notes edit "deployment-guide" --append "\n- [todo] verify rollback proc
 mnemonic notes edit "deployment-guide" --replace-body "New body text" --if-match-hash "abc123..."
 
 # Merge frontmatter
-mnemonic notes edit "deployment-guide" --set tags="ops,infra"
+mnemonic notes edit "deployment-guide" --set type=decision
+
+# Set or replace tags
+mnemonic notes edit "deployment-guide" --set-tags ops --set-tags reference
+
+# Clear all tags
+mnemonic notes edit "deployment-guide" --clear-tags
+
+# Set or replace aliases
+mnemonic notes edit "deployment-guide" --set-aliases deploy-intro
+
+# Clear all aliases
+mnemonic notes edit "deployment-guide" --clear-aliases
+
+# Combine clear and set in one call
+mnemonic notes edit "deployment-guide" --clear-tags --set-aliases current
 ```
 
 ### Display a Note
@@ -240,8 +255,10 @@ mnemonic notes diagnose --include-suggestions
 
 ### Rebuild Index
 
+The SQLite index is a disposable artifact derived from the Markdown notes. Incompatible index schemas are not automatically migrated or rebuilt — the application rejects an invalid index with the message `index is invalid; run `mnemonic project reindex``.
+
 ```bash
-mnemonic index rebuild
+mnemonic project reindex
 ```
 
 ### Run Health Checks
@@ -336,16 +353,23 @@ Diagnostic kinds: `invalid_frontmatter`, `missing_required_field`, `missing_summ
 List all notes with pagination (`limit`, `cursor`).
 
 ### `list_tags`
-List all tags with usage counts.
+List all tags with usage counts. `limit`: 0 = no explicit limit, positive = max results, negative = validation error.
 
 ### `list_backlinks`
-List notes that link to a given note (`identifier`, `limit`).
+List notes that link to a given note (`identifier`, `limit`). `limit`: 0 = no explicit limit, positive = max results, negative = validation error.
 
 ### `create_note`
 Create a note with `title`, `body`, and `tags`.
 
 ### `edit_note`
-Edit a note by `identifier` with one of `append`, `replace_body` (requires `if_match_hash`), or `merge_frontmatter`.
+Edit a note by `identifier` with one of `append`, `replace_body` (requires `if_match_hash`), `merge_frontmatter`, typed `tags`, or typed `aliases`.
+
+`tags` and `aliases` are presence-aware:
+- field absent → do not modify
+- empty array `[]` → clear the field
+- non-empty array `["a", "b"]` → replace the field with the given list
+
+`tags` and `aliases` must not be passed through `merge_frontmatter`.
 
 ### `delete_note`
 Delete or trash a note by `identifier`. `hard_delete` requires `if_match_hash`.

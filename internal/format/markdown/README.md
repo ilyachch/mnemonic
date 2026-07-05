@@ -15,6 +15,7 @@ This package does not own file I/O, note locking, project resolution, index stor
 - `tags` and `aliases` must be YAML lists of strings. Scalar values for these fields are rejected.
 - Body parsing must preserve note text while extracting tags, observations, and relations.
 - Rendering writes canonical fields and preserves extra frontmatter fields where possible.
+- Legacy fields (such as `permalink`) are silently stripped during render and rejected by edit operations.
 
 ## Tests to update when changing this package
 

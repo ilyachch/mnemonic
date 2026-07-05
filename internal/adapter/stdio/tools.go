@@ -54,7 +54,7 @@ Parameters:
 	listTagsDescription      = `List tags in this knowledge base.`
 	listBacklinksDescription = `List backlinks for a note.`
 	createNoteDescription    = `Create a new note.`
-	editNoteDescription      = `Edit an existing note.`
+	editNoteDescription      = `Edit an existing note by appending to the body, replacing the body, merging frontmatter, or setting/clearing tags and aliases. Tags and aliases are presence-aware: absent=no change, empty array=clear, non-empty=replace. Must not set tags or aliases through merge_frontmatter; use the typed fields.`
 	deleteNoteDescription    = `Delete a note.`
 	rebuildIndexDescription  = `Rebuild the index.`
 	doctorDescription        = `Run index and content health checks.`

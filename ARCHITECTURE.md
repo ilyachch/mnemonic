@@ -122,10 +122,20 @@ The index is always rebuilt from scratch. Each rebuild creates a new temporary d
 1. All Markdown files in the project's root directory are scanned (excluding system files and the `.trash` directory).
 2. Metadata from the YAML frontmatter, wikilinks, inline tags, observations, and declared relations are extracted from each document.
 3. A temporary database file (`index.new.sqlite`) is created.
-4. The schema tables (`notes`, `note_tags`, `observations`, `links`, `notes_fts`) are applied.
+4. The schema tables (`notes`, `note_tags`, `note_aliases`, `observations`, `links`, `notes_fts`) are applied.
 5. Data is written to the temporary database, and relations between notes are resolved.
 6. Structural integrity is validated via `PRAGMA quick_check`.
 7. The connection is closed, old index files (including `-wal` and `-shm`) are deleted, and the temporary file is atomically renamed to the primary file name.
+
+### Index Validation
+
+When opening an existing index for read operations, the application validates that all required tables and columns are present (`ValidateSchema` in `internal/store/sqliteindex/schema_check.go`).
+
+- Index validation is **structural only** — it does not use version numbers or `PRAGMA user_version`.
+- An incompatible index is **rejected** with the message `index is invalid; run \`mnemonic project reindex\``.
+- The application **never** performs automatic schema migration or implicit rebuild.
+- The index is a disposable derived artifact; repair is always a manual explicit `mnemonic project reindex`.
+- `index_runs` is not part of the read contract and is only used as internal rebuild bookkeeping.
 
 ---
 

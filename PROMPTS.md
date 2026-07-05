@@ -92,14 +92,14 @@ Below is the exact list of tools exposed to the Model Context Protocol client, i
 
 - **Description:** `List tags in this knowledge base.`
 - **Arguments:**
-  - `limit` (integer, optional): Max tags to return.
+  - `limit` (integer, optional): Max tags to return. 0 = no limit, positive = maximum count, negative = validation error.
 
 #### `list_backlinks`
 
 - **Description:** `List backlinks for a note.`
 - **Arguments:**
   - `identifier` (string, required): Note ID, slug, or title to find references to.
-  - `limit` (integer, optional): Limit results.
+  - `limit` (integer, optional): Limit results. 0 = no limit, positive = maximum count, negative = validation error.
 
 #### `diagnose_notes`
 
@@ -134,7 +134,9 @@ Below is the exact list of tools exposed to the Model Context Protocol client, i
   - `identifier` (string, required): The note selector (ID, slug, path, or title).
   - `append` (string, optional): Text to append to the end of the markdown body.
   - `replace_body` (string, optional): New text to completely overwrite the body.
-  - `merge_frontmatter` (object, optional): Key-value string map to update or add frontmatter metadata.
+  - `merge_frontmatter` (object, optional): Key-value string map to update or add frontmatter metadata. Must not set `tags` or `aliases` — use the typed fields instead.
+  - `tags` ([]string, optional): Replace the tags list. Field absent = no change, empty array = clear, non-empty = replace.
+  - `aliases` ([]string, optional): Replace the aliases list. Field absent = no change, empty array = clear, non-empty = replace.
   - `if_match_hash` (string, optional): Expected hash of the current file version to ensure safe write concurrency.
 
 #### `delete_note`
