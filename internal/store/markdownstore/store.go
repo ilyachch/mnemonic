@@ -889,10 +889,12 @@ func applyEditSet(note *markdown.Note, set map[string]string) error {
 
 	for key, value := range set {
 		switch key {
-		case "mnemonic_note_id", "created_at":
+		case "mnemonic_note_id", "created_at", "updated_at":
 			return apperr.Unsafe(fmt.Sprintf("frontmatter %q is protected", key), nil)
 		case "tags", "aliases":
 			return apperr.CLIUsage(fmt.Sprintf("frontmatter %q must be updated as a list, not a string", key), nil)
+		case "permalink":
+			return apperr.CLIUsage(fmt.Sprintf("frontmatter %q is removed", key), nil)
 		case "title":
 			note.Title = value
 			note.Frontmatter[key] = value

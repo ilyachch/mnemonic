@@ -108,6 +108,25 @@ func TestRenderNoteSingleTagUsesYAMLList(t *testing.T) {
 	require.Equal(t, note.Tags, roundTripped.Tags)
 }
 
+func TestRenderNoteStripsPermalink(t *testing.T) {
+	t.Parallel()
+
+	note := Note{
+		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440030",
+		Slug:           "permalink-strip",
+		Frontmatter: map[string]any{
+			"permalink": "legacy-permalink",
+		},
+		Body: []byte("body\n"),
+	}
+
+	rendered, err := RenderNote(note)
+	require.NoError(t, err)
+
+	renderedText := string(rendered)
+	require.NotContains(t, renderedText, "permalink:")
+}
+
 func assertOrderedSubstrings(t *testing.T, text string, substrings ...string) {
 	t.Helper()
 
