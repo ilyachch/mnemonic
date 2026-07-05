@@ -23,7 +23,6 @@ type Bootstrap struct {
 	Config   *config.Config
 	Paths    paths.EffectivePaths
 	Services Services
-	Logger   *slog.Logger
 }
 
 // New builds the application container from environment and config discovery.
