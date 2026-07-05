@@ -117,7 +117,7 @@ Markdown Files ──► Parser ──► NoteDoc ──► index.new.sqlite ─
 
 ### Index Rebuild Lifecycle
 
-The index database schema is treated as immutable. If schema version mismatches or corruption are detected, the database is rebuilt from scratch:
+The index is always rebuilt from scratch. Each rebuild creates a new temporary database, populates it, and atomically replaces the old index file:
 
 1. All Markdown files in the project's root directory are scanned (excluding system files and the `.trash` directory).
 2. Metadata from the YAML frontmatter, wikilinks, inline tags, observations, and declared relations are extracted from each document.

@@ -794,15 +794,15 @@ Completely purge references to:
 
 ## Recommended Order of Execution
 
-1. `MNEMONIC-201` — Strip schema upgrades and versioning logic.
-2. `MNEMONIC-203` — Implement typed errors for `ShowMany`.
-3. `MNEMONIC-206` — Enforce strict validation rules for tags/aliases lists.
-4. `MNEMONIC-207` — Centralize shared input validation limits.
-5. `MNEMONIC-202` — Fix logger dependency injection paths.
-6. `MNEMONIC-204` — Append duration metrics to batch-read logging events.
-7. `MNEMONIC-205` — Inject the clock abstraction into the diagnostics path.
-8. `MNEMONIC-209` — Retain original queries in matched results.
-9. `MNEMONIC-210` — Unify Unix timestamp utilization across MCP tools.
-10. `MNEMONIC-208` — Batch candidate suggestions query execution.
-11. `MNEMONIC-211` — Clean up the legacy store search engine.
-12. `MNEMONIC-212` — Overhaul documentation assets.
+1. [x] `MNEMONIC-201` — Strip schema upgrades and versioning logic.
+2. [x] `MNEMONIC-203` — Implement typed errors for `ShowMany`.
+3. [x] `MNEMONIC-206` — Enforce strict validation rules for tags/aliases lists.
+4. [x] `MNEMONIC-207` — Centralize shared input validation limits.
+5. [x] `MNEMONIC-202` — Fix logger dependency injection paths.
+6. [x] `MNEMONIC-204` — Append duration metrics to batch-read logging events.
+7. [x] `MNEMONIC-205` — Inject the clock abstraction into the diagnostics path.
+8. [x] `MNEMONIC-209` — Retain original queries in matched results.
+9. [x] `MNEMONIC-210` — Unify Unix timestamp utilization across MCP tools.
+10. [x] `MNEMONIC-208` — Batch candidate suggestions query execution.
+11. [x] `MNEMONIC-211` — Clean up the legacy store search engine.
+12. [x] `MNEMONIC-212` — Overhaul documentation assets.

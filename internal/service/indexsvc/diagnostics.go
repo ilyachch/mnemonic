@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/format/markdown"
 	"github.com/ilyachch/mnemonic/internal/store/markdownstore"
 	"github.com/ilyachch/mnemonic/internal/store/sqliteindex"
@@ -73,6 +73,13 @@ type DiagnosticCandidate struct {
 func (s Service) Diagnose(ctx context.Context, input DiagnoseInput) (DiagnoseOutput, error) {
 	_ = ctx
 
+	if input.Limit <= 0 {
+		input.Limit = 50
+	}
+	if err := validateDiagnoseInput(input); err != nil {
+		return DiagnoseOutput{}, err
+	}
+
 	kindFilter := buildKindFilter(input.Kinds)
 	issues, err := s.collectIssues(kindFilter)
 	if err != nil {
@@ -81,9 +88,6 @@ func (s Service) Diagnose(ctx context.Context, input DiagnoseInput) (DiagnoseOut
 
 	totalCount := len(issues)
 	cursor := input.Cursor
-	if cursor < 0 {
-		cursor = 0
-	}
 	if cursor >= len(issues) {
 		return DiagnoseOutput{TotalCount: totalCount}, nil
 	}
@@ -121,6 +125,34 @@ func buildKindFilter(kinds []DiagnosticKind) map[DiagnosticKind]bool {
 		filter[k] = true
 	}
 	return filter
+}
+
+var validDiagnosticKinds = map[DiagnosticKind]bool{
+	KindInvalidFrontmatter:   true,
+	KindMissingRequiredField: true,
+	KindMissingSummary:       true,
+	KindMissingTimestamp:     true,
+	KindInvalidTimestamp:     true,
+	KindDuplicateSlug:        true,
+	KindDuplicateAlias:       true,
+	KindUnresolvedLink:       true,
+	KindAmbiguousLink:        true,
+	KindEmptyBody:            true,
+}
+
+func validateDiagnoseInput(input DiagnoseInput) error {
+	if input.Limit < 1 || input.Limit > 200 {
+		return apperr.CLIUsage("limit must be between 1 and 200", nil)
+	}
+	if input.Cursor < 0 {
+		return apperr.CLIUsage("cursor must be >= 0", nil)
+	}
+	for _, k := range input.Kinds {
+		if !validDiagnosticKinds[k] {
+			return apperr.CLIUsage("unknown diagnostic kind: "+string(k), nil)
+		}
+	}
+	return nil
 }
 
 type kindFilter map[DiagnosticKind]bool
@@ -431,15 +463,18 @@ func collectLinkIssueTargets(issues []DiagnosticIssue) map[string]bool {
 
 func searchCandidatesByTarget(store sqliteindex.Store, db *sql.DB, targets map[string]bool) map[string][]DiagnosticCandidate {
 	candidatesByTarget := make(map[string][]DiagnosticCandidate, len(targets))
-	now := time.Now()
+
+	targetList := make([]string, 0, len(targets))
 	for target := range targets {
-		hits, err := store.SearchAdvanced(db, sqliteindex.SearchOptions{
-			Queries: []string{target},
-			Limit:   3,
-		}, now)
-		if err != nil {
-			continue
-		}
+		targetList = append(targetList, target)
+	}
+
+	hitsByTarget, err := store.SearchCandidatesByTargets(db, targetList, 3)
+	if err != nil {
+		return candidatesByTarget
+	}
+
+	for target, hits := range hitsByTarget {
 		candidates := make([]DiagnosticCandidate, 0, len(hits))
 		for _, hit := range hits {
 			candidates = append(candidates, DiagnosticCandidate{
@@ -451,5 +486,6 @@ func searchCandidatesByTarget(store sqliteindex.Store, db *sql.DB, targets map[s
 		}
 		candidatesByTarget[target] = candidates
 	}
+
 	return candidatesByTarget
 }

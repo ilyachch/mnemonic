@@ -114,17 +114,6 @@ func (s Service) Doctor(ctx context.Context) (DoctorOutput, error) {
 	}
 	result.addCheck(DoctorCheck{Name: "index quick_check", Status: "ok"})
 
-	schemaStatus, err := s.Index.SchemaStatus()
-	if err != nil {
-		return DoctorOutput{}, err
-	}
-	if schemaStatus != sqliteindex.SchemaStatusOK {
-		result.Status = "needs_reindex"
-		result.addCheck(DoctorCheck{Name: "index schema", Status: "needs_reindex"})
-		return result, nil
-	}
-	result.addCheck(DoctorCheck{Name: "index schema", Status: "ok"})
-
 	dupUUIDs, dupSlugs, unresolved, trashIgnored, err := doctorNoteChecks(root, s.Index)
 	if err != nil {
 		return DoctorOutput{}, err

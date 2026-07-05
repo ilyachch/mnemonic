@@ -27,27 +27,6 @@ type Store struct {
 	KBID      string
 }
 
-// SchemaStatus describes whether an existing index can be reused.
-type SchemaStatus string
-
-const (
-	// SchemaStatusOK indicates that the database schema is compatible.
-	SchemaStatusOK SchemaStatus = "ok"
-	// SchemaStatusNeedsRebuild indicates that the index must be rebuilt.
-	SchemaStatusNeedsRebuild SchemaStatus = "needs_rebuild"
-)
-
-// SearchHit is a single FTS search result from the index database.
-type SearchHit struct {
-	NoteID      string  `json:"note_id"`
-	Slug        string  `json:"slug"`
-	Title       string  `json:"title"`
-	Path        string  `json:"path"`
-	Score       float64 `json:"score"`
-	Snippet     string  `json:"snippet"`
-	ContentHash string  `json:"content_hash"`
-}
-
 // TagCount is a grouped tag row from the index database.
 type TagCount struct {
 	Tag   string `json:"tag"`
@@ -192,78 +171,6 @@ func (s Store) QuickCheck() error {
 	return nil
 }
 
-// CheckSchemaStatus reports whether the current DB schema is compatible.
-func (s Store) CheckSchemaStatus(db *sql.DB) (SchemaStatus, error) {
-	return CheckSchemaStatus(db)
-}
-
-// SchemaStatus opens the index read-only and reports whether the schema is compatible.
-func (s Store) SchemaStatus() (SchemaStatus, error) {
-	db, err := s.OpenReadonly()
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = db.Close() }()
-
-	return CheckSchemaStatus(db)
-}
-
-// Search runs an FTS query against the index database.
-func (s Store) Search(db *sql.DB, query string, limit int, tag string) ([]SearchHit, error) {
-	if db == nil {
-		return nil, errors.New("db is required")
-	}
-	query = sanitizeFTSQuery(query)
-	if strings.TrimSpace(query) == "" {
-		return nil, errors.New("query is required")
-	}
-	if limit <= 0 {
-		limit = 20
-	}
-	tag = strings.TrimSpace(tag)
-
-	sqlQuery := `
-		SELECT n.note_id, n.slug, n.title, n.rel_path, bm25(notes_fts, 10.0, 5.0, 5.0, 2.0, 1.0) AS score,
-		       snippet(notes_fts, 5, '[', ']', '...', 12) AS snippet,
-		       n.content_hash
-		FROM notes_fts
-		JOIN notes n ON n.note_id = notes_fts.note_id
-	`
-	args := []any{query}
-	where := `WHERE notes_fts MATCH ?`
-	if tag != "" {
-		where += ` AND EXISTS (
-			SELECT 1
-			FROM note_tags nt
-			WHERE nt.note_id = n.note_id
-			  AND nt.tag LIKE ? ESCAPE '\'
-		)`
-		args = append(args, "%:"+escapeTagPattern(tag))
-	}
-	sqlQuery += "\n" + where + "\nORDER BY score ASC\nLIMIT ?"
-	args = append(args, limit)
-
-	rows, err := db.Query(sqlQuery, args...)
-	if err != nil {
-		return nil, fmt.Errorf("search query: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	results := make([]SearchHit, 0)
-	for rows.Next() {
-		var r SearchHit
-		if err := rows.Scan(&r.NoteID, &r.Slug, &r.Title, &r.Path, &r.Score, &r.Snippet, &r.ContentHash); err != nil {
-			return nil, fmt.Errorf("scan search result: %w", err)
-		}
-		results = append(results, r)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate search results: %w", err)
-	}
-
-	return results, nil
-}
-
 // SearchAdvanced runs an advanced search with multi-query, time filters, tag
 // filters, graph-aware reranking, and optional related notes.
 func (s Store) SearchAdvanced(db *sql.DB, opts SearchOptions, now time.Time) ([]SearchResult, error) {
@@ -339,6 +246,11 @@ func searchParamsValid(hasQuery, hasTimeFilter, hasTagFilter bool) bool {
 
 const rrfK = 60.0
 
+type normalizedQuery struct {
+	Original string
+	FTS      string
+}
+
 func (s Store) searchMultiQuery(db *sql.DB, opts SearchOptions, ca, cb, ua, ub *int64) ([]SearchResult, error) {
 	timeClause, timeArgs := buildTimeFilterClause(ca, cb, ua, ub)
 	tagClause, tagArgs := buildTagFilterClause(opts.Tags)
@@ -358,8 +270,8 @@ func (s Store) searchMultiQuery(db *sql.DB, opts SearchOptions, ca, cb, ua, ub *
 	}
 	docs := make(map[string]*docEntry)
 
-	for _, q := range queries {
-		hits, err := runFTSSearch(db, q, candidateLimit, timeClause, timeArgs, tagClause, tagArgs)
+	for _, nq := range queries {
+		hits, err := runFTSSearch(db, nq.FTS, candidateLimit, timeClause, timeArgs, tagClause, tagArgs)
 		if err != nil {
 			return nil, err
 		}
@@ -373,7 +285,7 @@ func (s Store) searchMultiQuery(db *sql.DB, opts SearchOptions, ca, cb, ua, ub *
 			}
 			entry.result.Score += 1.0 / (rrfK + float64(rank+1))
 			entry.matchCount++
-			entry.matchedQueries[q] = true
+			entry.matchedQueries[nq.Original] = true
 			if rank < entry.bestRank {
 				entry.bestRank = rank
 				entry.result.Snippet = hit.Snippet
@@ -397,9 +309,9 @@ func (s Store) searchMultiQuery(db *sql.DB, opts SearchOptions, ca, cb, ua, ub *
 	return results, nil
 }
 
-func dedupQueries(queries []string) []string {
+func dedupQueries(queries []string) []normalizedQuery {
 	seen := make(map[string]bool, len(queries))
-	result := make([]string, 0, len(queries))
+	result := make([]normalizedQuery, 0, len(queries))
 	for _, q := range queries {
 		clean := sanitizeFTSQuery(q)
 		if strings.TrimSpace(clean) == "" {
@@ -409,7 +321,10 @@ func dedupQueries(queries []string) []string {
 			continue
 		}
 		seen[clean] = true
-		result = append(result, clean)
+		result = append(result, normalizedQuery{
+			Original: strings.TrimSpace(q),
+			FTS:      clean,
+		})
 	}
 	return result
 }
@@ -1085,6 +1000,65 @@ func (s Store) UnresolvedLinkCount() (int, error) {
 	return s.CountUnresolvedLinks(db)
 }
 
+// SearchCandidatesByTargets looks up candidate notes for multiple link targets in a single
+// composite query. Returns at most 3 candidates per target with deterministic ordering.
+func (s Store) SearchCandidatesByTargets(db *sql.DB, targets []string, limitPerTarget int) (map[string][]SearchResult, error) {
+	if db == nil {
+		return nil, errors.New("db is required")
+	}
+	if len(targets) == 0 {
+		return map[string][]SearchResult{}, nil
+	}
+	if limitPerTarget <= 0 {
+		limitPerTarget = 3
+	}
+
+	parts := make([]string, 0, len(targets))
+	args := make([]any, 0, len(targets)*2)
+	for _, target := range targets {
+		ftsQuery := sanitizeFTSQuery(target)
+		if strings.TrimSpace(ftsQuery) == "" {
+			continue
+		}
+		parts = append(parts, `SELECT ? AS _target, n.note_id, n.slug, n.title, n.rel_path,
+			bm25(notes_fts, 10.0, 5.0, 5.0, 2.0, 1.0) AS score,
+			snippet(notes_fts, 5, '[', ']', '...', 12) AS snippet,
+			n.content_hash, n.summary
+		FROM notes_fts
+		JOIN notes n ON n.note_id = notes_fts.note_id
+		WHERE notes_fts MATCH ?
+		ORDER BY score ASC
+		LIMIT ?`)
+		args = append(args, target, ftsQuery, limitPerTarget)
+	}
+
+	if len(parts) == 0 {
+		return map[string][]SearchResult{}, nil
+	}
+
+	query := strings.Join(parts, " UNION ALL ")
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("candidate search: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	result := make(map[string][]SearchResult, len(targets))
+	for rows.Next() {
+		var target string
+		var r SearchResult
+		if err := rows.Scan(&target, &r.NoteID, &r.Slug, &r.Title, &r.Path, &r.Score, &r.Snippet, &r.ContentHash, &r.Summary); err != nil {
+			return nil, fmt.Errorf("scan candidate: %w", err)
+		}
+		result[target] = append(result[target], r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate candidates: %w", err)
+	}
+
+	return result, nil
+}
+
 func (s Store) validateIndexPath() error {
 	if strings.TrimSpace(s.IndexPath) == "" {
 		return errors.New("index path is required")
@@ -1115,7 +1089,6 @@ func openDB(path string) (*sql.DB, error) {
 		`PRAGMA foreign_keys = ON`,
 		`PRAGMA journal_mode = WAL`,
 		`PRAGMA busy_timeout = 5000`,
-		`PRAGMA user_version = 2`,
 	}
 	for _, pragma := range pragmas {
 		if _, err := db.Exec(pragma); err != nil {

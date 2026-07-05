@@ -10,7 +10,7 @@ Notes are indexed into a local SQLite database with FTS5 (Full-Text Search) for 
 
 - **Local-first Architecture**: Plain Markdown files and an SQLite index stored in the user's workspace.
 - **Markdown Frontmatter**: Every note carries YAML frontmatter with `mnemonic_note_id`, `slug`, `title`, `tags`, `summary`, `created_at`, `updated_at`, `type`, and `aliases`.
-- **Unix Integer Timestamps**: `created_at` and `updated_at` are stored as Unix epoch seconds (e.g. `1741737600`), parsed as integers, and returned in RFC 3339 format by tool interfaces.
+- **Unix Integer Timestamps**: `created_at` and `updated_at` are stored and returned as Unix epoch seconds (e.g. `1741737600`).
 - **Slug-based Wiki-Links**: `[[target-slug]]` and `[[target-slug|Display Label]]` syntax for bidirectional linking. Standard markdown links are also supported: `[Label](target-slug.md)`.
 - **Inline Metadata**:
   - Inline hashtags (`#tag`) extracted alongside frontmatter tags.
@@ -297,7 +297,7 @@ Multi-query FTS5 search with time and tag filters, graph-aware reranking, and op
 
 | Parameter | Type | Description |
 |---|---|---|
-| `queries` | `[]string` | FTS5 query strings; submit phrasing variants |
+| `queries` | `[]string` | FTS5 query strings; max 8, 500 Unicode chars each (submit phrasing variants) |
 | `tags` | `[]string` | Filter by tags (AND logic) |
 | `created_before` | `int64` | Unix timestamp, upper bound for `created_at` |
 | `created_after` | `int64` | Unix timestamp, lower bound for `created_at` |
@@ -305,20 +305,20 @@ Multi-query FTS5 search with time and tag filters, graph-aware reranking, and op
 | `updated_after` | `int64` | Unix timestamp, lower bound for `updated_at` |
 | `created_since` | `string` | Relative duration (e.g. `"24h"`, `"7d"`) |
 | `updated_since` | `string` | Relative duration (e.g. `"24h"`, `"7d"`) |
-| `limit` | `int` | Max results (default 10) |
+| `limit` | `int` | Max results (1–100, default 10) |
 | `include_related` | `bool` | Include `related_notes` array per hit |
 | `debug` | `bool` | Expose `path`, `score`, `content_hash` |
 
+Results include `note_id`, `slug`, `title`, `snippet`, `summary`, `tags`, `matched_queries` (original query strings that matched), and optionally `related_notes`, `path`, `score`, `content_hash`.
+
 ### `read_notes`
-Batch-read notes by an array of identifiers.
+Batch-read notes by an array of identifiers (max 50). Returns a `notes` array, a `missing` array for unresolvable identifiers, and an `issues` array with per-selector errors (ambiguous, corrupted, io_error, internal).
 
 | Parameter | Type | Description |
 |---|---|---|
 | `identifiers` | `[]string` | note_ids, slugs, paths, or titles |
-| `fields` | `[]string` | Limit output fields |
-| `max_body_chars` | `int` | Truncate body to N characters |
-
-Returns `notes` array and a `missing` array for unresolvable identifiers.
+| `fields` | `[]string` | Select fields: summary, tags, body, path, frontmatter, content_hash, aliases, created_at, updated_at. Timestamps are Unix seconds. |
+| `max_body_chars` | `int` | Truncate body to N characters (0–100000) |
 
 ### `diagnose_notes`
 Scan for metadata issues, broken links, and content problems.
@@ -326,8 +326,8 @@ Scan for metadata issues, broken links, and content problems.
 | Parameter | Type | Description |
 |---|---|---|
 | `kinds` | `[]string` | Filter by kind (see list below) |
-| `limit` | `int` | Issues per page (default 50) |
-| `cursor` | `int` | Zero-based page offset |
+| `limit` | `int` | Issues per page (1–200, default 50) |
+| `cursor` | `int` | Zero-based page offset (>= 0) |
 | `include_suggestions` | `bool` | Resolve broken links via search |
 
 Diagnostic kinds: `invalid_frontmatter`, `missing_required_field`, `missing_summary`, `missing_timestamp`, `invalid_timestamp`, `duplicate_slug`, `duplicate_alias`, `unresolved_link`, `ambiguous_link`, `empty_body`.
@@ -351,7 +351,7 @@ Edit a note by `identifier` with one of `append`, `replace_body` (requires `if_m
 Delete or trash a note by `identifier`. `hard_delete` requires `if_match_hash`.
 
 ### `rebuild_index`
-Rebuild the full-text search index.
+Rebuild the full-text search index from scratch.
 
 ### `doctor`
 Run index and content health checks.

@@ -381,7 +381,7 @@ func (s Service) Add(ctx context.Context, input AddInput) (AddResult, error) {
 		result.IndexError = err.Error()
 		return result, nil //nolint:nilerr // partial success: IndexError communicates the failure
 	}
-	if _, err := indexsvc.New(resolved, nil).Rebuild(ctx); err != nil {
+	if _, err := indexsvc.New(resolved, s.Logger).Rebuild(ctx); err != nil {
 		result.IndexStatus = "stale"
 		result.IndexError = err.Error()
 		return result, nil //nolint:nilerr // partial success: IndexError communicates the failure
@@ -477,7 +477,7 @@ func (s Service) finalizeImportIndexStatus(ctx context.Context, result ImportRes
 			})
 			continue
 		}
-		if _, err := indexsvc.New(resolved, nil).Rebuild(ctx); err != nil {
+		if _, err := indexsvc.New(resolved, s.Logger).Rebuild(ctx); err != nil {
 			result.IndexErrors = append(result.IndexErrors, ImportIndexError{
 				ProjectID: resolved.ID,
 				Slug:      resolved.Slug,
@@ -530,7 +530,7 @@ func (s Service) Init(ctx context.Context, input InitInput) (InitResult, error) 
 		IndexPath:    resolved.IndexPath,
 		IndexStatus:  "stale",
 	}
-	_, err = indexsvc.New(resolved, nil).Rebuild(ctx)
+	_, err = indexsvc.New(resolved, s.Logger).Rebuild(ctx)
 	if err != nil {
 		result.IndexError = err.Error()
 		return result, nil //nolint:nilerr // partial success: IndexError communicates the failure

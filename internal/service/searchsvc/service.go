@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
@@ -164,6 +165,14 @@ func (s Service) Backlinks(ctx context.Context, input BacklinksInput) ([]Backlin
 // filters, graph-aware reranking, and optional related notes.
 func (s Service) AdvancedSearch(ctx context.Context, input AdvancedSearchInput) ([]AdvancedSearchResult, error) {
 	_ = ctx
+
+	if input.Limit <= 0 {
+		input.Limit = 10
+	}
+	if err := validateAdvancedSearchInput(input); err != nil {
+		return nil, err
+	}
+
 	db, err := s.Index.OpenReadonly()
 	if err != nil {
 		return nil, err
@@ -233,4 +242,19 @@ func (s Service) AdvancedSearch(ctx context.Context, input AdvancedSearchInput) 
 		})
 	}
 	return out, nil
+}
+
+func validateAdvancedSearchInput(input AdvancedSearchInput) error {
+	if input.Limit < 1 || input.Limit > 100 {
+		return apperr.CLIUsage("limit must be between 1 and 100", nil)
+	}
+	if len(input.Queries) > 8 {
+		return apperr.CLIUsage("too many queries", nil)
+	}
+	for _, q := range input.Queries {
+		if utf8.RuneCountInString(q) > 500 {
+			return apperr.CLIUsage("query too long", nil)
+		}
+	}
+	return nil
 }

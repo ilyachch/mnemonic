@@ -187,6 +187,65 @@ func TestFrontmatterFieldError_TagsInvalidType(t *testing.T) {
 	assert.Equal(t, FieldErrKindInvalidStringList, fieldErr.Kind)
 }
 
+func TestFrontmatterFieldError_TagsScalarRejected(t *testing.T) {
+	t.Parallel()
+
+	_, err := ParseNote([]byte("---\n" +
+		"mnemonic_note_id: 550e8400-e29b-41d4-a716-446655440002\n" +
+		"title: Note\n" +
+		"created_at: 1780394400\n" +
+		"updated_at: 1780394400\n" +
+		"tags: payment\n" +
+		"---\n" +
+		"Body\n"))
+	require.Error(t, err)
+
+	var fieldErr *FrontmatterFieldError
+	require.True(t, errors.As(err, &fieldErr))
+	assert.Equal(t, "tags", fieldErr.Field)
+	assert.Equal(t, FieldErrKindInvalidStringList, fieldErr.Kind)
+}
+
+func TestFrontmatterFieldError_AliasesScalarRejected(t *testing.T) {
+	t.Parallel()
+
+	_, err := ParseNote([]byte("---\n" +
+		"mnemonic_note_id: 550e8400-e29b-41d4-a716-446655440002\n" +
+		"title: Note\n" +
+		"created_at: 1780394400\n" +
+		"updated_at: 1780394400\n" +
+		"aliases: \"old title\"\n" +
+		"---\n" +
+		"Body\n"))
+	require.Error(t, err)
+
+	var fieldErr *FrontmatterFieldError
+	require.True(t, errors.As(err, &fieldErr))
+	assert.Equal(t, "aliases", fieldErr.Field)
+	assert.Equal(t, FieldErrKindInvalidStringList, fieldErr.Kind)
+}
+
+func TestFrontmatterFieldError_TagsListWithNonString(t *testing.T) {
+	t.Parallel()
+
+	_, err := ParseNote([]byte("---\n" +
+		"mnemonic_note_id: 550e8400-e29b-41d4-a716-446655440002\n" +
+		"title: Note\n" +
+		"created_at: 1780394400\n" +
+		"updated_at: 1780394400\n" +
+		"tags:\n" +
+		"  - payment\n" +
+		"  - 123\n" +
+		"---\n" +
+		"Body\n"))
+	require.Error(t, err)
+
+	var fieldErr *FrontmatterFieldError
+	require.True(t, errors.As(err, &fieldErr))
+	assert.Equal(t, "tags", fieldErr.Field)
+	assert.Equal(t, FieldErrKindInvalidStringList, fieldErr.Kind)
+}
+
 func TestFrontmatterFieldError_TitleInvalidType(t *testing.T) {
 	t.Parallel()
 

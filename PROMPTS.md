@@ -69,22 +69,22 @@ Below is the exact list of tools exposed to the Model Context Protocol client, i
 
 #### `read_notes`
 
-- **Description:** Batch-read one or more notes by note_id, slug, path, or title. note_id, slug, and title are always returned.
+- **Description:** Batch-read one or more notes by note_id, slug, path, or title (max 50 identifiers). Unresolved identifiers are returned in `missing`. Per-selector errors are reported in `issues` with kind: ambiguous, corrupted, io_error, internal.
 - **Arguments:**
   - `identifiers` ([]string, required): Note IDs, slugs, file paths, or titles to resolve.
-  - `fields` ([]string, optional): Optional fields to include. Valid values: summary, tags, body, path, frontmatter, content_hash, aliases, created_at, updated_at.
-  - `max_body_chars` (int, optional): Truncate body to this many characters.
+  - `fields` ([]string, optional): Optional fields to include. Valid values: summary, tags, body, path, frontmatter, content_hash, aliases, created_at, updated_at. Timestamps are Unix seconds.
+  - `max_body_chars` (int, optional): Truncate body to this many characters (max 100000).
 
 #### `search_notes`
 
-- **Description:** Multi-query full-text search with time filters, tag filters, and graph-aware reranking. Results aggregated via Reciprocal Rank Fusion.
+- **Description:** Multi-query full-text search with time filters, tag filters, and graph-aware reranking. Results are combined via Reciprocal Rank Fusion. Each hit includes note_id, slug, title, snippet, summary, tags, and matched_queries (the original user-supplied query strings that matched).
 - **Arguments:**
-  - `queries` ([]string, optional): FTS5 query variants for multi-query search.
+  - `queries` ([]string, optional): FTS5 query variants (max 8, 500 Unicode characters each).
   - `tags` ([]string, optional): Filter results by tags (AND logic).
   - `created_before` / `created_after` (int64, optional): Unix timestamp filters.
   - `updated_before` / `updated_after` (int64, optional): Unix timestamp filters.
   - `created_since` / `updated_since` (string, optional): Relative duration filters (e.g. "24h", "7d").
-  - `limit` (integer, optional): Max results (defaults to 10).
+  - `limit` (integer, optional): Max results (1–100, defaults to 10).
   - `include_related` (boolean, optional): Include related notes (links and backlinks).
   - `debug` (boolean, optional): Include score, path, and content_hash in output.
 
@@ -103,11 +103,11 @@ Below is the exact list of tools exposed to the Model Context Protocol client, i
 
 #### `diagnose_notes`
 
-- **Description:** Scan notes for issues: invalid frontmatter, missing fields, missing timestamps, invalid timestamps, duplicate slugs/aliases, unresolved/ambiguous links, empty bodies.
+- **Description:** Scan notes for metadata and content issues. Supported kinds: invalid_frontmatter, missing_required_field, missing_summary, missing_timestamp, invalid_timestamp, duplicate_slug, duplicate_alias, unresolved_link, ambiguous_link, empty_body. Candidate suggestions for broken links are available via `include_suggestions`.
 - **Arguments:**
   - `kinds` ([]string, optional): Filter by diagnostic kind.
-  - `limit` (integer, optional): Page size (default 50).
-  - `cursor` (integer, optional): Pagination offset.
+  - `limit` (integer, optional): Page size (1–200, default 50).
+  - `cursor` (integer, optional): Zero-based pagination offset (must be >= 0).
   - `include_suggestions` (boolean, optional): Search for link target candidates.
 
 #### `doctor`

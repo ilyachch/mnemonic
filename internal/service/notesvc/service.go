@@ -3,12 +3,11 @@ package notesvc
 import (
 	"errors"
 	"log/slog"
-	"os"
-	"strings"
 	"time"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
+	"github.com/ilyachch/mnemonic/internal/platform/clock"
 	"github.com/ilyachch/mnemonic/internal/store/markdownstore"
 	"github.com/ilyachch/mnemonic/internal/store/sqliteindex"
 )
@@ -95,7 +94,8 @@ type ReadManyItem struct {
 
 // ReadManyInput configures a batch note read operation.
 type ReadManyInput struct {
-	Selectors []string
+	Selectors    []string
+	MaxBodyChars int
 }
 
 // ReadManyIssue describes an error encountered when resolving a single selector.
@@ -261,6 +261,15 @@ func (s Service) Show(selector string) (ShowResult, error) {
 // (ambiguous, corrupted, io_error, internal) are reported in Issues. Successful notes
 // are returned even when other selectors fail.
 func (s Service) ShowMany(input ReadManyInput) (ReadManyOutput, error) {
+	if len(input.Selectors) < 1 || len(input.Selectors) > 50 {
+		return ReadManyOutput{}, apperr.CLIUsage("identifiers count must be between 1 and 50", nil)
+	}
+	if input.MaxBodyChars < 0 || input.MaxBodyChars > 100000 {
+		return ReadManyOutput{}, apperr.CLIUsage("max_body_chars must be between 0 and 100000", nil)
+	}
+
+	start := clock.NowUTC()
+
 	var notes []ReadManyItem
 	var missing []string
 	var issues []ReadManyIssue
@@ -282,6 +291,7 @@ func (s Service) ShowMany(input ReadManyInput) (ReadManyOutput, error) {
 			"found_count", len(notes),
 			"missing_count", len(missing),
 			"issue_count", len(issues),
+			"duration", time.Since(start),
 		)
 	}
 
@@ -298,23 +308,14 @@ func classifyShowError(selector string, err error, missing []string, issues []Re
 			return missing, append(issues, ReadManyIssue{Selector: selector, Kind: "ambiguous", Message: err.Error()})
 		case apperr.CodeCorrupted:
 			return missing, append(issues, ReadManyIssue{Selector: selector, Kind: "corrupted", Message: err.Error()})
+		case apperr.CodeIO:
+			return missing, append(issues, ReadManyIssue{Selector: selector, Kind: "io_error", Message: err.Error()})
 		default:
 			return missing, append(issues, ReadManyIssue{Selector: selector, Kind: "internal", Message: err.Error()})
 		}
 	}
 
-	msg := err.Error()
-	if strings.Contains(msg, "parse note") || strings.Contains(msg, "parse frontmatter") {
-		return missing, append(issues, ReadManyIssue{Selector: selector, Kind: "corrupted", Message: msg})
-	}
-	if strings.Contains(msg, "read note") {
-		return missing, append(issues, ReadManyIssue{Selector: selector, Kind: "io_error", Message: msg})
-	}
-	if os.IsNotExist(err) || os.IsPermission(err) {
-		return missing, append(issues, ReadManyIssue{Selector: selector, Kind: "io_error", Message: msg})
-	}
-
-	return missing, append(issues, ReadManyIssue{Selector: selector, Kind: "internal", Message: msg})
+	return missing, append(issues, ReadManyIssue{Selector: selector, Kind: "internal", Message: err.Error()})
 }
 
 // HydrateResult aliases the markdownstore hydration payload.

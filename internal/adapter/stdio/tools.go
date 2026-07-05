@@ -4,7 +4,7 @@ import (
 	"context"
 	"strconv"
 	"strings"
-	"time"
+	"unicode/utf8"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/service/indexsvc"
@@ -102,8 +102,8 @@ type ReadNotesNote struct {
 	Path        *string         `json:"path,omitempty"`
 	Frontmatter *map[string]any `json:"frontmatter,omitempty"`
 	ContentHash *string         `json:"content_hash,omitempty"`
-	CreatedAt   *string         `json:"created_at,omitempty"`
-	UpdatedAt   *string         `json:"updated_at,omitempty"`
+	CreatedAt   *int64          `json:"created_at,omitempty"`
+	UpdatedAt   *int64          `json:"updated_at,omitempty"`
 }
 
 type SearchNotesInput struct {
@@ -345,7 +345,7 @@ func RegisterReadNotes(server *sdkmcp.Server, deps Dependencies) {
 		if err != nil {
 			return nil, ReadNotesOutput{}, err
 		}
-		output, err := deps.Notes.ShowMany(notesvc.ReadManyInput{Selectors: input.Identifiers})
+		output, err := deps.Notes.ShowMany(notesvc.ReadManyInput{Selectors: input.Identifiers, MaxBodyChars: input.MaxBodyChars})
 		if err != nil {
 			return nil, ReadNotesOutput{}, err
 		}
@@ -373,7 +373,7 @@ func RegisterSearchNotes(server *sdkmcp.Server, deps Dependencies, description s
 			return nil, SearchNotesOutput{}, apperr.CLIUsage("too many queries", nil)
 		}
 		for _, q := range input.Queries {
-			if len(q) > maxQueryLength {
+			if utf8.RuneCountInString(q) > maxQueryLength {
 				return nil, SearchNotesOutput{}, apperr.CLIUsage("query too long", nil)
 			}
 		}
@@ -813,11 +813,11 @@ func buildReadNotesNote(fields map[string]bool, resolved notesvc.ShowResult, max
 		note.ContentHash = &h
 	}
 	if fields["created_at"] {
-		ca := resolved.Note.CreatedAt.UTC().Format(time.RFC3339)
+		ca := resolved.Note.CreatedAt.Unix()
 		note.CreatedAt = &ca
 	}
 	if fields["updated_at"] {
-		ua := resolved.Note.UpdatedAt.UTC().Format(time.RFC3339)
+		ua := resolved.Note.UpdatedAt.Unix()
 		note.UpdatedAt = &ua
 	}
 	return note

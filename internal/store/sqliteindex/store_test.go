@@ -1,7 +1,6 @@
 package sqliteindex
 
 import (
-	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -35,10 +34,6 @@ func TestOpenCreatesFileAndPragmas(t *testing.T) {
 	var busyTimeout int
 	require.NoError(t, db.QueryRow(`PRAGMA busy_timeout`).Scan(&busyTimeout))
 	require.Equal(t, 5000, busyTimeout)
-
-	var userVersion int
-	require.NoError(t, db.QueryRow(`PRAGMA user_version`).Scan(&userVersion))
-	require.Equal(t, 2, userVersion)
 }
 
 func TestOpenReadonlyUsesReadOnlyMode(t *testing.T) {
@@ -133,25 +128,6 @@ func TestQuickCheckCorruptedFile(t *testing.T) {
 	var appErr *apperr.Error
 	require.True(t, errors.As(err, &appErr))
 	require.Equal(t, apperr.CodeCorrupted, appErr.Code)
-}
-
-func TestCheckSchemaStatus(t *testing.T) {
-	db, err := sql.Open(sqliteDriverName, "file::memory:?cache=shared")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
-
-	_, err = db.Exec(`PRAGMA user_version = 0`)
-	require.NoError(t, err)
-
-	status, err := (Store{}).CheckSchemaStatus(db)
-	require.NoError(t, err)
-	require.Equal(t, SchemaStatusNeedsRebuild, status)
-}
-
-func TestSchemaStatus_OpenError(t *testing.T) {
-	store := Store{IndexPath: "/nonexistent/path/index.sqlite"}
-	_, err := store.SchemaStatus()
-	require.Error(t, err)
 }
 
 func TestUnresolvedLinkCount_OpenError(t *testing.T) {

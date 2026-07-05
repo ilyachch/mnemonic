@@ -379,12 +379,12 @@ func (s Store) Show(selector string) (ShowResult, error) {
 
 	data, err := os.ReadFile(filepath.Join(s.rootDir(), filepath.FromSlash(resolved.Path)))
 	if err != nil {
-		return ShowResult{}, fmt.Errorf("read note %q: %w", resolved.Path, err)
+		return ShowResult{}, apperr.IO(fmt.Sprintf("read note %q", resolved.Path), err)
 	}
 
 	note, err := markdown.ParseNote(data)
 	if err != nil {
-		return ShowResult{}, fmt.Errorf("parse note %q: %w", resolved.Path, err)
+		return ShowResult{}, apperr.Corrupted(fmt.Sprintf("parse note %q", resolved.Path), err)
 	}
 
 	return ShowResult{

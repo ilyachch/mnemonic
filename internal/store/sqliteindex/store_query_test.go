@@ -12,20 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSearchFiltersAndLimits(t *testing.T) {
-	store, db := seedQueryStore(t)
-	t.Cleanup(func() { _ = db.Close() })
-
-	hits, err := store.Search(db, "queryterm!", 1, "django")
-	require.NoError(t, err)
-	require.Len(t, hits, 1)
-	require.Equal(t, "alpha", hits[0].Slug)
-
-	allHits, err := store.Search(db, "queryterm!", 10, "")
-	require.NoError(t, err)
-	require.Len(t, allHits, 2)
-}
-
 func TestListTagsAggregatesCounts(t *testing.T) {
 	store, db := seedQueryStore(t)
 	t.Cleanup(func() { _ = db.Close() })

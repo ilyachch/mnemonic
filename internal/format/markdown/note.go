@@ -124,10 +124,8 @@ func noteStringSliceField(raw map[string]any, key string) ([]string, error) {
 			out = append(out, s)
 		}
 		return out, nil
-	case string:
-		return []string{typed}, nil
 	default:
-		return nil, newStringSliceFieldError(key, fmt.Errorf("must be a string or list of strings, got %T", value))
+		return nil, newStringSliceFieldError(key, fmt.Errorf("must be a list of strings, got %T", value))
 	}
 }
 

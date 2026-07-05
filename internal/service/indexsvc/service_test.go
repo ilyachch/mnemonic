@@ -61,7 +61,7 @@ func TestDoctorHealthy(t *testing.T) {
 	result, err := svc.Doctor(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, "ok", result.Status)
-	require.Len(t, result.Checks, 10)
+	require.Len(t, result.Checks, 9)
 
 	checks := map[string]DoctorCheck{}
 	for _, check := range result.Checks {
@@ -72,7 +72,6 @@ func TestDoctorHealthy(t *testing.T) {
 	require.Equal(t, "ok", checks["mnemonic.toml"].Status)
 	require.Equal(t, "ok", checks["index exists"].Status)
 	require.Equal(t, "ok", checks["index quick_check"].Status)
-	require.Equal(t, "ok", checks["index schema"].Status)
 	require.Equal(t, "ok", checks["duplicate note UUIDs"].Status)
 	require.Equal(t, "ok", checks["duplicate note slugs"].Status)
 	require.Equal(t, "ok", checks["unresolved link count"].Status)

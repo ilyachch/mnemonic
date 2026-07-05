@@ -426,7 +426,7 @@ func TestClassifyShowErrorCorruptedGoesToIssues(t *testing.T) {
 }
 
 func TestClassifyShowErrorParseErrorBecomesCorrupted(t *testing.T) {
-	err := errors.New("parse note \"test.md\": yaml: line 1: could not find expected ':'")
+	err := apperr.Corrupted("parse note \"test.md\"", errors.New("yaml: line 1: could not find expected ':'"))
 	missing, issues := classifyShowError("a", err, nil, nil)
 	assert.Empty(t, missing)
 	require.Len(t, issues, 1)
@@ -434,15 +434,15 @@ func TestClassifyShowErrorParseErrorBecomesCorrupted(t *testing.T) {
 }
 
 func TestClassifyShowErrorReadErrorBecomesIOError(t *testing.T) {
-	err := errors.New("read note \"test.md\": permission denied")
+	err := apperr.IO("read note \"test.md\"", errors.New("permission denied"))
 	missing, issues := classifyShowError("a", err, nil, nil)
 	assert.Empty(t, missing)
 	require.Len(t, issues, 1)
 	assert.Equal(t, "io_error", issues[0].Kind)
 }
 
-func TestClassifyShowErrorOSPermissionBecomesIOError(t *testing.T) {
-	err := os.ErrPermission
+func TestClassifyShowErrorIOErrorBecomesIOError(t *testing.T) {
+	err := apperr.IO("io failure", os.ErrPermission)
 	missing, issues := classifyShowError("a", err, nil, nil)
 	assert.Empty(t, missing)
 	require.Len(t, issues, 1)
