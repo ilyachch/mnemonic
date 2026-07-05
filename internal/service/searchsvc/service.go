@@ -17,24 +17,6 @@ type Service struct {
 	Logger *slog.Logger
 }
 
-// SearchInput configures a runtime search query.
-type SearchInput struct {
-	Query string
-	Limit int
-	Tag   string
-}
-
-// SearchResult wraps a search hit.
-type SearchResult struct {
-	NoteID      string  `json:"note_id"`
-	Slug        string  `json:"slug"`
-	Title       string  `json:"title"`
-	Path        string  `json:"path"`
-	Score       float64 `json:"score"`
-	Snippet     string  `json:"snippet"`
-	ContentHash string  `json:"content_hash"`
-}
-
 // ListTagsOutput wraps a tag listing result.
 type ListTagsOutput struct {
 	Tags []ListTagsItem `json:"tags"`
@@ -107,7 +89,7 @@ type RelatedNoteItem struct {
 }
 
 // New constructs the runtime search service for one knowledge base.
-func New(k kb.KnowledgeBase) *Service {
+func New(k kb.KnowledgeBase, logger *slog.Logger) *Service {
 	return &Service{
 		Index: sqliteindex.Store{
 			IndexPath: k.IndexPath,
@@ -115,47 +97,8 @@ func New(k kb.KnowledgeBase) *Service {
 			StateDir:  k.StateDir,
 			KBID:      k.ID,
 		},
+		Logger: logger,
 	}
-}
-
-// Search runs a full-text query against the bound index.
-func (s Service) Search(ctx context.Context, input SearchInput) ([]SearchResult, error) {
-	_ = ctx
-	db, err := s.Index.OpenReadonly()
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = db.Close() }()
-
-	hits, err := s.Index.Search(db, input.Query, input.Limit, input.Tag)
-	if err != nil {
-		return nil, err
-	}
-
-	if s.Logger != nil {
-		s.Logger.Debug("search executed",
-			"terms", input.Query,
-			"tag", input.Tag,
-			"limit", input.Limit,
-		)
-		s.Logger.Info("search completed",
-			"count", len(hits),
-		)
-	}
-
-	out := make([]SearchResult, 0, len(hits))
-	for _, hit := range hits {
-		out = append(out, SearchResult{
-			NoteID:      hit.NoteID,
-			Slug:        hit.Slug,
-			Title:       hit.Title,
-			Path:        hit.Path,
-			Score:       hit.Score,
-			Snippet:     hit.Snippet,
-			ContentHash: hit.ContentHash,
-		})
-	}
-	return out, nil
 }
 
 // ListTags returns tag counts from the bound index.

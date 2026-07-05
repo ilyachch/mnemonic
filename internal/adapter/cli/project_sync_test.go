@@ -22,7 +22,7 @@ func TestProjectSyncCommandHydratesRawNotesAndSkipsIndexed(t *testing.T) {
 	projectRoot := filepath.Join(cwd, "repo")
 	require.NoError(t, os.MkdirAll(projectRoot, 0o755))
 
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440100"
 	manifest.Name = "Synced"
 	manifest.Slug = "synced"
@@ -92,7 +92,7 @@ func TestProjectSyncCommandProcessesOnlyExplicitFile(t *testing.T) {
 	projectRoot := filepath.Join(cwd, "repo")
 	require.NoError(t, os.MkdirAll(projectRoot, 0o755))
 
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440200"
 	manifest.Name = "Targeted"
 	manifest.Slug = "targeted"
@@ -140,7 +140,7 @@ func TestProjectSyncCommandRejectsFileOutsideRoot(t *testing.T) {
 	projectRoot := filepath.Join(cwd, "repo")
 	require.NoError(t, os.MkdirAll(projectRoot, 0o755))
 
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440300"
 	manifest.Name = "Outside"
 	manifest.Slug = "outside"

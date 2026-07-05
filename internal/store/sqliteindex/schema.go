@@ -2,11 +2,11 @@ package sqliteindex
 
 import "database/sql"
 
-// ApplySchema creates the index schema for version 2.
+// ApplySchema creates the index schema for version 3.
 func ApplySchema(db *sql.DB) error {
 	stmts := []string{
 		`PRAGMA application_id = 1095521358`,
-		`PRAGMA user_version = 2`,
+		`PRAGMA user_version = 3`,
 		`CREATE TABLE IF NOT EXISTS meta (
 			key TEXT PRIMARY KEY,
 			value TEXT NOT NULL
@@ -69,7 +69,7 @@ func ApplySchema(db *sql.DB) error {
 			body,
 			tokenize = 'unicode61'
 		)`,
-		`INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '2')`,
+		`INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '3')`,
 	}
 
 	for _, stmt := range stmts {
@@ -87,7 +87,7 @@ func CheckSchemaStatus(db *sql.DB) (SchemaStatus, error) {
 	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		return "", err
 	}
-	if version != 2 {
+	if version != 3 {
 		return SchemaStatusNeedsRebuild, nil
 	}
 	return SchemaStatusOK, nil

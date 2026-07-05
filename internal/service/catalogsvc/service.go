@@ -65,6 +65,7 @@ type ShowResult struct {
 	Type               string             `json:"type"`
 	Description        string             `json:"description"`
 	CustomInstructions string             `json:"custom_instructions"`
+	LinksStyle         string             `json:"links_style"`
 	StateHome          string             `json:"state_home"`
 	Location           ShowLocationResult `json:"location"`
 }
@@ -266,6 +267,7 @@ func (s Service) Show(selector string) (ShowResult, error) {
 		Type:               resolved.Kind,
 		Description:        resolved.Description,
 		CustomInstructions: resolved.CustomInstructions,
+		LinksStyle:         resolved.LinksStyle,
 		StateHome:          resolved.StateDir,
 		Location: ShowLocationResult{
 			MemoriesAbs: resolved.RootDir,
@@ -379,7 +381,7 @@ func (s Service) Add(ctx context.Context, input AddInput) (AddResult, error) {
 		result.IndexError = err.Error()
 		return result, nil //nolint:nilerr // partial success: IndexError communicates the failure
 	}
-	if _, err := indexsvc.New(resolved).Rebuild(ctx); err != nil {
+	if _, err := indexsvc.New(resolved, nil).Rebuild(ctx); err != nil {
 		result.IndexStatus = "stale"
 		result.IndexError = err.Error()
 		return result, nil //nolint:nilerr // partial success: IndexError communicates the failure
@@ -475,7 +477,7 @@ func (s Service) finalizeImportIndexStatus(ctx context.Context, result ImportRes
 			})
 			continue
 		}
-		if _, err := indexsvc.New(resolved).Rebuild(ctx); err != nil {
+		if _, err := indexsvc.New(resolved, nil).Rebuild(ctx); err != nil {
 			result.IndexErrors = append(result.IndexErrors, ImportIndexError{
 				ProjectID: resolved.ID,
 				Slug:      resolved.Slug,
@@ -528,7 +530,7 @@ func (s Service) Init(ctx context.Context, input InitInput) (InitResult, error) 
 		IndexPath:    resolved.IndexPath,
 		IndexStatus:  "stale",
 	}
-	_, err = indexsvc.New(resolved).Rebuild(ctx)
+	_, err = indexsvc.New(resolved, nil).Rebuild(ctx)
 	if err != nil {
 		result.IndexError = err.Error()
 		return result, nil //nolint:nilerr // partial success: IndexError communicates the failure
@@ -745,6 +747,9 @@ func (s Service) fillMetadataOnly(resolved *registry.Entry) {
 	}
 	if resolved.LinksStyle == "" {
 		resolved.LinksStyle = manifest.Format.LinksStyle
+		if resolved.LinksStyle == "" {
+			resolved.LinksStyle = "wiki"
+		}
 	}
 }
 
@@ -867,7 +872,7 @@ func initLocalProject(memoriesHome, cwd, name, slugValue, description, projectID
 }
 
 func buildInitManifest(projectID, name, slugValue, kind, description string, now time.Time) *manifestfmt.Manifest {
-	m := manifestfmt.NewMnemonicManifest()
+	m := manifestfmt.New()
 	m.ProjectID = projectID
 	m.Name = name
 	m.Slug = slugValue

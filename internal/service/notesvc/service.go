@@ -1,9 +1,13 @@
 package notesvc
 
 import (
+	"errors"
 	"log/slog"
+	"os"
+	"strings"
 	"time"
 
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
 	"github.com/ilyachch/mnemonic/internal/store/markdownstore"
 	"github.com/ilyachch/mnemonic/internal/store/sqliteindex"
@@ -94,14 +98,22 @@ type ReadManyInput struct {
 	Selectors []string
 }
 
-// ReadManyOutput is the result of a batch read including missing selectors.
+// ReadManyIssue describes an error encountered when resolving a single selector.
+type ReadManyIssue struct {
+	Selector string `json:"selector"`
+	Kind     string `json:"kind"`
+	Message  string `json:"message"`
+}
+
+// ReadManyOutput is the result of a batch read including missing selectors and per-selector issues.
 type ReadManyOutput struct {
 	Notes   []ReadManyItem
 	Missing []string
+	Issues  []ReadManyIssue
 }
 
 // New constructs the runtime notes service for one knowledge base.
-func New(k kb.KnowledgeBase) *Service {
+func New(k kb.KnowledgeBase, logger *slog.Logger) *Service {
 	return &Service{
 		Notes: markdownstore.Store{RootDir: k.RootDir, StateDir: k.StateDir, IndexPath: k.IndexPath},
 		Index: sqliteindex.Store{
@@ -110,6 +122,7 @@ func New(k kb.KnowledgeBase) *Service {
 			StateDir:  k.StateDir,
 			KBID:      k.ID,
 		},
+		Logger: logger,
 	}
 }
 
@@ -243,14 +256,18 @@ func (s Service) Show(selector string) (ShowResult, error) {
 	return result, err
 }
 
-// ShowMany resolves multiple selectors and returns found notes plus missing identifiers.
+// ShowMany resolves multiple selectors and returns found notes, missing identifiers,
+// and per-selector issues. Only apperr.NotFound errors go to Missing; other errors
+// (ambiguous, corrupted, io_error, internal) are reported in Issues. Successful notes
+// are returned even when other selectors fail.
 func (s Service) ShowMany(input ReadManyInput) (ReadManyOutput, error) {
 	var notes []ReadManyItem
 	var missing []string
+	var issues []ReadManyIssue
 	for _, identifier := range input.Selectors {
 		resolved, err := s.Show(identifier)
 		if err != nil {
-			missing = append(missing, identifier)
+			missing, issues = classifyShowError(identifier, err, missing, issues)
 			continue
 		}
 		notes = append(notes, ReadManyItem{
@@ -258,7 +275,46 @@ func (s Service) ShowMany(input ReadManyInput) (ReadManyOutput, error) {
 			ID:         identifier,
 		})
 	}
-	return ReadManyOutput{Notes: notes, Missing: missing}, nil
+
+	if s.Logger != nil {
+		s.Logger.Info("batch read completed",
+			"requested_count", len(input.Selectors),
+			"found_count", len(notes),
+			"missing_count", len(missing),
+			"issue_count", len(issues),
+		)
+	}
+
+	return ReadManyOutput{Notes: notes, Missing: missing, Issues: issues}, nil
+}
+
+func classifyShowError(selector string, err error, missing []string, issues []ReadManyIssue) ([]string, []ReadManyIssue) {
+	var appErr *apperr.Error
+	if errors.As(err, &appErr) {
+		switch appErr.Code {
+		case apperr.CodeNotFound:
+			return append(missing, selector), issues
+		case apperr.CodeAmbiguous:
+			return missing, append(issues, ReadManyIssue{Selector: selector, Kind: "ambiguous", Message: err.Error()})
+		case apperr.CodeCorrupted:
+			return missing, append(issues, ReadManyIssue{Selector: selector, Kind: "corrupted", Message: err.Error()})
+		default:
+			return missing, append(issues, ReadManyIssue{Selector: selector, Kind: "internal", Message: err.Error()})
+		}
+	}
+
+	msg := err.Error()
+	if strings.Contains(msg, "parse note") || strings.Contains(msg, "parse frontmatter") {
+		return missing, append(issues, ReadManyIssue{Selector: selector, Kind: "corrupted", Message: msg})
+	}
+	if strings.Contains(msg, "read note") {
+		return missing, append(issues, ReadManyIssue{Selector: selector, Kind: "io_error", Message: msg})
+	}
+	if os.IsNotExist(err) || os.IsPermission(err) {
+		return missing, append(issues, ReadManyIssue{Selector: selector, Kind: "io_error", Message: msg})
+	}
+
+	return missing, append(issues, ReadManyIssue{Selector: selector, Kind: "internal", Message: msg})
 }
 
 // HydrateResult aliases the markdownstore hydration payload.

@@ -36,7 +36,7 @@ func newWebFixture(t *testing.T, readOnly bool) *webFixture {
 	projectRoot := filepath.Join(memoriesHome, slug)
 	require.NoError(t, os.MkdirAll(projectRoot, 0o755))
 
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = projectID
 	manifest.Name = "Demo"
 	manifest.Slug = slug

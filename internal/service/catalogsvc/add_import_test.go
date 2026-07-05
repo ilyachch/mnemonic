@@ -22,7 +22,7 @@ func TestAddRegistersStructuredProjectAndRebuildsIndex(t *testing.T) {
 	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
 
 	repoRoot := t.TempDir()
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440100"
 	manifest.Name = "Structured"
 	manifest.Slug = "structured"
@@ -96,7 +96,7 @@ func TestImportPreservesExistingManifest(t *testing.T) {
 	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
 
 	repoRoot := t.TempDir()
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440200"
 	manifest.Name = "Existing"
 	manifest.Slug = "existing"

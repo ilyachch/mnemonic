@@ -130,6 +130,9 @@ markdown_format_version = 1
 description = "Project description for MCP tool context"
 custom_instructions = "Custom MCP server instructions"
 
+[format]
+links_style = "wiki"
+
 created_at = 1741737600
 updated_at = 1741824000
 
@@ -302,7 +305,7 @@ Multi-query FTS5 search with time and tag filters, graph-aware reranking, and op
 | `updated_after` | `int64` | Unix timestamp, lower bound for `updated_at` |
 | `created_since` | `string` | Relative duration (e.g. `"24h"`, `"7d"`) |
 | `updated_since` | `string` | Relative duration (e.g. `"24h"`, `"7d"`) |
-| `limit` | `int` | Max results (default 20) |
+| `limit` | `int` | Max results (default 10) |
 | `include_related` | `bool` | Include `related_notes` array per hit |
 | `debug` | `bool` | Expose `path`, `score`, `content_hash` |
 
@@ -327,7 +330,7 @@ Scan for metadata issues, broken links, and content problems.
 | `cursor` | `int` | Zero-based page offset |
 | `include_suggestions` | `bool` | Resolve broken links via search |
 
-Diagnostic kinds: `invalid_frontmatter`, `missing_required_field`, `missing_summary`, `invalid_timestamp`, `duplicate_slug`, `duplicate_alias`, `unresolved_link`, `ambiguous_link`, `empty_body`.
+Diagnostic kinds: `invalid_frontmatter`, `missing_required_field`, `missing_summary`, `missing_timestamp`, `invalid_timestamp`, `duplicate_slug`, `duplicate_alias`, `unresolved_link`, `ambiguous_link`, `empty_body`.
 
 ### `list_notes`
 List all notes with pagination (`limit`, `cursor`).

@@ -45,7 +45,7 @@ func NewRootCommand(boot *app.Bootstrap) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "mnemonic",
 		Short: "mnemonic is a local-first personal knowledge base and search engine",
-		Long:  `mnemonic is a local-first CLI tool and MCP server that indexes markdown notes, calculates page ranks, structures wiki-links, and searches utilizing SQLite FTS5.`,
+		Long:  `mnemonic is a local-first CLI tool and MCP server that indexes markdown notes, provides graph-aware reranking, structures wiki-links, and searches utilizing SQLite FTS5.`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			cfgLevel, cfgFormat := "info", "text"
 			if boot != nil && boot.Config != nil {

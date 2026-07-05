@@ -17,14 +17,14 @@ import (
 func TestSearchServiceSearch(t *testing.T) {
 	svc := newSearchService(t)
 
-	hits, err := svc.Search(context.Background(), SearchInput{Query: "queryterm!", Limit: 1, Tag: "django"})
+	results, err := svc.AdvancedSearch(context.Background(), AdvancedSearchInput{Queries: []string{"queryterm!"}, Limit: 1, Tags: []string{"django"}})
 	require.NoError(t, err)
-	require.Len(t, hits, 1)
-	require.Equal(t, "alpha", hits[0].Slug)
+	require.Len(t, results, 1)
+	require.Equal(t, "alpha", results[0].Slug)
 
-	allHits, err := svc.Search(context.Background(), SearchInput{Query: "queryterm!", Limit: 10})
+	allResults, err := svc.AdvancedSearch(context.Background(), AdvancedSearchInput{Queries: []string{"queryterm!"}, Limit: 10})
 	require.NoError(t, err)
-	require.Len(t, allHits, 2)
+	require.Len(t, allResults, 2)
 }
 
 func TestSearchServiceListTags(t *testing.T) {
@@ -73,7 +73,7 @@ func newSearchService(t *testing.T) Service {
 
 	require.NoError(t, db.Close())
 
-	svc := New(kb.KnowledgeBase{ID: "kb-1", RootDir: dir, StateDir: stateDir, IndexPath: filepath.Join(dir, "index.sqlite")})
+	svc := New(kb.KnowledgeBase{ID: "kb-1", RootDir: dir, StateDir: stateDir, IndexPath: filepath.Join(dir, "index.sqlite")}, nil)
 	require.Equal(t, stateDir, svc.Index.StateDir)
 	return *svc
 }

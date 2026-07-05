@@ -221,7 +221,7 @@ func createMaintProject(t *testing.T, memoriesHome, slug, projectID string) proj
 	projectDir := filepath.Join(memoriesHome, slug)
 	require.NoError(t, os.MkdirAll(projectDir, 0o755))
 
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = projectID
 	manifest.Name = slug
 	manifest.Slug = slug

@@ -32,7 +32,7 @@ type Server struct {
 }
 
 // NewServer builds a stdio adapter around runtime services for one knowledge base.
-func NewServer(k kb.KnowledgeBase, services Dependencies, readOnly bool) (*Server, error) {
+func NewServer(k kb.KnowledgeBase, services Dependencies, readOnly bool, logger *slog.Logger) (*Server, error) {
 	if strings.TrimSpace(k.ID) == "" {
 		return nil, errors.New("knowledge base is required")
 	}
@@ -50,6 +50,7 @@ func NewServer(k kb.KnowledgeBase, services Dependencies, readOnly bool) (*Serve
 		KB:       k,
 		Services: services,
 		ReadOnly: readOnly,
+		Logger:   logger,
 	}, nil
 }
 

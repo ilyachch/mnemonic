@@ -54,7 +54,7 @@ func NewServer(input ServerInput) (*Server, error) {
 		Notes:  input.Services.Notes,
 		Search: input.Services.Search,
 		Index:  input.Services.Index,
-	}, input.ReadOnly)
+	}, input.ReadOnly, nil)
 	if err != nil {
 		return nil, err
 	}

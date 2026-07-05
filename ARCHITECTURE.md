@@ -74,7 +74,7 @@ The registry is implemented as a flat file layout within the `MemoriesHome` dire
 
 - **Central Projects:** Represented as subdirectories containing a `mnemonic.toml` manifest file.
 - **Local Projects:** Represented as pointer files (`[slug].toml`) containing the absolute path to the `mnemonic.toml` manifest situated in an external workspace (e.g., a development Git repository).
-- **Resilience to Corruption:** Errors reading individual manifests or the migration of external local project directories do not disrupt registry scanning. Problematic projects are flagged as `[CORRUPTED]` or `[ORPHANED/MISSING]` in list outputs.
+- **Resilience to Corruption:** Errors reading individual manifests or the relocation of external local project directories do not disrupt registry scanning. Problematic projects are flagged as `[CORRUPTED]` or `[ORPHANED/MISSING]` in list outputs.
 
 ### State Files
 

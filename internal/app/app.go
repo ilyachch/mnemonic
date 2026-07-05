@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
 	manifest "github.com/ilyachch/mnemonic/internal/format/manifest"
@@ -22,6 +23,7 @@ type Bootstrap struct {
 	Config   *config.Config
 	Paths    paths.EffectivePaths
 	Services Services
+	Logger   *slog.Logger
 }
 
 // New builds the application container from environment and config discovery.
@@ -60,20 +62,23 @@ func New(input Input) (*Bootstrap, error) {
 		Registry:     registryStore,
 	}
 
-	return &Bootstrap{
+	b := &Bootstrap{
 		Config: cfg,
 		Paths:  effective,
 		Services: Services{
 			Catalog: catalog,
 			Maint: &maintsvc.Service{
 				Catalog: catalog,
-				RuntimeFactory: func(ctx context.Context, k kb.KnowledgeBase) (maintsvc.Runtime, error) {
-					_ = ctx
-					return NewRuntimeApp(RuntimeInput{Config: cfg, KB: k})
-				},
 			},
 		},
-	}, nil
+	}
+
+	b.Services.Maint.RuntimeFactory = func(ctx context.Context, k kb.KnowledgeBase) (maintsvc.Runtime, error) {
+		_ = ctx
+		return NewRuntimeApp(RuntimeInput{Config: cfg, KB: k, Logger: b.Logger})
+	}
+
+	return b, nil
 }
 
 // Close shuts down app-owned resources.

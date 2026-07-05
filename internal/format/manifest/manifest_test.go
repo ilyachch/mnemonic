@@ -44,7 +44,7 @@ func itoa(n int64) string {
 	return strconv.FormatInt(n, 10)
 }
 
-// ── New / NewMnemonicManifest ──────────────────────────────────────────
+// ── New ─────────────────────────────────────────────────────────────────
 
 func TestNew(t *testing.T) {
 	m := New()
@@ -54,13 +54,6 @@ func TestNew(t *testing.T) {
 	assert.Equal(t, []string{"mnemonic.toml", ".trash/**"}, m.Layout.Ignore)
 	assert.Equal(t, int64(0), m.CreatedAt)
 	assert.Equal(t, int64(0), m.UpdatedAt)
-}
-
-func TestNewMnemonicManifest(t *testing.T) {
-	m := NewMnemonicManifest()
-	require.NotNil(t, m)
-	assert.Equal(t, 1, m.Version)
-	assert.Equal(t, []string{"**/*.md"}, m.Layout.NotesGlob)
 }
 
 // ── ApplyDefaults ──────────────────────────────────────────────────────

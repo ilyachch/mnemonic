@@ -45,7 +45,7 @@ type DoctorCheck struct {
 }
 
 // New constructs the runtime index service for one knowledge base.
-func New(k kb.KnowledgeBase) *Service {
+func New(k kb.KnowledgeBase, logger *slog.Logger) *Service {
 	return &Service{
 		KB: k,
 		Notes: markdownstore.Store{
@@ -58,6 +58,7 @@ func New(k kb.KnowledgeBase) *Service {
 			StateDir:  k.StateDir,
 			KBID:      k.ID,
 		},
+		Logger: logger,
 	}
 }
 

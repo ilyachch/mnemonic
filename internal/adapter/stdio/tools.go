@@ -14,6 +14,15 @@ import (
 )
 
 const (
+	maxSearchLimit     = 100
+	maxQueryCount      = 8
+	maxQueryLength     = 500
+	maxReadIdentifiers = 50
+	maxBodyChars       = 100000
+	maxDiagnosticLimit = 200
+)
+
+const (
 	listNotesDescription = `List all notes in this knowledge base.`
 	readNotesDescription = `Read one or more notes by note_id, slug, path, or title.
 Provide an array of identifiers to batch-read multiple notes in a single call.
@@ -21,11 +30,12 @@ note_id, slug, and title are always returned.
 By default returns note_id, slug, title, summary, tags, and body.
 Use the "fields" parameter to include path, frontmatter, content_hash, aliases, created_at, or updated_at.
 Unresolved identifiers are listed in the "missing" array.
+Per-selector errors (ambiguous, corrupted, io_error, internal) are reported in the "issues" array.
 
 Parameters:
-- identifiers ([]string, required): note IDs, slugs, file paths, or titles to resolve.
+- identifiers ([]string, required): note IDs, slugs, file paths, or titles to resolve (max 50).
 - fields ([]string, optional): select which optional fields to include. Valid values: summary, tags, body, path, frontmatter, content_hash, aliases, created_at, updated_at.
-- max_body_chars (int, optional): truncate each note body to this many characters.`
+- max_body_chars (int, optional): truncate each note body to this many characters (max 100000).`
 	searchNotesDescription = `Search this knowledge base with multi-query full-text search, time filters, tag filters, and graph-aware reranking.
 Provide multiple distinct query variants via the "queries" array to improve recall — each query contributes to the combined ranking via Reciprocal Rank Fusion.
 Results include note_id, slug, title, summary, tags, matched_queries, and a relevance snippet.
@@ -33,12 +43,12 @@ Set include_related to true to fetch linked notes for each hit (with relation_ty
 Set debug to true to expose internal fields (path, score, content_hash).
 
 Parameters:
-- queries ([]string, optional): FTS5 query strings; submit several phrasing variants.
+- queries ([]string, optional): FTS5 query strings; submit several phrasing variants (max 8, 500 chars each).
 - tags ([]string, optional): restrict results to notes tagged with every listed tag (AND).
 - created_before / created_after (int64, optional): Unix timestamps for creation time range.
 - updated_before / updated_after (int64, optional): Unix timestamps for update time range.
 - created_since / updated_since (string, optional): relative duration (e.g. "24h", "7d").
-- limit (int, optional): maximum number of results (default 10).
+- limit (int, optional): maximum number of results (default 10, max 100).
 - include_related (bool, optional): return related notes (backlinks and forward links).
 - debug (bool, optional): expose path, score, and content_hash for each hit.`
 	listTagsDescription      = `List tags in this knowledge base.`
@@ -53,8 +63,8 @@ Returns paginated diagnostic issues. Set include_suggestions to true to receive 
 Use this tool periodically to verify repository integrity after bulk changes.
 
 Parameters:
-- kinds ([]string, optional): filter by diagnostic kind. Valid values: "invalid_frontmatter", "missing_required_field", "missing_summary", "invalid_timestamp", "duplicate_slug", "duplicate_alias", "unresolved_link", "ambiguous_link", "empty_body".
-- limit (int, optional): maximum issues per page (default 50).
+- kinds ([]string, optional): filter by diagnostic kind. Valid values: "invalid_frontmatter", "missing_required_field", "missing_summary", "missing_timestamp", "invalid_timestamp", "duplicate_slug", "duplicate_alias", "unresolved_link", "ambiguous_link", "empty_body".
+- limit (int, optional): maximum issues per page (default 50, max 200).
 - cursor (int, optional): zero-based page offset.
 - include_suggestions (bool, optional): resolve broken links via search and include candidate notes.`
 )
@@ -76,8 +86,9 @@ type ReadNotesInput struct {
 }
 
 type ReadNotesOutput struct {
-	Notes   []ReadNotesNote `json:"notes"`
-	Missing []string        `json:"missing,omitempty"`
+	Notes   []ReadNotesNote         `json:"notes"`
+	Missing []string                `json:"missing,omitempty"`
+	Issues  []notesvc.ReadManyIssue `json:"issues,omitempty"`
 }
 
 type ReadNotesNote struct {
@@ -240,6 +251,10 @@ type DiagnoseNotesIssue struct {
 	NoteID     string                         `json:"note_id,omitempty"`
 	Slug       string                         `json:"slug,omitempty"`
 	Path       string                         `json:"path,omitempty"`
+	Field      string                         `json:"field,omitempty"`
+	SourceLine int                            `json:"source_line,omitempty"`
+	SourceKind string                         `json:"source_kind,omitempty"`
+	LinkStyle  string                         `json:"link_style,omitempty"`
 	Detail     string                         `json:"detail,omitempty"`
 	Target     string                         `json:"target,omitempty"`
 	Candidates []indexsvc.DiagnosticCandidate `json:"candidates,omitempty"`
@@ -320,6 +335,12 @@ func RegisterReadNotes(server *sdkmcp.Server, deps Dependencies) {
 		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input ReadNotesInput) (*sdkmcp.CallToolResult, ReadNotesOutput, error) {
 		_ = ctx
+		if len(input.Identifiers) > maxReadIdentifiers {
+			return nil, ReadNotesOutput{}, apperr.CLIUsage("too many identifiers", nil)
+		}
+		if input.MaxBodyChars > maxBodyChars {
+			return nil, ReadNotesOutput{}, apperr.CLIUsage("max_body_chars exceeds maximum", nil)
+		}
 		fields, err := buildFieldSet(input.Fields)
 		if err != nil {
 			return nil, ReadNotesOutput{}, err
@@ -332,7 +353,7 @@ func RegisterReadNotes(server *sdkmcp.Server, deps Dependencies) {
 		for _, item := range output.Notes {
 			notes = append(notes, buildReadNotesNote(fields, item.ShowResult, input.MaxBodyChars))
 		}
-		return nil, ReadNotesOutput{Notes: notes, Missing: output.Missing}, nil
+		return nil, ReadNotesOutput{Notes: notes, Missing: output.Missing, Issues: output.Issues}, nil
 	})
 }
 
@@ -344,6 +365,17 @@ func RegisterSearchNotes(server *sdkmcp.Server, deps Dependencies, description s
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input SearchNotesInput) (*sdkmcp.CallToolResult, SearchNotesOutput, error) {
 		if input.Limit <= 0 {
 			input.Limit = 10
+		}
+		if input.Limit > maxSearchLimit {
+			return nil, SearchNotesOutput{}, apperr.CLIUsage("limit exceeds maximum", nil)
+		}
+		if len(input.Queries) > maxQueryCount {
+			return nil, SearchNotesOutput{}, apperr.CLIUsage("too many queries", nil)
+		}
+		for _, q := range input.Queries {
+			if len(q) > maxQueryLength {
+				return nil, SearchNotesOutput{}, apperr.CLIUsage("query too long", nil)
+			}
 		}
 		advancedInput := searchsvc.AdvancedSearchInput{
 			Queries:        input.Queries,
@@ -599,10 +631,14 @@ func RegisterDiagnoseNotes(server *sdkmcp.Server, deps Dependencies) {
 		Description: diagnoseNotesDescription,
 		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input DiagnoseNotesInput) (*sdkmcp.CallToolResult, DiagnoseNotesOutput, error) {
+		if input.Limit > maxDiagnosticLimit {
+			return nil, DiagnoseNotesOutput{}, apperr.CLIUsage("limit exceeds maximum", nil)
+		}
 		result, err := deps.Index.Diagnose(ctx, indexsvc.DiagnoseInput{
-			Kinds:  input.Kinds,
-			Limit:  input.Limit,
-			Cursor: input.Cursor,
+			Kinds:              input.Kinds,
+			Limit:              input.Limit,
+			Cursor:             input.Cursor,
+			IncludeSuggestions: input.IncludeSuggestions,
 		})
 		if err != nil {
 			return nil, DiagnoseNotesOutput{}, err
@@ -611,15 +647,17 @@ func RegisterDiagnoseNotes(server *sdkmcp.Server, deps Dependencies) {
 		issues := make([]DiagnoseNotesIssue, 0, len(result.Issues))
 		for _, issue := range result.Issues {
 			di := DiagnoseNotesIssue{
-				Kind:   issue.Kind,
-				NoteID: issue.NoteID,
-				Slug:   issue.Slug,
-				Path:   issue.Path,
-				Detail: issue.Detail,
-				Target: issue.Target,
-			}
-			if input.IncludeSuggestions && (issue.Kind == indexsvc.KindUnresolvedLink || issue.Kind == indexsvc.KindAmbiguousLink) {
-				di.Candidates = findLinkCandidates(ctx, deps, issue.Target)
+				Kind:       issue.Kind,
+				NoteID:     issue.NoteID,
+				Slug:       issue.Slug,
+				Path:       issue.Path,
+				Field:      issue.Field,
+				SourceLine: issue.SourceLine,
+				SourceKind: issue.SourceKind,
+				LinkStyle:  issue.LinkStyle,
+				Detail:     issue.Detail,
+				Target:     issue.Target,
+				Candidates: issue.Candidates,
 			}
 			issues = append(issues, di)
 		}
@@ -630,26 +668,6 @@ func RegisterDiagnoseNotes(server *sdkmcp.Server, deps Dependencies) {
 			NextCursor: result.NextCursor,
 		}, nil
 	})
-}
-
-func findLinkCandidates(ctx context.Context, deps Dependencies, target string) []indexsvc.DiagnosticCandidate {
-	if target == "" {
-		return nil
-	}
-	hits, err := deps.Search.Search(ctx, searchsvc.SearchInput{Query: target, Limit: 3})
-	if err != nil {
-		return nil
-	}
-	candidates := make([]indexsvc.DiagnosticCandidate, 0, len(hits))
-	for _, hit := range hits {
-		candidates = append(candidates, indexsvc.DiagnosticCandidate{
-			NoteID: hit.NoteID,
-			Slug:   hit.Slug,
-			Title:  hit.Title,
-			Path:   hit.Path,
-		})
-	}
-	return candidates
 }
 
 func buildToolDescription(description, baseInstructions string) string {
@@ -697,19 +715,11 @@ func buildFieldSet(fields []string) (map[string]bool, error) {
 			continue
 		}
 		if !validReadFields[f] {
-			return nil, &UnknownFieldError{Field: f}
+			return nil, apperr.CLIUsage("unknown field: "+f, nil)
 		}
 		set[f] = true
 	}
 	return set, nil
-}
-
-type UnknownFieldError struct {
-	Field string
-}
-
-func (e *UnknownFieldError) Error() string {
-	return "unknown field: " + e.Field
 }
 
 func truncateRunes(s string, maxChars int) string {

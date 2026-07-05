@@ -61,7 +61,7 @@ func TestRootCmdWiringSmoke(t *testing.T) {
 		{path: []string{"notes", "create"}, flagName: "title", defValue: ""},
 		{path: []string{"notes", "create"}, flagName: "stdin", defValue: "false"},
 		{path: []string{"notes", "create"}, flagName: "body-file", defValue: ""},
-		{path: []string{"notes", "search"}, flagName: "limit", defValue: "20"},
+		{path: []string{"notes", "search"}, flagName: "limit", defValue: "10"},
 		{path: []string{"project", "init"}, flagName: "local", defValue: "false"},
 		{path: []string{"project", "init"}, flagName: "description", defValue: ""},
 		{path: []string{"project", "import"}, flagName: "dry-run", defValue: "false"},

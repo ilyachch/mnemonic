@@ -131,12 +131,6 @@ func validateDocs(docs []NoteDoc) (seenNoteIDs, seenSlugs map[string]struct{}, s
 func insertNoteDoc(db *sql.DB, doc NoteDoc, kbid string) error {
 	createdAt := doc.CreatedAt
 	updatedAt := doc.UpdatedAt
-	if createdAt == 0 {
-		createdAt = doc.FileMTimeNS / 1e9
-	}
-	if updatedAt == 0 {
-		updatedAt = createdAt
-	}
 	if _, err := db.Exec(`INSERT INTO notes(note_id, project_id, slug, rel_path, title, content_hash, summary, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		doc.NoteID, kbid, doc.Slug, doc.RelPath, doc.Title, doc.ContentHash, doc.Summary, createdAt, updatedAt); err != nil {
@@ -218,7 +212,7 @@ func resolveLinkTarget(docs []NoteDoc, norms map[string]int, aliasMap map[string
 	count  int
 }, target string) (noteID string, resolved bool, ambiguous bool) {
 	for _, doc := range docs {
-		if doc.NoteID == target || doc.Slug == target || doc.RelPath == target {
+		if doc.NoteID == target || doc.Slug == target || doc.RelPath == target || doc.Title == target {
 			return doc.NoteID, true, false
 		}
 	}
@@ -227,6 +221,17 @@ func resolveLinkTarget(docs []NoteDoc, norms map[string]int, aliasMap map[string
 			return entry.noteID, true, false
 		}
 		return "", false, true
+	}
+	norm := normalizeTitleSlug(target)
+	if norms[norm] > 1 {
+		return "", false, true
+	}
+	if norms[norm] == 1 {
+		for _, doc := range docs {
+			if n := normalizeTitleSlug(doc.Title); n == norm {
+				return doc.NoteID, true, false
+			}
+		}
 	}
 	return "", false, false
 }

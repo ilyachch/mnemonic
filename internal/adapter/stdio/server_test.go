@@ -2,6 +2,7 @@ package stdio
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -37,7 +38,7 @@ func newStdioFixture(t *testing.T, readOnly bool) *stdioFixture {
 	projectRoot := filepath.Join(memoriesHome, slug)
 	require.NoError(t, os.MkdirAll(projectRoot, 0o755))
 
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = projectID
 	manifest.Name = "Demo"
 	manifest.Slug = slug
@@ -46,7 +47,7 @@ func newStdioFixture(t *testing.T, readOnly bool) *stdioFixture {
 	manifest.UpdatedAt = manifest.CreatedAt
 	manifest.Generator.App = "mnemonic"
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(projectRoot, "mnemonic.toml"), manifest))
-	require.NoError(t, os.WriteFile(filepath.Join(projectRoot, "demo.md"), []byte("# Demo\n\nBody\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(projectRoot, "demo.md"), []byte("---\nmnemonic_note_id: 550e8400-e29b-41d4-a716-446655440001\ntitle: Demo\nslug: demo\n---\n\nBody\n"), 0o644))
 
 	runtime, err := app.NewRuntimeApp(app.RuntimeInput{
 		KB: kb.KnowledgeBase{
@@ -69,7 +70,7 @@ func newStdioFixture(t *testing.T, readOnly bool) *stdioFixture {
 		Notes:  runtime.Services.Notes,
 		Search: runtime.Services.Search,
 		Index:  runtime.Services.Index,
-	}, readOnly)
+	}, readOnly, nil)
 	require.NoError(t, err)
 
 	return &stdioFixture{
@@ -99,7 +100,7 @@ func TestNewServer_ReadOnly(t *testing.T) {
 }
 
 func TestNewServer_EmptyKBID(t *testing.T) {
-	_, err := NewServer(kb.KnowledgeBase{}, Dependencies{}, false)
+	_, err := NewServer(kb.KnowledgeBase{}, Dependencies{}, false, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "knowledge base is required")
 }
@@ -109,7 +110,7 @@ func TestNewServer_NilNotes(t *testing.T) {
 		Notes:  nil,
 		Search: &searchsvc.Service{},
 		Index:  &indexsvc.Service{},
-	}, false)
+	}, false, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "notes service is required")
 }
@@ -119,7 +120,7 @@ func TestNewServer_NilSearch(t *testing.T) {
 		Notes:  &notesvc.Service{},
 		Search: nil,
 		Index:  &indexsvc.Service{},
-	}, false)
+	}, false, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "search service is required")
 }
@@ -129,7 +130,7 @@ func TestNewServer_NilIndex(t *testing.T) {
 		Notes:  &notesvc.Service{},
 		Search: &searchsvc.Service{},
 		Index:  nil,
-	}, false)
+	}, false, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "index service is required")
 }
@@ -474,4 +475,173 @@ func TestCallTool_CreateNote(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.False(t, result.IsError)
+}
+
+func TestContractReadNotesDefaultFields(t *testing.T) {
+	f := newStdioFixture(t, false)
+	_, _ = f.rt.Services.Index.Rebuild(context.Background())
+	cs := newMCPClient(t, f)
+
+	result, err := cs.CallTool(context.Background(), &sdkmcp.CallToolParams{
+		Name:      "read_notes",
+		Arguments: map[string]any{"identifiers": []string{"demo"}},
+	})
+	require.NoError(t, err)
+	require.False(t, result.IsError)
+
+	var output ReadNotesOutput
+	mustUnmarshalMCPContent(t, result, &output)
+	require.NotEmpty(t, output.Notes)
+	note := output.Notes[0]
+	assert.NotEmpty(t, note.NoteID)
+	assert.NotEmpty(t, note.Slug)
+	assert.NotEmpty(t, note.Title)
+}
+
+func TestContractReadNotesUnknownFieldReturnsError(t *testing.T) {
+	f := newStdioFixture(t, false)
+	_, _ = f.rt.Services.Index.Rebuild(context.Background())
+	cs := newMCPClient(t, f)
+
+	result, err := cs.CallTool(context.Background(), &sdkmcp.CallToolParams{
+		Name:      "read_notes",
+		Arguments: map[string]any{"identifiers": []string{"demo"}, "fields": []string{"nonexistent_field"}},
+	})
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+}
+
+func TestContractReadNotesMissingSelectors(t *testing.T) {
+	f := newStdioFixture(t, false)
+	_, _ = f.rt.Services.Index.Rebuild(context.Background())
+	cs := newMCPClient(t, f)
+
+	result, err := cs.CallTool(context.Background(), &sdkmcp.CallToolParams{
+		Name:      "read_notes",
+		Arguments: map[string]any{"identifiers": []string{"demo", "nonexistent"}},
+	})
+	require.NoError(t, err)
+	require.False(t, result.IsError)
+
+	var output ReadNotesOutput
+	mustUnmarshalMCPContent(t, result, &output)
+	require.Len(t, output.Notes, 1)
+	require.Len(t, output.Missing, 1)
+	assert.Equal(t, "nonexistent", output.Missing[0])
+}
+
+func TestContractReadNotesCustomFields(t *testing.T) {
+	f := newStdioFixture(t, false)
+	_, _ = f.rt.Services.Index.Rebuild(context.Background())
+	cs := newMCPClient(t, f)
+
+	result, err := cs.CallTool(context.Background(), &sdkmcp.CallToolParams{
+		Name:      "read_notes",
+		Arguments: map[string]any{"identifiers": []string{"demo"}, "fields": []string{"tags", "aliases"}},
+	})
+	require.NoError(t, err)
+	require.False(t, result.IsError)
+
+	var output ReadNotesOutput
+	mustUnmarshalMCPContent(t, result, &output)
+	require.NotEmpty(t, output.Notes)
+}
+
+func TestContractSearchNotesDefaultLimit(t *testing.T) {
+	f := newStdioFixture(t, false)
+	_, _ = f.rt.Services.Index.Rebuild(context.Background())
+	cs := newMCPClient(t, f)
+
+	result, err := cs.CallTool(context.Background(), &sdkmcp.CallToolParams{
+		Name:      "search_notes",
+		Arguments: map[string]any{"queries": []string{"Body"}},
+	})
+	require.NoError(t, err)
+	require.False(t, result.IsError)
+
+	var output SearchNotesOutput
+	mustUnmarshalMCPContent(t, result, &output)
+	assert.NotEmpty(t, output.Hits)
+}
+
+func TestContractSearchNotesDebugOutput(t *testing.T) {
+	f := newStdioFixture(t, false)
+	_, _ = f.rt.Services.Index.Rebuild(context.Background())
+	cs := newMCPClient(t, f)
+
+	result, err := cs.CallTool(context.Background(), &sdkmcp.CallToolParams{
+		Name:      "search_notes",
+		Arguments: map[string]any{"queries": []string{"Body"}, "debug": true},
+	})
+	require.NoError(t, err)
+	require.False(t, result.IsError)
+
+	var output SearchNotesOutput
+	mustUnmarshalMCPContent(t, result, &output)
+	require.NotEmpty(t, output.Hits)
+	assert.NotEmpty(t, output.Hits[0].Path, "path should be present with debug")
+	assert.NotNil(t, output.Hits[0].Score, "score should be present with debug")
+	assert.NotEmpty(t, output.Hits[0].ContentHash, "content_hash should be present with debug")
+}
+
+func TestContractDiagnoseNotesStructuredFields(t *testing.T) {
+	f := newStdioFixture(t, false)
+	_, _ = f.rt.Services.Index.Rebuild(context.Background())
+	cs := newMCPClient(t, f)
+
+	result, err := cs.CallTool(context.Background(), &sdkmcp.CallToolParams{
+		Name:      "diagnose_notes",
+		Arguments: map[string]any{},
+	})
+	require.NoError(t, err)
+	require.False(t, result.IsError)
+
+	var output DiagnoseNotesOutput
+	mustUnmarshalMCPContent(t, result, &output)
+	assert.NotNil(t, output.Issues)
+}
+
+func TestContractDiagnoseNotesCursorBeyondResult(t *testing.T) {
+	f := newStdioFixture(t, false)
+	_, _ = f.rt.Services.Index.Rebuild(context.Background())
+	cs := newMCPClient(t, f)
+
+	result, err := cs.CallTool(context.Background(), &sdkmcp.CallToolParams{
+		Name:      "diagnose_notes",
+		Arguments: map[string]any{"cursor": 99999},
+	})
+	require.NoError(t, err)
+	require.False(t, result.IsError)
+
+	var output DiagnoseNotesOutput
+	mustUnmarshalMCPContent(t, result, &output)
+	assert.Empty(t, output.NextCursor)
+}
+
+func mustUnmarshalMCPContent(t *testing.T, result *sdkmcp.CallToolResult, target any) {
+	t.Helper()
+	require.NotEmpty(t, result.Content)
+	tc, ok := result.Content[0].(*sdkmcp.TextContent)
+	require.True(t, ok, "first content item must be TextContent")
+	require.NoError(t, json.Unmarshal([]byte(tc.Text), target))
+}
+
+func newMCPClient(t *testing.T, f *stdioFixture) *sdkmcp.ClientSession {
+	t.Helper()
+
+	s := f.sdkServer()
+	clientTransport, serverTransport := sdkmcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	ss, err := s.Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ss.Close() })
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "test", Version: "v1"}, nil)
+	cs, err := client.Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cs.Close() })
+
+	return cs
 }

@@ -37,7 +37,7 @@ func TestResolveBuildsKnowledgeBase(t *testing.T) {
 	projectDir := filepath.Join(memoriesHome, slug)
 	require.NoError(t, os.MkdirAll(projectDir, 0o755))
 
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
 	manifest.Name = "Demo"
 	manifest.Slug = slug
@@ -69,7 +69,7 @@ func TestKnowledgeBaseFromEntryPrefersEntryMetadataAndFallsBackToManifest(t *tes
 	svc := Service{MemoriesHome: t.TempDir(), StateHome: t.TempDir()}
 	manifestDir := t.TempDir()
 	manifestPath := filepath.Join(manifestDir, "mnemonic.toml")
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440099"
 	manifest.Name = "Manifest Name"
 	manifest.Slug = "demo"
@@ -301,7 +301,7 @@ func TestListAndShowShapeRegistryData(t *testing.T) {
 	centralSlug := "backend"
 	centralDir := filepath.Join(memoriesHome, centralSlug)
 	require.NoError(t, os.MkdirAll(centralDir, 0o755))
-	centralManifest := manifestfmt.NewMnemonicManifest()
+	centralManifest := manifestfmt.New()
 	centralManifest.ProjectID = "550e8400-e29b-41d4-a716-446655440001"
 	centralManifest.Name = "Backend"
 	centralManifest.Slug = centralSlug
@@ -316,7 +316,7 @@ func TestListAndShowShapeRegistryData(t *testing.T) {
 	localSlug := "personal"
 	localManifestDir := filepath.Join(repoRoot, ".mnemonic-memories", localSlug)
 	require.NoError(t, os.MkdirAll(localManifestDir, 0o755))
-	localManifest := manifestfmt.NewMnemonicManifest()
+	localManifest := manifestfmt.New()
 	localManifest.ProjectID = "550e8400-e29b-41d4-a716-446655440002"
 	localManifest.Name = "Personal"
 	localManifest.Slug = localSlug
@@ -401,7 +401,7 @@ func TestImportRemoveAndSlugs(t *testing.T) {
 	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
 
 	repoRoot := t.TempDir()
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440003"
 	manifest.Name = "Import Demo"
 	manifest.Slug = "import-demo"
@@ -426,7 +426,7 @@ func TestImportRemoveAndSlugs(t *testing.T) {
 
 	projectDir := filepath.Join(memoriesHome, manifest.Slug)
 	require.NoError(t, os.MkdirAll(projectDir, 0o755))
-	removedManifest := manifestfmt.NewMnemonicManifest()
+	removedManifest := manifestfmt.New()
 	removedManifest.ProjectID = manifest.ProjectID
 	removedManifest.Name = manifest.Name
 	removedManifest.Slug = manifest.Slug
@@ -463,7 +463,7 @@ func TestImportReturnsSkippedIndexStatusForDryRun(t *testing.T) {
 	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
 
 	repoRoot := t.TempDir()
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440010"
 	manifest.Name = "Dry Run"
 	manifest.Slug = "dry-run"
@@ -546,7 +546,7 @@ func TestImportReturnsErrorWhenRegistrationFails(t *testing.T) {
 	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
 
 	repoRoot := t.TempDir()
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440050"
 	manifest.Name = "Duplicate"
 	manifest.Slug = "duplicate"
@@ -565,7 +565,7 @@ func seedImportedProject(t *testing.T, memoriesHome, projectID, name, slug strin
 	t.Helper()
 
 	repoRoot := t.TempDir()
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = projectID
 	manifest.Name = name
 	manifest.Slug = slug

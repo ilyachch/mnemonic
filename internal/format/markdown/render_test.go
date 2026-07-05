@@ -16,7 +16,6 @@ func TestRenderNoteRoundTripPreservesMetadata(t *testing.T) {
 	note := Note{
 		Frontmatter: map[string]any{
 			"extra_field": "keep-me",
-			"permalink":   "legacy-slug",
 		},
 		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440010",
 		Title:          "Auth migration plan",
@@ -65,8 +64,6 @@ func TestRenderNoteRoundTripPreservesMetadata(t *testing.T) {
 	require.True(t, roundTripped.UpdatedAt.Equal(note.UpdatedAt))
 	require.Equal(t, note.Type, roundTripped.Type)
 	require.Equal(t, "keep-me", roundTripped.Frontmatter["extra_field"])
-	_, ok := roundTripped.Frontmatter["permalink"]
-	require.False(t, ok)
 	require.True(t, bytes.Equal(roundTripped.Body, body))
 }
 

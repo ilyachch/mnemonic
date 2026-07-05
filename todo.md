@@ -17,7 +17,7 @@
 
 ---
 
-# MNEMONIC-101 — Сделать порядок related notes детерминированным
+# MNEMONIC-101 — Сделать порядок related notes детерминированным ~~[DONE]~~
 
 ## Цель
 
@@ -65,7 +65,7 @@
 
 ---
 
-# MNEMONIC-102 — Исправить классификацию ошибок в `ShowMany`
+# MNEMONIC-102 — Исправить классификацию ошибок в `ShowMany` ~~[DONE]~~
 
 ## Цель
 
@@ -134,7 +134,7 @@ internal
 
 ---
 
-# MNEMONIC-103 — Добавить typed errors для полей frontmatter
+# MNEMONIC-103 — Добавить typed errors для полей frontmatter ~~[DONE]~~
 
 ## Цель
 
@@ -218,7 +218,7 @@ tags: 123
 
 ---
 
-# MNEMONIC-104 — Запретить подмену отсутствующих timestamps временем файла
+# MNEMONIC-104 — Запретить подмену отсутствующих timestamps временем файла ~~[DONE]~~
 
 ## Цель
 
@@ -262,7 +262,7 @@ missing_timestamp: updated_at
 
 ---
 
-# MNEMONIC-105 — Расширить structured diagnostics
+# MNEMONIC-105 — Расширить structured diagnostics ~~[DONE]~~
 
 ## Цель
 
@@ -324,7 +324,7 @@ Broken link возвращает:
 
 ---
 
-# MNEMONIC-106 — Перенести suggestions для broken links в diagnostics service
+# MNEMONIC-106 — Перенести suggestions для broken links в diagnostics service ~~[DONE]~~
 
 ## Цель
 
@@ -373,7 +373,7 @@ IncludeSuggestions bool
 
 ---
 
-# MNEMONIC-107 — Удалить legacy search API и compatibility aliases
+# MNEMONIC-107 — Удалить legacy search API и compatibility aliases ~~[DONE]~~
 
 ## Цель
 
@@ -417,7 +417,7 @@ IncludeSuggestions bool
 
 ---
 
-# MNEMONIC-108 — Завершить dependency injection логгера
+# MNEMONIC-108 — Завершить dependency injection логгера ~~[DONE]~~
 
 ## Цель
 
@@ -489,7 +489,7 @@ duration
 
 ---
 
-# MNEMONIC-109 — Синхронизировать CLI search с MCP search contract
+# MNEMONIC-109 — Синхронизировать CLI search с MCP search contract ~~[DONE]~~
 
 ## Цель
 
@@ -541,7 +541,7 @@ Related note должен содержать:
 
 ---
 
-# MNEMONIC-110 — Показывать `links_style` в `project show`
+# MNEMONIC-110 — Показывать `links_style` в `project show` ~~[DONE]~~
 
 ## Цель
 
@@ -591,7 +591,7 @@ links_style = "regular"
 
 ---
 
-# MNEMONIC-111 — Экранировать wildcard-символы в tag filters
+# MNEMONIC-111 — Экранировать wildcard-символы в tag filters ~~[DONE]~~
 
 ## Цель
 
@@ -639,7 +639,7 @@ Tag `100%` ищет literal percent.
 
 ---
 
-# MNEMONIC-112 — Добавить ограничения размеров MCP-запросов
+# MNEMONIC-112 — Добавить ограничения размеров MCP-запросов ~~[DONE]~~
 
 ## Цель
 
@@ -690,7 +690,7 @@ diagnostics limit: 200
 
 ---
 
-# MNEMONIC-113 — Обновить пользовательскую и developer-документацию
+# MNEMONIC-113 — Обновить пользовательскую и developer-документацию ~~[DONE]~~
 
 ## Цель
 
@@ -749,7 +749,7 @@ diagnostics limit: 200
 
 ---
 
-# MNEMONIC-114 — Добавить regression tests для retrieval
+# MNEMONIC-114 — Добавить regression tests для retrieval ~~[DONE]~~
 
 ## Цель
 
@@ -800,7 +800,7 @@ graph-only result does not beat strong textual match
 
 ---
 
-# MNEMONIC-115 — Добавить contract tests для MCP и diagnostics
+# MNEMONIC-115 — Добавить contract tests для MCP и diagnostics ~~[DONE]~~
 
 ## Цель
 

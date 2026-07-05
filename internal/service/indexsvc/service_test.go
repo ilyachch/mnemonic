@@ -26,7 +26,7 @@ func TestNewBindsKnowledgeBase(t *testing.T) {
 		IndexPath:    "/tmp/state/index.sqlite",
 	}
 
-	svc := New(resolved)
+	svc := New(resolved, nil)
 	require.Equal(t, resolved, svc.KB)
 	require.Equal(t, resolved.RootDir, svc.Notes.RootDir)
 	require.Equal(t, resolved.StateDir, svc.Notes.StateDir)
@@ -108,7 +108,7 @@ func newTestService(t *testing.T) (*Service, kb.KnowledgeBase) {
 		IndexPath:    filepath.Join(state, "index.sqlite"),
 	}
 
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = k.ID
 	manifest.Name = k.Name
 	manifest.Slug = k.Slug
@@ -146,7 +146,7 @@ func newTestService(t *testing.T) (*Service, kb.KnowledgeBase) {
 		Body:           []byte("ignored\n"),
 	}))
 
-	svc := New(k)
+	svc := New(k, nil)
 	_, err := svc.Rebuild(context.Background())
 	require.NoError(t, err)
 

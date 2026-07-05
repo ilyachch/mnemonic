@@ -236,9 +236,9 @@ func (s Store) Search(db *sql.DB, query string, limit int, tag string) ([]Search
 			SELECT 1
 			FROM note_tags nt
 			WHERE nt.note_id = n.note_id
-			  AND nt.tag LIKE ?
+			  AND nt.tag LIKE ? ESCAPE '\'
 		)`
-		args = append(args, "%:"+tag)
+		args = append(args, "%:"+escapeTagPattern(tag))
 	}
 	sqlQuery += "\n" + where + "\nORDER BY score ASC\nLIMIT ?"
 	args = append(args, limit)
@@ -436,12 +436,13 @@ func (s Store) searchNotesByFilter(db *sql.DB, opts SearchOptions, ca, cb, ua, u
 		args = append(args, *ub)
 	}
 
-	for _, t := range opts.Tags {
+	uniqTags := dedupAndFilterTags(opts.Tags)
+	for _, t := range uniqTags {
 		w.WriteString(` AND EXISTS (
 		SELECT 1 FROM note_tags nt
 		WHERE nt.note_id = n.note_id
-		  AND nt.tag LIKE ?)`)
-		args = append(args, "%:"+strings.TrimSpace(t))
+		  AND nt.tag LIKE ? ESCAPE '\')`)
+		args = append(args, "%:"+escapeTagPattern(strings.TrimSpace(t)))
 	}
 
 	query := "SELECT n.note_id, n.slug, n.title, n.rel_path, 0.0, '', n.content_hash, n.summary FROM notes n " + w.String() + " ORDER BY n.created_at DESC LIMIT ?"
@@ -618,15 +619,19 @@ func (s Store) populateRelatedNotes(db *sql.DB, results []SearchResult) error {
 		ids[i] = r.NoteID
 	}
 
-	query := "SELECT l.note_id, l.to_note_id, n.note_id, n.slug, n.title, n.rel_path, l.relation_type, l.source_kind, 'outgoing' " +
+	query := "SELECT * FROM (" +
+		"SELECT l.note_id, l.to_note_id, n.note_id, n.slug, n.title, n.rel_path, l.relation_type, l.source_kind, 'outgoing', " +
+		"CASE WHEN l.source_kind = 'relations_section' THEN 0 ELSE 1 END " +
 		"FROM links l " +
 		"JOIN notes n ON n.note_id = l.to_note_id " +
 		"WHERE l.note_id IN (" + placeholders(len(ids)) + ") AND l.to_note_id IS NOT NULL " +
 		"UNION ALL " +
-		"SELECT l.to_note_id, l.note_id, n.note_id, n.slug, n.title, n.rel_path, l.relation_type, l.source_kind, 'incoming' " +
+		"SELECT l.to_note_id, l.note_id, n.note_id, n.slug, n.title, n.rel_path, l.relation_type, l.source_kind, 'incoming', " +
+		"2 " +
 		"FROM links l " +
 		"JOIN notes n ON n.note_id = l.note_id " +
-		"WHERE l.to_note_id IN (" + placeholders(len(ids)) + ") AND l.to_note_id IS NOT NULL"
+		"WHERE l.to_note_id IN (" + placeholders(len(ids)) + ") AND l.to_note_id IS NOT NULL" +
+		") ORDER BY 10, relation_type, slug, note_id"
 
 	allIDs := append(stringSliceToAny(ids), stringSliceToAny(ids)...)
 
@@ -639,7 +644,8 @@ func (s Store) populateRelatedNotes(db *sql.DB, results []SearchResult) error {
 	relatedByNoteID := make(map[string][]RelatedNote, len(results))
 	for rows.Next() {
 		var sourceID, targetID, nID, slug, title, path, relType, sourceKind, direction string
-		if err := rows.Scan(&sourceID, &targetID, &nID, &slug, &title, &path, &relType, &sourceKind, &direction); err != nil {
+		var sortPri int
+		if err := rows.Scan(&sourceID, &targetID, &nID, &slug, &title, &path, &relType, &sourceKind, &direction, &sortPri); err != nil {
 			return fmt.Errorf("scan related note: %w", err)
 		}
 		relatedByNoteID[sourceID] = append(relatedByNoteID[sourceID], RelatedNote{
@@ -674,6 +680,8 @@ func dedupRelatedNotes(notes []RelatedNote) []RelatedNote {
 	seen := make(map[string]bool)
 	result := make([]RelatedNote, 0, maxRelatedNotes)
 
+	sortRelatedNotes(notes)
+
 	add := func(rn RelatedNote) {
 		if seen[rn.NoteID] {
 			return
@@ -702,6 +710,32 @@ func dedupRelatedNotes(notes []RelatedNote) []RelatedNote {
 	}
 	_ = collect(func(rn RelatedNote) bool { return rn.Direction == "incoming" })
 	return result
+}
+
+func sortRelatedNotes(notes []RelatedNote) {
+	sort.Slice(notes, func(i, j int) bool {
+		pi, pj := relatedNotePriority(notes[i]), relatedNotePriority(notes[j])
+		if pi != pj {
+			return pi < pj
+		}
+		if notes[i].RelationType != notes[j].RelationType {
+			return notes[i].RelationType < notes[j].RelationType
+		}
+		if notes[i].Slug != notes[j].Slug {
+			return notes[i].Slug < notes[j].Slug
+		}
+		return notes[i].NoteID < notes[j].NoteID
+	})
+}
+
+func relatedNotePriority(rn RelatedNote) int {
+	if rn.SourceKind == "relations_section" {
+		return 0
+	}
+	if rn.Direction == "outgoing" {
+		return 1
+	}
+	return 2
 }
 
 func runFTSSearch(db *sql.DB, query string, limit int, timeClause string, timeArgs []any, tagClause string, tagArgs []any) ([]SearchResult, error) {
@@ -812,14 +846,37 @@ func buildTagFilterClause(tags []string) (string, []any) {
 	if len(tags) == 0 {
 		return "", nil
 	}
-	parts := make([]string, len(tags))
-	args := make([]any, len(tags))
-	for i, t := range tags {
+	uniq := dedupAndFilterTags(tags)
+	if len(uniq) == 0 {
+		return "", nil
+	}
+	parts := make([]string, len(uniq))
+	args := make([]any, len(uniq))
+	for i, t := range uniq {
 		alias := fmt.Sprintf("nt%d", i)
-		parts[i] = fmt.Sprintf("EXISTS (SELECT 1 FROM note_tags %s WHERE %s.note_id = n.note_id AND %s.tag LIKE ?)", alias, alias, alias)
-		args[i] = "%:" + strings.TrimSpace(t)
+		parts[i] = fmt.Sprintf("EXISTS (SELECT 1 FROM note_tags %s WHERE %s.note_id = n.note_id AND %s.tag LIKE ? ESCAPE '\\')", alias, alias, alias)
+		args[i] = "%:" + escapeTagPattern(t)
 	}
 	return strings.Join(parts, " AND "), args
+}
+
+func dedupAndFilterTags(tags []string) []string {
+	seen := make(map[string]bool, len(tags))
+	result := make([]string, 0, len(tags))
+	for _, t := range tags {
+		trimmed := strings.TrimSpace(t)
+		if trimmed == "" || seen[trimmed] {
+			continue
+		}
+		seen[trimmed] = true
+		result = append(result, trimmed)
+	}
+	return result
+}
+
+func escapeTagPattern(tag string) string {
+	replacer := strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_")
+	return replacer.Replace(tag)
 }
 
 func placeholders(n int) string {

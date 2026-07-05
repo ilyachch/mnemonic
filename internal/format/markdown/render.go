@@ -19,7 +19,6 @@ var canonicalFrontmatterKeys = map[string]struct{}{
 	"created_at":       {},
 	"updated_at":       {},
 	"type":             {},
-	"permalink":        {},
 }
 
 // RenderNote serializes a note into canonical YAML frontmatter plus body.
