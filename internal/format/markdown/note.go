@@ -19,19 +19,12 @@ type Note struct {
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 	Type           string
-	Permalink      string
 	Body           []byte
 }
 
-// EffectiveSlug returns the canonical slug to write back to frontmatter.
-//
-// Permalink remains a compatibility fallback for older notes that have not yet
-// been rewritten to the canonical `slug` field.
+// EffectiveSlug returns the canonical slug.
 func (n Note) EffectiveSlug() string {
-	if n.Slug != "" {
-		return n.Slug
-	}
-	return n.Permalink
+	return n.Slug
 }
 
 // ParseNote parses a markdown note into canonical metadata, raw frontmatter, and body.
@@ -76,12 +69,6 @@ func (n *Note) populateFromRaw(raw map[string]any) error {
 	if n.Slug, errField = noteStringField(raw, "slug"); errField != nil {
 		return errField
 	}
-	if n.Permalink, errField = noteStringField(raw, "permalink"); errField != nil {
-		return errField
-	}
-	if n.Slug == "" {
-		n.Slug = n.Permalink
-	}
 	if n.Tags, errField = noteStringSliceField(raw, "tags"); errField != nil {
 		return errField
 	}
@@ -112,7 +99,7 @@ func noteStringField(raw map[string]any, key string) (string, error) {
 
 	s, ok := value.(string)
 	if !ok {
-		return "", fmt.Errorf("frontmatter %q must be a string", key)
+		return "", newStringFieldError(key, fmt.Errorf("must be a string, got %T", value))
 	}
 
 	return s, nil
@@ -132,15 +119,13 @@ func noteStringSliceField(raw map[string]any, key string) ([]string, error) {
 		for _, item := range typed {
 			s, ok := item.(string)
 			if !ok {
-				return nil, fmt.Errorf("frontmatter %q items must be strings", key)
+				return nil, newStringSliceFieldError(key, fmt.Errorf("items must be strings, got %T", item))
 			}
 			out = append(out, s)
 		}
 		return out, nil
-	case string:
-		return []string{typed}, nil
 	default:
-		return nil, fmt.Errorf("frontmatter %q must be a string or list of strings", key)
+		return nil, newStringSliceFieldError(key, fmt.Errorf("must be a list of strings, got %T", value))
 	}
 }
 
@@ -156,6 +141,6 @@ func noteTimeField(raw map[string]any, key string) (time.Time, error) {
 	case int64:
 		return time.Unix(typed, 0).UTC(), nil
 	default:
-		return time.Time{}, fmt.Errorf("frontmatter %q must be a Unix timestamp as an integer, got %T", key, value)
+		return time.Time{}, newTimeFieldError(key, fmt.Errorf("must be a Unix timestamp as an integer, got %T", value))
 	}
 }

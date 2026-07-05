@@ -19,7 +19,10 @@ var canonicalFrontmatterKeys = map[string]struct{}{
 	"created_at":       {},
 	"updated_at":       {},
 	"type":             {},
-	"permalink":        {},
+}
+
+var removedFrontmatterKeys = map[string]struct{}{
+	"permalink": {},
 }
 
 // RenderNote serializes a note into canonical YAML frontmatter plus body.
@@ -112,6 +115,9 @@ func renderExtraFrontmatter(buf *bytes.Buffer, note Note) error {
 	extraKeys := make([]string, 0, len(note.Frontmatter))
 	for key := range note.Frontmatter {
 		if _, ok := canonicalFrontmatterKeys[key]; ok {
+			continue
+		}
+		if _, ok := removedFrontmatterKeys[key]; ok {
 			continue
 		}
 		extraKeys = append(extraKeys, key)

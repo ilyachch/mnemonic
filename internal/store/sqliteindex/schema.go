@@ -2,15 +2,10 @@ package sqliteindex
 
 import "database/sql"
 
-// ApplySchema creates the index schema for version 2.
+// ApplySchema creates the current index schema in an empty database.
 func ApplySchema(db *sql.DB) error {
 	stmts := []string{
 		`PRAGMA application_id = 1095521358`,
-		`PRAGMA user_version = 2`,
-		`CREATE TABLE IF NOT EXISTS meta (
-			key TEXT PRIMARY KEY,
-			value TEXT NOT NULL
-		)`,
 		`CREATE TABLE IF NOT EXISTS notes (
 			note_id TEXT PRIMARY KEY,
 			project_id TEXT NOT NULL,
@@ -49,6 +44,7 @@ func ApplySchema(db *sql.DB) error {
 			label TEXT DEFAULT '',
 			link_style TEXT DEFAULT '',
 			source_kind TEXT DEFAULT '',
+			relation_type TEXT DEFAULT '',
 			is_resolved INTEGER NOT NULL DEFAULT 0,
 			is_ambiguous INTEGER NOT NULL DEFAULT 0,
 			source_line INTEGER NOT NULL
@@ -68,7 +64,6 @@ func ApplySchema(db *sql.DB) error {
 			body,
 			tokenize = 'unicode61'
 		)`,
-		`INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '2')`,
 	}
 
 	for _, stmt := range stmts {
@@ -78,16 +73,4 @@ func ApplySchema(db *sql.DB) error {
 	}
 
 	return nil
-}
-
-// CheckSchemaStatus reports whether the current DB schema is compatible.
-func CheckSchemaStatus(db *sql.DB) (SchemaStatus, error) {
-	var version int
-	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
-		return "", err
-	}
-	if version != 2 {
-		return SchemaStatusNeedsRebuild, nil
-	}
-	return SchemaStatusOK, nil
 }

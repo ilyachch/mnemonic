@@ -293,7 +293,7 @@ func prepareSmokeProject() (string, []string, error) {
 	}
 
 	now := time.Now().UTC()
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = idgen.NewUUID()
 	manifest.Name = "personal"
 	manifest.Slug = "personal"

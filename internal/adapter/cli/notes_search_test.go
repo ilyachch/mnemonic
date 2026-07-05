@@ -186,3 +186,75 @@ func TestNotesSearchCommandDebugHidesSensitiveFieldsByDefault(t *testing.T) {
 	require.Zero(t, got.Hits[0].Score)
 	require.Empty(t, got.Hits[0].ContentHash)
 }
+
+func TestNotesSearchCommandJSONContract(t *testing.T) {
+	projectRoot := testutil.CleanEnvForTest(t)
+
+	setLocalProjectMemoriesHome(t, projectRoot)
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
+
+	restoreWD := chdirForNotesTest(t, projectRoot)
+	defer restoreWD()
+
+	memoriesRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
+	writeTaggedNote(t, filepath.Join(memoriesRoot, "auth-migration.md"), "550e8400-e29b-41d4-a716-446655440001", "Auth migration", "auth-migration", nil, "Search this body.\nObservation queryterm.\n")
+
+	result := executeCommand("project", "reindex", "personal", "--json")
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
+
+	result = executeCommand("notes", "search", "--query", "auth", "--project", "personal", "--json", "--debug")
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
+
+	var got struct {
+		Hits []struct {
+			NoteID         string   `json:"note_id"`
+			Slug           string   `json:"slug"`
+			Title          string   `json:"title"`
+			Snippet        string   `json:"snippet"`
+			Summary        string   `json:"summary"`
+			Tags           []string `json:"tags"`
+			MatchedQueries []string `json:"matched_queries"`
+			Path           string   `json:"path"`
+			Score          *float64 `json:"score"`
+			ContentHash    string   `json:"content_hash"`
+		} `json:"hits"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(result.Stdout), &got), "stdout: %s", result.Stdout)
+	require.NotEmpty(t, got.Hits)
+	first := got.Hits[0]
+	require.NotEmpty(t, first.NoteID)
+	require.NotEmpty(t, first.Slug)
+	require.NotEmpty(t, first.Title)
+	require.NotEmpty(t, first.Snippet)
+	require.NotNil(t, first.Score, "score should be present with debug")
+	require.NotEmpty(t, first.Path, "path should be present with debug")
+	require.NotEmpty(t, first.ContentHash, "content_hash should be present with debug")
+}
+
+func TestNotesSearchCommandDebugScorePresentAtZero(t *testing.T) {
+	projectRoot := testutil.CleanEnvForTest(t)
+
+	setLocalProjectMemoriesHome(t, projectRoot)
+	require.NoError(t, writeLocalProjectFixture(t, projectRoot, "personal"))
+
+	restoreWD := chdirForNotesTest(t, projectRoot)
+	defer restoreWD()
+
+	memoriesRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
+	writeTaggedNote(t, filepath.Join(memoriesRoot, "auth-migration.md"), "550e8400-e29b-41d4-a716-446655440001", "Auth migration", "auth-migration", nil, "Search this body.\nObservation queryterm.\n")
+
+	result := executeCommand("project", "reindex", "personal", "--json")
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
+
+	result = executeCommand("notes", "search", "--query", "auth", "--project", "personal", "--json", "--debug")
+	require.NoError(t, result.Err, "stderr: %s", result.Stderr)
+
+	var got struct {
+		Hits []struct {
+			Score *float64 `json:"score"`
+		} `json:"hits"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(result.Stdout), &got), "stdout: %s", result.Stdout)
+	require.NotEmpty(t, got.Hits)
+	require.NotNil(t, got.Hits[0].Score, "score key must be present when debug is enabled")
+}

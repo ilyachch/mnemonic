@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
 	"github.com/ilyachch/mnemonic/internal/platform/clock"
 	"github.com/ilyachch/mnemonic/internal/store/sqliteindex"
@@ -17,20 +18,20 @@ import (
 func TestSearchServiceSearch(t *testing.T) {
 	svc := newSearchService(t)
 
-	hits, err := svc.Search(context.Background(), SearchInput{Query: "queryterm!", Limit: 1, Tag: "django"})
+	results, err := svc.AdvancedSearch(context.Background(), AdvancedSearchInput{Queries: []string{"queryterm!"}, Limit: 1, Tags: []string{"django"}})
 	require.NoError(t, err)
-	require.Len(t, hits, 1)
-	require.Equal(t, "alpha", hits[0].Slug)
+	require.Len(t, results, 1)
+	require.Equal(t, "alpha", results[0].Slug)
 
-	allHits, err := svc.Search(context.Background(), SearchInput{Query: "queryterm!", Limit: 10})
+	allResults, err := svc.AdvancedSearch(context.Background(), AdvancedSearchInput{Queries: []string{"queryterm!"}, Limit: 10})
 	require.NoError(t, err)
-	require.Len(t, allHits, 2)
+	require.Len(t, allResults, 2)
 }
 
 func TestSearchServiceListTags(t *testing.T) {
 	svc := newSearchService(t)
 
-	out, err := svc.ListTags(context.Background())
+	out, err := svc.ListTags(context.Background(), ListTagsInput{})
 	require.NoError(t, err)
 	require.Equal(t, []ListTagsItem{
 		{Tag: "go", Count: 2},
@@ -73,7 +74,7 @@ func newSearchService(t *testing.T) Service {
 
 	require.NoError(t, db.Close())
 
-	svc := New(kb.KnowledgeBase{ID: "kb-1", RootDir: dir, StateDir: stateDir, IndexPath: filepath.Join(dir, "index.sqlite")})
+	svc := New(kb.KnowledgeBase{ID: "kb-1", RootDir: dir, StateDir: stateDir, IndexPath: filepath.Join(dir, "index.sqlite")}, nil)
 	require.Equal(t, stateDir, svc.Index.StateDir)
 	return *svc
 }
@@ -193,3 +194,60 @@ type frozenClock struct {
 
 func (f frozenClock) Now() time.Time { return f.now.UTC() }
 func (f frozenClock) UUID() string   { return "00000000-0000-0000-0000-000000000000" }
+
+func TestListTagsRejectsNegativeLimit(t *testing.T) {
+	svc := newSearchService(t)
+
+	_, err := svc.ListTags(context.Background(), ListTagsInput{Limit: -1})
+	require.Error(t, err)
+
+	var appErr *apperr.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, apperr.CodeCLIUsage, appErr.Code)
+	assert.Contains(t, appErr.Message, "limit must be >= 0")
+}
+
+func TestListTagsLimitZeroPreservesAll(t *testing.T) {
+	svc := newSearchService(t)
+
+	out, err := svc.ListTags(context.Background(), ListTagsInput{Limit: 0})
+	require.NoError(t, err)
+	require.Equal(t, 2, len(out.Tags))
+}
+
+func TestListTagsLimitOneReturnsAtMostOne(t *testing.T) {
+	svc := newSearchService(t)
+
+	out, err := svc.ListTags(context.Background(), ListTagsInput{Limit: 1})
+	require.NoError(t, err)
+	require.Equal(t, 1, len(out.Tags))
+}
+
+func TestBacklinksRejectsNegativeLimit(t *testing.T) {
+	svc := newSearchService(t)
+
+	_, err := svc.Backlinks(context.Background(), BacklinksInput{Identifier: "gamma", Limit: -1})
+	require.Error(t, err)
+
+	var appErr *apperr.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, apperr.CodeCLIUsage, appErr.Code)
+	assert.Contains(t, appErr.Message, "limit must be >= 0")
+}
+
+func TestBacklinksLimitZeroPreservesAll(t *testing.T) {
+	svc := newSearchService(t)
+
+	links, err := svc.Backlinks(context.Background(), BacklinksInput{Identifier: "gamma", Limit: 0})
+	require.NoError(t, err)
+	require.Len(t, links, 2)
+}
+
+func TestBacklinksLimitOneReturnsAtMostOne(t *testing.T) {
+	svc := newSearchService(t)
+
+	links, err := svc.Backlinks(context.Background(), BacklinksInput{Identifier: "gamma", Limit: 1})
+	require.NoError(t, err)
+	require.Len(t, links, 1)
+	assert.Equal(t, "alpha", links[0].Slug)
+}

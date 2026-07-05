@@ -63,7 +63,8 @@ Direct usage of `time.Now()` or external UUID generators within services or doma
 
 Errors must be wrapped in the `apperr.Error` struct to return the correct exit codes in the CLI.
 
-- Use the helper constructors: `apperr.CLIUsage()`, `apperr.NotFound()`, `apperr.Unsafe()`, `apperr.Corrupted()`.
+- Use the helper constructors: `apperr.CLIUsage()`, `apperr.NotFound()`, `apperr.Unsafe()`, `apperr.Corrupted()`, `apperr.IO()`, `apperr.Ambiguous()`.
+- **Do not classify errors by message text.** Classification must use type assertions (`errors.As`) or `apperr.Code`. Code that inspects `err.Error()` with `HasPrefix`, `HasSuffix`, or `Contains` to determine the error category is prohibited.
 - Avoid direct calls to `panic()`; errors should be handled at the adapter boundaries.
 
 ### 3. Safe File Writes
@@ -81,6 +82,12 @@ Errors must be wrapped in the `apperr.Error` struct to return the correct exit c
 
 - The project uses the `modernc.org/sqlite` driver to avoid CGO dependencies.
 - All SQL queries must remain compatible with the SQLite3 specification.
+
+### 6. Index Schema Validation
+
+- `ValidateSchema()` in `internal/store/sqliteindex/schema_check.go` performs **structural** checking only (table and column presence via `PRAGMA table_info`).
+- It does **not** use version numbers, `PRAGMA user_version`, or any migration-like mechanisms.
+- The index is a disposable derived artifact — incompatibility is resolved by an explicit `mnemonic project reindex`, never automatically.
 
 ---
 

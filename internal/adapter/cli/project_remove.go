@@ -20,32 +20,32 @@ Index and lock files are always cleaned up.`,
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeProjectNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
-		wipe, err := cmd.Flags().GetBool("wipe")
-		if err != nil {
-			return err
-		}
+			wipe, err := cmd.Flags().GetBool("wipe")
+			if err != nil {
+				return err
+			}
 
-		container, err := bootstrapFromContext(commandContext(cmd))
-		if err != nil {
-			return err
-		}
+			container, err := bootstrapFromContext(commandContext(cmd))
+			if err != nil {
+				return err
+			}
 
-		result, err := container.Services.Catalog.Remove(args[0], wipe)
-		if err != nil {
-			return err
-		}
+			result, err := container.Services.Catalog.Remove(args[0], wipe, loggerFromContext(commandContext(cmd)))
+			if err != nil {
+				return err
+			}
 
-		output := projectRemoveOutput{
-			ProjectID:       result.ProjectID,
-			Slug:            result.Slug,
-			RegistryRemoved: result.RegistryRemoved,
-			IndexDeleted:    result.IndexDeleted,
-			MarkdownDeleted: result.MarkdownDeleted,
-			FullWipe:        result.FullWipe,
-		}
-		human := result.Slug + " removed\n"
-		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, output)
-	},
+			output := projectRemoveOutput{
+				ProjectID:       result.ProjectID,
+				Slug:            result.Slug,
+				RegistryRemoved: result.RegistryRemoved,
+				IndexDeleted:    result.IndexDeleted,
+				MarkdownDeleted: result.MarkdownDeleted,
+				FullWipe:        result.FullWipe,
+			}
+			human := result.Slug + " removed\n"
+			return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, output)
+		},
 	}
 	cmd.Flags().Bool("wipe", false, "also remove all markdown notes")
 	return cmd

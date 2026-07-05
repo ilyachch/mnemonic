@@ -1,5 +1,6 @@
 ---
 title: Session storage redesign
+slug: session-storage-redesign
 permalink: session-storage-redesign
 tags:
   - backend
@@ -9,4 +10,4 @@ type: note
 
 # Session storage redesign
 
-This note uses legacy Basic Memory permalink frontmatter.
+This note has both slug and permalink frontmatter fields.

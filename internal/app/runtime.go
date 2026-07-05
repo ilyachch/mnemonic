@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
@@ -17,6 +18,7 @@ import (
 type RuntimeInput struct {
 	Config *config.Config
 	KB     kb.KnowledgeBase
+	Logger *slog.Logger
 }
 
 // RuntimeServices groups the runtime services for one knowledge base.
@@ -41,9 +43,9 @@ func NewRuntimeApp(input RuntimeInput) (*RuntimeApp, error) {
 	return &RuntimeApp{
 		KB: input.KB,
 		Services: RuntimeServices{
-			Notes:  notesvc.New(input.KB),
-			Search: searchsvc.New(input.KB),
-			Index:  indexsvc.New(input.KB),
+			Notes:  notesvc.New(input.KB, input.Logger),
+			Search: searchsvc.New(input.KB, input.Logger),
+			Index:  indexsvc.New(input.KB, input.Logger),
 		},
 	}, nil
 }
@@ -57,7 +59,7 @@ func (r *RuntimeApp) IndexService() maintsvc.IndexService {
 }
 
 // Runtime resolves a selector into a runtime app.
-func (b *Bootstrap) Runtime(ctx context.Context, selector string) (*RuntimeApp, error) {
+func (b *Bootstrap) Runtime(ctx context.Context, selector string, logger *slog.Logger) (*RuntimeApp, error) {
 	_ = ctx
 	if b == nil {
 		return nil, errors.New("app bootstrap is required")
@@ -66,7 +68,7 @@ func (b *Bootstrap) Runtime(ctx context.Context, selector string) (*RuntimeApp, 
 		return nil, errors.New("catalog service is not configured")
 	}
 
-	resolved, err := b.Services.Catalog.Resolve(selector)
+	resolved, err := b.Services.Catalog.Resolve(selector, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -74,5 +76,6 @@ func (b *Bootstrap) Runtime(ctx context.Context, selector string) (*RuntimeApp, 
 	return NewRuntimeApp(RuntimeInput{
 		Config: b.Config,
 		KB:     resolved,
+		Logger: logger,
 	})
 }

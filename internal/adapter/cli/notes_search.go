@@ -24,7 +24,7 @@ func newNotesSearchCommand() *cobra.Command {
 	cmd.Flags().Int64("updated-after", 0, "filter by update time (Unix timestamp)")
 	cmd.Flags().Bool("include-related", false, "include related notes in results")
 	cmd.Flags().Bool("debug", false, "show debug fields (path, score, content_hash)")
-	cmd.Flags().Int("limit", 20, "maximum number of results")
+	cmd.Flags().Int("limit", 10, "maximum number of results")
 	return cmd
 }
 
@@ -123,46 +123,60 @@ type notesSearchOutput struct {
 }
 
 type notesSearchHit struct {
-	NoteID       string               `json:"note_id"`
-	Slug         string               `json:"slug"`
-	Title        string               `json:"title"`
-	Snippet      string               `json:"snippet"`
-	Path         string               `json:"path,omitempty"`
-	Score        float64              `json:"score,omitempty"`
-	ContentHash  string               `json:"content_hash,omitempty"`
-	RelatedNotes []notesSearchRelated `json:"related_notes,omitempty"`
+	NoteID         string               `json:"note_id"`
+	Slug           string               `json:"slug"`
+	Title          string               `json:"title"`
+	Snippet        string               `json:"snippet"`
+	Summary        string               `json:"summary,omitempty"`
+	Tags           []string             `json:"tags,omitempty"`
+	MatchedQueries []string             `json:"matched_queries,omitempty"`
+	Path           string               `json:"path,omitempty"`
+	Score          *float64             `json:"score,omitempty"`
+	ContentHash    string               `json:"content_hash,omitempty"`
+	RelatedNotes   []notesSearchRelated `json:"related_notes,omitempty"`
 }
 
 type notesSearchRelated struct {
 	NoteID       string `json:"note_id"`
 	Slug         string `json:"slug"`
 	Title        string `json:"title"`
-	Path         string `json:"path"`
+	Path         string `json:"path,omitempty"`
 	RelationType string `json:"relation_type"`
+	SourceKind   string `json:"source_kind"`
+	Direction    string `json:"direction"`
 }
 
 func notesSearchOutputFromHits(hits []searchsvc.AdvancedSearchResult, debug bool) notesSearchOutput {
 	out := notesSearchOutput{Hits: make([]notesSearchHit, 0, len(hits))}
 	for _, hit := range hits {
 		nh := notesSearchHit{
-			NoteID:  hit.NoteID,
-			Slug:    hit.Slug,
-			Title:   hit.Title,
-			Snippet: hit.Snippet,
+			NoteID:         hit.NoteID,
+			Slug:           hit.Slug,
+			Title:          hit.Title,
+			Snippet:        hit.Snippet,
+			Summary:        hit.Summary,
+			Tags:           hit.Tags,
+			MatchedQueries: hit.MatchedQueries,
 		}
 		if debug {
 			nh.Path = hit.Path
-			nh.Score = hit.Score
+			score := hit.Score
+			nh.Score = &score
 			nh.ContentHash = hit.ContentHash
 		}
 		for _, rn := range hit.RelatedNotes {
-			nh.RelatedNotes = append(nh.RelatedNotes, notesSearchRelated{
+			nr := notesSearchRelated{
 				NoteID:       rn.NoteID,
 				Slug:         rn.Slug,
 				Title:        rn.Title,
-				Path:         rn.Path,
 				RelationType: rn.RelationType,
-			})
+				SourceKind:   rn.SourceKind,
+				Direction:    rn.Direction,
+			}
+			if debug {
+				nr.Path = rn.Path
+			}
+			nh.RelatedNotes = append(nh.RelatedNotes, nr)
 		}
 		out.Hits = append(out.Hits, nh)
 	}
@@ -199,6 +213,10 @@ func formatNotesSearchHuman(hits []searchsvc.AdvancedSearchResult, debug bool) s
 			sb.WriteString(" [")
 			sb.WriteString(rn.RelationType)
 			sb.WriteString("]")
+			if debug {
+				sb.WriteString(" ")
+				sb.WriteString(rn.Path)
+			}
 		}
 	}
 	sb.WriteString("\n")

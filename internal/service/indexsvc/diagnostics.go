@@ -2,13 +2,17 @@ package indexsvc
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/format/markdown"
 	"github.com/ilyachch/mnemonic/internal/store/markdownstore"
+	"github.com/ilyachch/mnemonic/internal/store/sqliteindex"
 )
 
 // DiagnosticKind enumerates known diagnostic categories.
@@ -18,6 +22,7 @@ const (
 	KindInvalidFrontmatter   DiagnosticKind = "invalid_frontmatter"
 	KindMissingRequiredField DiagnosticKind = "missing_required_field"
 	KindMissingSummary       DiagnosticKind = "missing_summary"
+	KindMissingTimestamp     DiagnosticKind = "missing_timestamp"
 	KindInvalidTimestamp     DiagnosticKind = "invalid_timestamp"
 	KindDuplicateSlug        DiagnosticKind = "duplicate_slug"
 	KindDuplicateAlias       DiagnosticKind = "duplicate_alias"
@@ -47,7 +52,12 @@ type DiagnosticIssue struct {
 	NoteID     string                `json:"note_id,omitempty"`
 	Slug       string                `json:"slug,omitempty"`
 	Path       string                `json:"path,omitempty"`
+	Field      string                `json:"field,omitempty"`
+	SourceLine int                   `json:"source_line,omitempty"`
+	SourceKind string                `json:"source_kind,omitempty"`
+	LinkStyle  string                `json:"link_style,omitempty"`
 	Detail     string                `json:"detail,omitempty"`
+	Target     string                `json:"target,omitempty"`
 	Candidates []DiagnosticCandidate `json:"candidates,omitempty"`
 }
 
@@ -63,6 +73,16 @@ type DiagnosticCandidate struct {
 func (s Service) Diagnose(ctx context.Context, input DiagnoseInput) (DiagnoseOutput, error) {
 	_ = ctx
 
+	if input.Limit < 0 {
+		return DiagnoseOutput{}, apperr.CLIUsage("limit must be >= 0", nil)
+	}
+	if input.Limit == 0 {
+		input.Limit = 50
+	}
+	if err := validateDiagnoseInput(input); err != nil {
+		return DiagnoseOutput{}, err
+	}
+
 	kindFilter := buildKindFilter(input.Kinds)
 	issues, err := s.collectIssues(kindFilter)
 	if err != nil {
@@ -71,11 +91,11 @@ func (s Service) Diagnose(ctx context.Context, input DiagnoseInput) (DiagnoseOut
 
 	totalCount := len(issues)
 	cursor := input.Cursor
-	if cursor < 0 {
-		cursor = 0
+	if cursor >= len(issues) {
+		return DiagnoseOutput{TotalCount: totalCount}, nil
 	}
 	limit := input.Limit
-	if limit <= 0 {
+	if limit == 0 {
 		limit = 50
 	}
 
@@ -84,8 +104,13 @@ func (s Service) Diagnose(ctx context.Context, input DiagnoseInput) (DiagnoseOut
 		end = len(issues)
 	}
 
+	paged := issues[cursor:end]
+	if input.IncludeSuggestions {
+		paged = s.populateSuggestions(paged)
+	}
+
 	out := DiagnoseOutput{
-		Issues:     issues[cursor:end],
+		Issues:     paged,
 		TotalCount: totalCount,
 	}
 	if end < len(issues) {
@@ -103,6 +128,37 @@ func buildKindFilter(kinds []DiagnosticKind) map[DiagnosticKind]bool {
 		filter[k] = true
 	}
 	return filter
+}
+
+var validDiagnosticKinds = map[DiagnosticKind]bool{
+	KindInvalidFrontmatter:   true,
+	KindMissingRequiredField: true,
+	KindMissingSummary:       true,
+	KindMissingTimestamp:     true,
+	KindInvalidTimestamp:     true,
+	KindDuplicateSlug:        true,
+	KindDuplicateAlias:       true,
+	KindUnresolvedLink:       true,
+	KindAmbiguousLink:        true,
+	KindEmptyBody:            true,
+}
+
+func validateDiagnoseInput(input DiagnoseInput) error {
+	if input.Limit < 1 || input.Limit > 200 {
+		return apperr.CLIUsage("limit must be between 1 and 200", nil)
+	}
+	if input.Cursor < 0 {
+		return apperr.CLIUsage("cursor must be >= 0", nil)
+	}
+	if len(input.Kinds) > len(validDiagnosticKinds) {
+		return apperr.CLIUsage("too many diagnostic kinds", nil)
+	}
+	for _, k := range input.Kinds {
+		if !validDiagnosticKinds[k] {
+			return apperr.CLIUsage("unknown diagnostic kind: "+string(k), nil)
+		}
+	}
+	return nil
 }
 
 type kindFilter map[DiagnosticKind]bool
@@ -165,11 +221,7 @@ func (s Service) checkOneNote(root, rel string, filter kindFilter) (issues []Dia
 
 	note, parseErr := markdown.ParseNote(data)
 	if parseErr != nil {
-		if filter.include(KindInvalidFrontmatter) {
-			issues = append(issues, DiagnosticIssue{
-				Kind: KindInvalidFrontmatter, Path: rel, Detail: parseErr.Error(),
-			})
-		}
+		issues = s.classifyParseError(parseErr, rel, filter)
 		return
 	}
 
@@ -183,6 +235,33 @@ func (s Service) checkOneNote(root, rel string, filter kindFilter) (issues []Dia
 		}
 	}
 	return
+}
+
+func (s Service) classifyParseError(parseErr error, rel string, filter kindFilter) []DiagnosticIssue {
+	var issues []DiagnosticIssue
+	var fieldErr *markdown.FrontmatterFieldError
+	if errors.As(parseErr, &fieldErr) {
+		if fieldErr.Kind == markdown.FieldErrKindInvalidTimestamp {
+			if filter.include(KindInvalidTimestamp) {
+				issues = append(issues, DiagnosticIssue{
+					Kind: KindInvalidTimestamp, Path: rel, Field: fieldErr.Field, Detail: parseErr.Error(),
+				})
+			}
+		} else {
+			if filter.include(KindInvalidFrontmatter) {
+				issues = append(issues, DiagnosticIssue{
+					Kind: KindInvalidFrontmatter, Path: rel, Field: fieldErr.Field, Detail: parseErr.Error(),
+				})
+			}
+		}
+	} else {
+		if filter.include(KindInvalidFrontmatter) {
+			issues = append(issues, DiagnosticIssue{
+				Kind: KindInvalidFrontmatter, Path: rel, Detail: parseErr.Error(),
+			})
+		}
+	}
+	return issues
 }
 
 func (s Service) checkNoteFields(note markdown.Note, path string, filter kindFilter) []DiagnosticIssue {
@@ -219,28 +298,53 @@ func (s Service) checkRequiredFields(noteID, slug, title, path string, filter ki
 }
 
 func (s Service) checkContentFields(noteID, slug string, note markdown.Note, path string, filter kindFilter) []DiagnosticIssue {
-	issues := make([]DiagnosticIssue, 0, 4)
+	issues := make([]DiagnosticIssue, 0, 6)
 	if note.Summary == "" && filter.include(KindMissingSummary) {
 		issues = append(issues, DiagnosticIssue{
 			Kind: KindMissingSummary, NoteID: noteID, Slug: slug, Path: path,
 		})
 	}
-	if !note.CreatedAt.IsZero() && note.CreatedAt.Unix() <= 0 && filter.include(KindInvalidTimestamp) {
-		issues = append(issues, DiagnosticIssue{
-			Kind: KindInvalidTimestamp, NoteID: noteID, Slug: slug, Path: path,
-			Detail: "created_at <= 0",
-		})
-	}
-	if !note.UpdatedAt.IsZero() && note.UpdatedAt.Unix() <= 0 && filter.include(KindInvalidTimestamp) {
-		issues = append(issues, DiagnosticIssue{
-			Kind: KindInvalidTimestamp, NoteID: noteID, Slug: slug, Path: path,
-			Detail: "updated_at <= 0",
-		})
-	}
+	issues = append(issues, s.checkTimestamps(noteID, slug, note, path, filter)...)
 	if len(strings.TrimSpace(string(note.Body))) == 0 && filter.include(KindEmptyBody) {
 		issues = append(issues, DiagnosticIssue{
 			Kind: KindEmptyBody, NoteID: noteID, Slug: slug, Path: path,
 		})
+	}
+	return issues
+}
+
+func (s Service) checkTimestamps(noteID, slug string, note markdown.Note, path string, filter kindFilter) []DiagnosticIssue {
+	var issues []DiagnosticIssue
+	addMissing := func(field string) {
+		if filter.include(KindMissingTimestamp) {
+			issues = append(issues, DiagnosticIssue{
+				Kind: KindMissingTimestamp, NoteID: noteID, Slug: slug, Path: path,
+				Field:  field,
+				Detail: "missing " + field,
+			})
+		}
+	}
+	addInvalid := func(detail, field string) {
+		if filter.include(KindInvalidTimestamp) {
+			issues = append(issues, DiagnosticIssue{
+				Kind: KindInvalidTimestamp, NoteID: noteID, Slug: slug, Path: path,
+				Field:  field,
+				Detail: detail,
+			})
+		}
+	}
+	if note.CreatedAt.IsZero() {
+		addMissing("created_at")
+	} else if note.CreatedAt.Unix() <= 0 {
+		addInvalid("created_at <= 0", "created_at")
+	}
+	if note.UpdatedAt.IsZero() {
+		addMissing("updated_at")
+	} else if note.UpdatedAt.Unix() <= 0 {
+		addInvalid("updated_at <= 0", "updated_at")
+	}
+	if !note.CreatedAt.IsZero() && !note.UpdatedAt.IsZero() && note.CreatedAt.After(note.UpdatedAt) {
+		addInvalid("created_at > updated_at", "created_at")
 	}
 	return issues
 }
@@ -309,16 +413,85 @@ func (s Service) collectLinkIssues(filter kindFilter) ([]DiagnosticIssue, error)
 			issues = append(issues, DiagnosticIssue{
 				Kind:   KindAmbiguousLink,
 				NoteID: li.NoteID, Slug: li.Slug, Path: li.Path,
-				Detail: "ambiguous link target \"" + li.Target + "\" at line " + strconv.Itoa(li.SourceLine),
+				Target:     li.Target,
+				SourceLine: li.SourceLine,
+				SourceKind: li.SourceKind,
+				LinkStyle:  li.LinkStyle,
+				Detail:     "ambiguous link target \"" + li.Target + "\" at line " + strconv.Itoa(li.SourceLine),
 			})
 		}
 		if !li.IsAmbiguous && filter.include(KindUnresolvedLink) {
 			issues = append(issues, DiagnosticIssue{
 				Kind:   KindUnresolvedLink,
 				NoteID: li.NoteID, Slug: li.Slug, Path: li.Path,
-				Detail: "unresolved link target \"" + li.Target + "\" at line " + strconv.Itoa(li.SourceLine),
+				Target:     li.Target,
+				SourceLine: li.SourceLine,
+				SourceKind: li.SourceKind,
+				LinkStyle:  li.LinkStyle,
+				Detail:     "unresolved link target \"" + li.Target + "\" at line " + strconv.Itoa(li.SourceLine),
 			})
 		}
 	}
 	return issues, nil
+}
+
+func (s Service) populateSuggestions(issues []DiagnosticIssue) []DiagnosticIssue {
+	targets := collectLinkIssueTargets(issues)
+	if len(targets) == 0 {
+		return issues
+	}
+
+	db, err := s.Index.OpenReadonly()
+	if err != nil {
+		return issues
+	}
+	defer func() { _ = db.Close() }()
+
+	candidatesByTarget := searchCandidatesByTarget(s.Index, db, targets)
+
+	for i := range issues {
+		if issues[i].Target != "" && (issues[i].Kind == KindUnresolvedLink || issues[i].Kind == KindAmbiguousLink) {
+			issues[i].Candidates = candidatesByTarget[issues[i].Target]
+		}
+	}
+	return issues
+}
+
+func collectLinkIssueTargets(issues []DiagnosticIssue) map[string]bool {
+	targets := make(map[string]bool)
+	for _, issue := range issues {
+		if issue.Target != "" && (issue.Kind == KindUnresolvedLink || issue.Kind == KindAmbiguousLink) {
+			targets[issue.Target] = true
+		}
+	}
+	return targets
+}
+
+func searchCandidatesByTarget(store sqliteindex.Store, db *sql.DB, targets map[string]bool) map[string][]DiagnosticCandidate {
+	candidatesByTarget := make(map[string][]DiagnosticCandidate, len(targets))
+
+	targetList := make([]string, 0, len(targets))
+	for target := range targets {
+		targetList = append(targetList, target)
+	}
+
+	hitsByTarget, err := store.SearchCandidatesByTargets(db, targetList, 3)
+	if err != nil {
+		return candidatesByTarget
+	}
+
+	for target, hits := range hitsByTarget {
+		candidates := make([]DiagnosticCandidate, 0, len(hits))
+		for _, hit := range hits {
+			candidates = append(candidates, DiagnosticCandidate{
+				NoteID: hit.NoteID,
+				Slug:   hit.Slug,
+				Title:  hit.Title,
+				Path:   hit.Path,
+			})
+		}
+		candidatesByTarget[target] = candidates
+	}
+
+	return candidatesByTarget
 }

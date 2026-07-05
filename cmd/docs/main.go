@@ -13,8 +13,6 @@ import (
 	"github.com/spf13/cobra/doc"
 )
 
-const outFile = "README.cli.md"
-
 func main() {
 	boot, err := app.New(app.Input{})
 	if err != nil {
@@ -30,12 +28,32 @@ func main() {
 	var out bytes.Buffer
 	out.WriteString("# CLI Reference\n\n")
 
+	out.WriteString("## Command Directory\n\n")
+	writeCommandTreeIndex(&out, root, 0)
+	out.WriteString("\n---\n\n")
+
 	if err := writeCommandTree(&out, root, true); err != nil {
 		exit(err)
 	}
 
-	if err := os.WriteFile(outFile, out.Bytes(), 0o644); err != nil {
+	if _, err := os.Stdout.Write(out.Bytes()); err != nil {
 		exit(err)
+	}
+}
+
+func writeCommandTreeIndex(out *bytes.Buffer, cmd *cobra.Command, depth int) {
+	if cmd.Hidden {
+		return
+	}
+
+	indent := strings.Repeat("  ", depth)
+	anchor := toAnchor(cmd.CommandPath())
+
+	fmt.Fprintf(out, "%s- [%s](#%s)\n", indent, cmd.Name(), anchor)
+
+	children := visibleCommands(cmd.Commands())
+	for _, child := range children {
+		writeCommandTreeIndex(out, child, depth+1)
 	}
 }
 
@@ -50,6 +68,7 @@ func writeCommandTree(out *bytes.Buffer, cmd *cobra.Command, first bool) error {
 	}
 
 	text := cleanupMarkdown(buf.String())
+	text = wrapCommandHeading(text, cmd)
 
 	if !first {
 		out.WriteString("\n---\n\n")
@@ -90,6 +109,15 @@ func cleanupMarkdown(s string) string {
 	return s
 }
 
+func wrapCommandHeading(s string, cmd *cobra.Command) string {
+	path := cmd.CommandPath()
+
+	s = strings.Replace(s, "## "+path, "## `"+path+"`", 1)
+	s = strings.Replace(s, "# "+path, "# `"+path+"`", 1)
+
+	return s
+}
+
 func stripSeeAlso(s string) string {
 	lines := strings.Split(s, "\n")
 
@@ -112,6 +140,19 @@ func stripSeeAlso(s string) string {
 	}
 
 	return strings.Join(out, "\n")
+}
+
+func toAnchor(path string) string {
+	path = strings.ToLower(path)
+	var buf strings.Builder
+	for _, r := range path {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			buf.WriteRune(r)
+		} else if r == ' ' {
+			buf.WriteRune('-')
+		}
+	}
+	return buf.String()
 }
 
 func exit(err error) {

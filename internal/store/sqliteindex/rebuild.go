@@ -131,12 +131,6 @@ func validateDocs(docs []NoteDoc) (seenNoteIDs, seenSlugs map[string]struct{}, s
 func insertNoteDoc(db *sql.DB, doc NoteDoc, kbid string) error {
 	createdAt := doc.CreatedAt
 	updatedAt := doc.UpdatedAt
-	if createdAt == 0 {
-		createdAt = doc.FileMTimeNS / 1e9
-	}
-	if updatedAt == 0 {
-		updatedAt = createdAt
-	}
 	if _, err := db.Exec(`INSERT INTO notes(note_id, project_id, slug, rel_path, title, content_hash, summary, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		doc.NoteID, kbid, doc.Slug, doc.RelPath, doc.Title, doc.ContentHash, doc.Summary, createdAt, updatedAt); err != nil {
@@ -207,9 +201,9 @@ func insertDocLinks(db *sql.DB, doc NoteDoc, docs []NoteDoc, seenNorm map[string
 		} else if ambiguous {
 			isAmbiguous = 1
 		}
-		_, _ = db.Exec(`INSERT INTO links(link_id, note_id, to_note_id, target, label, link_style, source_kind, is_resolved, is_ambiguous, source_line) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			markdownstore.HashBytes([]byte(doc.NoteID+link.RawTarget+link.SourceKind+strconv.Itoa(link.Line))),
-			doc.NoteID, toID, link.RawTarget, link.Label, link.LinkStyle, link.SourceKind, isResolved, isAmbiguous, link.Line)
+		_, _ = db.Exec(`INSERT INTO links(link_id, note_id, to_note_id, target, label, link_style, source_kind, relation_type, is_resolved, is_ambiguous, source_line) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			markdownstore.HashBytes([]byte(doc.NoteID+link.RawTarget+link.SourceKind+link.RelationType+strconv.Itoa(link.Line))),
+			doc.NoteID, toID, link.RawTarget, link.Label, link.LinkStyle, link.SourceKind, link.RelationType, isResolved, isAmbiguous, link.Line)
 	}
 }
 

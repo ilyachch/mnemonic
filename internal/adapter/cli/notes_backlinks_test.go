@@ -21,7 +21,7 @@ func TestNotesBacklinksCommandReturnsLinks(t *testing.T) {
 
 	memoriesRoot := filepath.Join(projectRoot, ".mnemonic-memories", "personal")
 	writeTaggedNote(t, filepath.Join(memoriesRoot, "target-note.md"), "550e8400-e29b-41d4-a716-446655440001", "Target Note", "target-note", nil, "target body\n")
-	writeTaggedNote(t, filepath.Join(memoriesRoot, "source-note.md"), "550e8400-e29b-41d4-a716-446655440002", "Source Note", "source-note", nil, "[[Target Note]]\n## Relations\n- depends_on [[Target Note]]\n- relates_to [[Target Note]]\n")
+	writeTaggedNote(t, filepath.Join(memoriesRoot, "source-note.md"), "550e8400-e29b-41d4-a716-446655440002", "Source Note", "source-note", nil, "[[target-note]]\n## Relations\n- depends_on [[target-note]]\n- relates_to [[target-note]]\n")
 
 	reindexResult := executeCommand("project", "reindex", "personal", "--json")
 	require.NoError(t, reindexResult.Err, "stderr: %s", reindexResult.Stderr)

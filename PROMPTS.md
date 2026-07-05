@@ -6,24 +6,35 @@ This document provides a reference of all prompts, system instructions, and tool
 
 ## 1. System Instructions (Global Context)
 
-Depending on the operational mode (standard or read-only), `mnemonic` sends specific guiding instructions to the connected AI Client during session initialization.
+Depending on the operational mode (standard or read-only), `mnemonic` sends specific guiding instructions to the connected AI Client during session initialization. The link format instruction adapts to the project's `format.links_style` setting (`wiki` or `regular`).
 
 ### Standard Mode Instructions
 
 ```text
 You MUST use the mnemonic tools as your primary long-term memory.
-- ALWAYS search the knowledge base using search_notes or list_notes before starting a task to gather context.
-- ALWAYS write down stable facts, architectural decisions, and important outcomes using create_note or edit_note.
-- Use read_note, list_tags, and list_backlinks when they help clarify the existing knowledge base.
-- ALWAYS link related notes using [[Wiki-Links]].
+- Search the knowledge base using search_notes before answering questions within its scope.
+- Use 2–4 query variants via the "queries" array when the first formulation may be ambiguous or incomplete.
+- Batch-read all selected notes in one read_notes call.
+- Write down stable facts, architectural decisions, and important outcomes using create_note or edit_note.
+- Use diagnose_notes only for repository maintenance, cleanup, or repair tasks.
+- Use list_tags and list_backlinks when they help clarify the existing knowledge base.
+- Link related notes using [[target-slug|Display Label]].
+```
+
+With `links_style = "regular"`:
+```text
+- Link related notes using [Display Label](target-slug.md).
 ```
 
 ### Read-Only Mode Instructions
 
 ```text
 You MUST use the mnemonic tools as your primary long-term memory.
-- ALWAYS search the knowledge base using search_notes or list_notes before starting a task to gather context.
-- Use read_note, list_tags, and list_backlinks when they help clarify the existing knowledge base.
+- Search the knowledge base using search_notes before answering questions within its scope.
+- Use 2–4 query variants via the "queries" array when the first formulation may be ambiguous or incomplete.
+- Batch-read all selected notes in one read_notes call.
+- Use diagnose_notes only for repository maintenance, cleanup, or repair tasks.
+- Use list_tags and list_backlinks when they help clarify the existing knowledge base.
 - This server is running in read-only mode. Do not attempt to create, edit, delete, or rebuild notes.
 ```
 
@@ -56,37 +67,52 @@ Below is the exact list of tools exposed to the Model Context Protocol client, i
   - `limit` (integer, optional): Maximum notes to return per page (defaults to 20).
   - `cursor` (string, optional): Pagination offset.
 
-#### `read_note`
+#### `read_notes`
 
-- **Description:** `Read a note by note_id, slug, path, or title.`
+- **Description:** Batch-read one or more notes by note_id, slug, path, or title (max 50 identifiers). Unresolved identifiers are returned in `missing`. Per-selector errors are reported in `issues` with kind: ambiguous, corrupted, io_error, internal.
 - **Arguments:**
-  - `identifier` (string, required): The unique ID, slug, title, or relative path of the note.
+  - `identifiers` ([]string, required): Note IDs, slugs, file paths, or titles to resolve.
+  - `fields` ([]string, optional): Optional fields to include. Valid values: summary, tags, body, path, frontmatter, content_hash, aliases, created_at, updated_at. Timestamps are Unix seconds.
+  - `max_body_chars` (int, optional): Truncate body to this many characters (max 100000).
 
 #### `search_notes`
 
-- **Description:** `Search this knowledge base.`
-  _(Note: If a project `description` is provided, it is prepended to this description to give the AI agent precise search context)._
+- **Description:** Multi-query full-text search with time filters, tag filters, and graph-aware reranking. Results are combined via Reciprocal Rank Fusion. Each hit includes note_id, slug, title, snippet, summary, tags, and matched_queries (the original user-supplied query strings that matched).
 - **Arguments:**
-  - `query` (string, required): FTS5 query string.
-  - `limit` (integer, optional): Max search results (defaults to 20).
-  - `tag` (string, optional): Filter results by tag.
+  - `queries` ([]string, optional): FTS5 query variants (max 8, 500 Unicode characters each).
+  - `tags` ([]string, optional): Filter results by tags (AND logic).
+  - `created_before` / `created_after` (int64, optional): Unix timestamp filters.
+  - `updated_before` / `updated_after` (int64, optional): Unix timestamp filters.
+  - `created_since` / `updated_since` (string, optional): Relative duration filters (e.g. "24h", "7d").
+  - `limit` (integer, optional): Max results (1–100, defaults to 10).
+  - `include_related` (boolean, optional): Include related notes (links and backlinks).
+  - `debug` (boolean, optional): Include score, path, and content_hash in output.
 
 #### `list_tags`
 
 - **Description:** `List tags in this knowledge base.`
 - **Arguments:**
-  - `limit` (integer, optional): Max tags to return.
+  - `limit` (integer, optional): Max tags to return. 0 = no limit, positive = maximum count, negative = validation error.
 
 #### `list_backlinks`
 
 - **Description:** `List backlinks for a note.`
 - **Arguments:**
   - `identifier` (string, required): Note ID, slug, or title to find references to.
-  - `limit` (integer, optional): Limit results.
+  - `limit` (integer, optional): Limit results. 0 = no limit, positive = maximum count, negative = validation error.
+
+#### `diagnose_notes`
+
+- **Description:** Scan notes for metadata and content issues. Supported kinds: invalid_frontmatter, missing_required_field, missing_summary, missing_timestamp, invalid_timestamp, duplicate_slug, duplicate_alias, unresolved_link, ambiguous_link, empty_body. Candidate suggestions for broken links are available via `include_suggestions`.
+- **Arguments:**
+  - `kinds` ([]string, optional): Filter by diagnostic kind.
+  - `limit` (integer, optional): Page size (1–200, default 50).
+  - `cursor` (integer, optional): Zero-based pagination offset (must be >= 0).
+  - `include_suggestions` (boolean, optional): Search for link target candidates.
 
 #### `doctor`
 
-- **Description:** `Run index and content health checks.`
+- **Description:** Run index and content health checks at project level.
 - **Arguments:** None.
 
 ---
@@ -108,8 +134,10 @@ Below is the exact list of tools exposed to the Model Context Protocol client, i
   - `identifier` (string, required): The note selector (ID, slug, path, or title).
   - `append` (string, optional): Text to append to the end of the markdown body.
   - `replace_body` (string, optional): New text to completely overwrite the body.
-  - `merge_frontmatter` (object, optional): Key-value string map to update or add frontmatter metadata.
-  - `if_match_hash` (string, optional): Expected hash of the current file version to ensure safe write concurrency (highly recommended for `replace_body`).
+  - `merge_frontmatter` (object, optional): Key-value string map to update or add frontmatter metadata. Must not set `tags` or `aliases` — use the typed fields instead.
+  - `tags` ([]string, optional): Replace the tags list. Field absent = no change, empty array = clear, non-empty = replace.
+  - `aliases` ([]string, optional): Replace the aliases list. Field absent = no change, empty array = clear, non-empty = replace.
+  - `if_match_hash` (string, optional): Expected hash of the current file version to ensure safe write concurrency.
 
 #### `delete_note`
 

@@ -56,11 +56,6 @@ type PointerFile struct {
 	ManifestPath string `toml:"manifest_path"`
 }
 
-// Backward-compatible aliases for existing callsites during the migration.
-type MnemonicManifest = Manifest
-type MnemonicManifestLayout = ManifestLayout
-type MnemonicGenerator = Generator
-
 type manifestTOML struct {
 	Version               int            `toml:"version"`
 	ProjectID             string         `toml:"project_id"`
@@ -94,9 +89,6 @@ func New() *Manifest {
 	m.ApplyDefaults()
 	return m
 }
-
-// NewMnemonicManifest returns a schema-populated manifest with layout defaults.
-func NewMnemonicManifest() *Manifest { return New() }
 
 // ApplyDefaults populates the manifest defaults for unset optional fields.
 func (m *Manifest) ApplyDefaults() {
@@ -191,11 +183,6 @@ func ParseMnemonicManifestFromFile(path string) (*Manifest, error) {
 		return nil, fmt.Errorf("read mnemonic.toml: %w", err)
 	}
 	return ParseMnemonicManifest(data)
-}
-
-// ParseMnemonicManifestFile reads and parses a mnemonic.toml file from disk.
-func ParseMnemonicManifestFile(path string) (*Manifest, error) {
-	return ParseMnemonicManifestFromFile(path)
 }
 
 // ParseMnemonicManifest parses mnemonic.toml.

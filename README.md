@@ -10,17 +10,17 @@ Notes are indexed into a local SQLite database with FTS5 (Full-Text Search) for 
 
 - **Local-first Architecture**: Plain Markdown files and an SQLite index stored in the user's workspace.
 - **Markdown Frontmatter**: Every note carries YAML frontmatter with `mnemonic_note_id`, `slug`, `title`, `tags`, `summary`, `created_at`, `updated_at`, `type`, and `aliases`.
-- **Unix Integer Timestamps**: `created_at` and `updated_at` are stored as Unix epoch seconds (e.g. `1741737600`), parsed as integers, and returned in RFC 3339 format by tool interfaces.
+- **Unix Integer Timestamps**: `created_at` and `updated_at` are stored and returned as Unix epoch seconds (e.g. `1741737600`).
 - **Slug-based Wiki-Links**: `[[target-slug]]` and `[[target-slug|Display Label]]` syntax for bidirectional linking. Standard markdown links are also supported: `[Label](target-slug.md)`.
 - **Inline Metadata**:
   - Inline hashtags (`#tag`) extracted alongside frontmatter tags.
   - Observations in `- [category] text` bulleted lists under a `## Observations` heading.
   - Explicit relationships declared under a `## Relations` heading (`depends_on [[Target]]`, `relates_to [[Target]]`).
-- **Multi-query Search**: Submit several FTS5 query variants per call; each contributes to the combined BM25 ranking. Filter by tags, creation time, and update time (absolute Unix timestamps or relative durations like `24h`).
-- **Graph-aware Reranking**: Results are reranked using page-rank over the [[Wiki-Link]] graph.
-- **Related Notes**: Opt-in per-query retrieval of backlinks and forward links with their `relation_type`.
-- **Batch Read**: Read multiple notes in a single `read_notes` call by providing an array of identifiers (note_id, slug, path, or title).
-- **Repository Diagnostics**: `diagnose_notes` scans for invalid frontmatter, missing required fields, duplicate slugs/aliases, unresolved or ambiguous wiki-links, and empty bodies. Optionally resolves broken links via search and suggests candidate targets.
+- **Multi-query Search**: Submit several FTS5 query variants per call; results are aggregated via Reciprocal Rank Fusion (RRF). Filter by tags (AND logic), creation time, and update time (absolute Unix timestamps or relative durations like `24h`).
+- **Graph-aware Reranking**: Top results are multiplicatively boosted based on link connections to higher-ranked documents.
+- **Related Notes**: Opt-in per-query retrieval of backlinks and forward links with `relation_type`, `source_kind`, and `direction`.
+- **Batch Read**: Read multiple notes in a single `read_notes` call by providing an array of identifiers (note_id, slug, path, or title). Optional field selection controls payload size.
+- **Repository Diagnostics**: `diagnose_notes` scans for invalid frontmatter, missing required fields, missing/invalid timestamps, duplicate slugs/aliases, unresolved or ambiguous wiki-links, and empty bodies. Optionally resolves broken links via search and suggests candidate targets.
 - **MCP Transport**: stdio and HTTP/SSE transport with optional Bearer token authentication.
 
 ---
@@ -133,6 +133,9 @@ custom_instructions = "Custom MCP server instructions"
 created_at = 1741737600
 updated_at = 1741824000
 
+[format]
+links_style = "wiki"
+
 [layout]
 notes_glob = ["**/*.md"]
 ignore = ["mnemonic.toml", ".trash/**"]
@@ -169,7 +172,22 @@ mnemonic notes edit "deployment-guide" --append "\n- [todo] verify rollback proc
 mnemonic notes edit "deployment-guide" --replace-body "New body text" --if-match-hash "abc123..."
 
 # Merge frontmatter
-mnemonic notes edit "deployment-guide" --set tags="ops,infra"
+mnemonic notes edit "deployment-guide" --set type=decision
+
+# Set or replace tags
+mnemonic notes edit "deployment-guide" --set-tags ops --set-tags reference
+
+# Clear all tags
+mnemonic notes edit "deployment-guide" --clear-tags
+
+# Set or replace aliases
+mnemonic notes edit "deployment-guide" --set-aliases deploy-intro
+
+# Clear all aliases
+mnemonic notes edit "deployment-guide" --clear-aliases
+
+# Combine clear and set in one call (both are tags/aliases mode)
+mnemonic notes edit "deployment-guide" --clear-tags --set-aliases current
 ```
 
 ### Display a Note
@@ -222,23 +240,23 @@ mnemonic tags list
 ### Repository Diagnostics
 
 ```bash
-# Full scan
-mnemonic notes diagnose
+# Full health check
+mnemonic project doctor
 
-# Filter by kind
-mnemonic notes diagnose --kinds unresolved_link,ambiguous_link
-
-# Paginate
-mnemonic notes diagnose --limit 20
-
-# With candidate suggestions for broken links
-mnemonic notes diagnose --include-suggestions
+# Filter diagnostics by kind
+mnemonic project doctor \
+  --kind unresolved_link \
+  --kind ambiguous_link
 ```
+
+Pagination (`--limit`, `--cursor`) and candidate resolution (`--include-suggestions`) are available through the MCP `diagnose_notes` tool.
 
 ### Rebuild Index
 
+The SQLite index is a disposable artifact derived from the Markdown notes. Incompatible index schemas are not automatically migrated or rebuilt — the application reports `index is invalid` and asks the user to run `mnemonic project reindex`.
+
 ```bash
-mnemonic index rebuild
+mnemonic project reindex
 ```
 
 ### Run Health Checks
@@ -294,7 +312,7 @@ Multi-query FTS5 search with time and tag filters, graph-aware reranking, and op
 
 | Parameter | Type | Description |
 |---|---|---|
-| `queries` | `[]string` | FTS5 query strings; submit phrasing variants |
+| `queries` | `[]string` | FTS5 query strings; max 8, 500 Unicode chars each (submit phrasing variants) |
 | `tags` | `[]string` | Filter by tags (AND logic) |
 | `created_before` | `int64` | Unix timestamp, upper bound for `created_at` |
 | `created_after` | `int64` | Unix timestamp, lower bound for `created_at` |
@@ -302,20 +320,20 @@ Multi-query FTS5 search with time and tag filters, graph-aware reranking, and op
 | `updated_after` | `int64` | Unix timestamp, lower bound for `updated_at` |
 | `created_since` | `string` | Relative duration (e.g. `"24h"`, `"7d"`) |
 | `updated_since` | `string` | Relative duration (e.g. `"24h"`, `"7d"`) |
-| `limit` | `int` | Max results (default 20) |
+| `limit` | `int` | Max results (1–100, default 10) |
 | `include_related` | `bool` | Include `related_notes` array per hit |
 | `debug` | `bool` | Expose `path`, `score`, `content_hash` |
 
+Results include `note_id`, `slug`, `title`, `snippet`, `summary`, `tags`, `matched_queries` (original query strings that matched), and optionally `related_notes`, `path`, `score`, `content_hash`.
+
 ### `read_notes`
-Batch-read notes by an array of identifiers.
+Batch-read notes by an array of identifiers (max 50). Returns a `notes` array, a `missing` array for unresolvable identifiers, and an `issues` array with per-selector errors (ambiguous, corrupted, io_error, internal).
 
 | Parameter | Type | Description |
 |---|---|---|
 | `identifiers` | `[]string` | note_ids, slugs, paths, or titles |
-| `fields` | `[]string` | Limit output fields |
-| `max_body_chars` | `int` | Truncate body to N characters |
-
-Returns `notes` array and a `missing` array for unresolvable identifiers.
+| `fields` | `[]string` | Select fields: summary, tags, body, path, frontmatter, content_hash, aliases, created_at, updated_at. Timestamps are Unix seconds. |
+| `max_body_chars` | `int` | Truncate body to N characters (0–100000) |
 
 ### `diagnose_notes`
 Scan for metadata issues, broken links, and content problems.
@@ -323,32 +341,39 @@ Scan for metadata issues, broken links, and content problems.
 | Parameter | Type | Description |
 |---|---|---|
 | `kinds` | `[]string` | Filter by kind (see list below) |
-| `limit` | `int` | Issues per page (default 50) |
-| `cursor` | `int` | Zero-based page offset |
+| `limit` | `int` | Issues per page (1–200, default 50) |
+| `cursor` | `int` | Zero-based page offset (>= 0) |
 | `include_suggestions` | `bool` | Resolve broken links via search |
 
-Diagnostic kinds: `invalid_frontmatter`, `missing_required_field`, `missing_summary`, `invalid_timestamp`, `duplicate_slug`, `duplicate_alias`, `unresolved_link`, `ambiguous_link`, `empty_body`.
+Diagnostic kinds: `invalid_frontmatter`, `missing_required_field`, `missing_summary`, `missing_timestamp`, `invalid_timestamp`, `duplicate_slug`, `duplicate_alias`, `unresolved_link`, `ambiguous_link`, `empty_body`.
 
 ### `list_notes`
 List all notes with pagination (`limit`, `cursor`).
 
 ### `list_tags`
-List all tags with usage counts.
+List all tags with usage counts. `limit`: 0 = no explicit limit, positive = max results, negative = validation error.
 
 ### `list_backlinks`
-List notes that link to a given note (`identifier`, `limit`).
+List notes that link to a given note (`identifier`, `limit`). `limit`: 0 = no explicit limit, positive = max results, negative = validation error.
 
 ### `create_note`
 Create a note with `title`, `body`, and `tags`.
 
 ### `edit_note`
-Edit a note by `identifier` with one of `append`, `replace_body` (requires `if_match_hash`), or `merge_frontmatter`.
+Edit a note by `identifier` with one of `append`, `replace_body` (requires `if_match_hash`), `merge_frontmatter`, typed `tags`, or typed `aliases`.
+
+`tags` and `aliases` are presence-aware:
+- field absent → do not modify
+- empty array `[]` → clear the field
+- non-empty array `["a", "b"]` → replace the field with the given list
+
+`tags` and `aliases` must not be passed through `merge_frontmatter`.
 
 ### `delete_note`
 Delete or trash a note by `identifier`. `hard_delete` requires `if_match_hash`.
 
 ### `rebuild_index`
-Rebuild the full-text search index.
+Rebuild the full-text search index from scratch.
 
 ### `doctor`
 Run index and content health checks.

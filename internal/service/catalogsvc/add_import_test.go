@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	manifestfmt "github.com/ilyachch/mnemonic/internal/format/manifest"
 	"github.com/ilyachch/mnemonic/internal/platform/clock"
 	"github.com/ilyachch/mnemonic/internal/testutil"
@@ -22,7 +23,7 @@ func TestAddRegistersStructuredProjectAndRebuildsIndex(t *testing.T) {
 	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
 
 	repoRoot := t.TempDir()
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440100"
 	manifest.Name = "Structured"
 	manifest.Slug = "structured"
@@ -31,7 +32,7 @@ func TestAddRegistersStructuredProjectAndRebuildsIndex(t *testing.T) {
 	manifest.UpdatedAt = manifest.CreatedAt
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(repoRoot, "mnemonic.toml"), manifest))
 
-	result, err := svc.Add(context.Background(), AddInput{Path: repoRoot})
+	result, err := svc.Add(context.Background(), AddInput{Path: repoRoot}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "structured", result.Slug)
 	assert.Equal(t, manifest.ProjectID, result.ProjectID)
@@ -50,9 +51,13 @@ func TestAddRejectsMissingManifest(t *testing.T) {
 
 	repoRoot := t.TempDir()
 
-	_, err := svc.Add(context.Background(), AddInput{Path: repoRoot})
+	_, err := svc.Add(context.Background(), AddInput{Path: repoRoot}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "mnemonic.toml not found")
+
+	var appErr *apperr.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, apperr.CodeNotFound, appErr.Code)
 }
 
 func TestImportGeneratesManifestAndHydratesRawDirectory(t *testing.T) {
@@ -71,7 +76,7 @@ func TestImportGeneratesManifestAndHydratesRawDirectory(t *testing.T) {
 	})
 	t.Cleanup(restore)
 
-	result, err := svc.Import(context.Background(), ImportInput{Path: repoRoot})
+	result, err := svc.Import(context.Background(), ImportInput{Path: repoRoot}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.Imported)
 	assert.Equal(t, 1, result.Indexed)
@@ -96,7 +101,7 @@ func TestImportPreservesExistingManifest(t *testing.T) {
 	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
 
 	repoRoot := t.TempDir()
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440200"
 	manifest.Name = "Existing"
 	manifest.Slug = "existing"
@@ -111,7 +116,7 @@ func TestImportPreservesExistingManifest(t *testing.T) {
 	})
 	t.Cleanup(restore)
 
-	result, err := svc.Import(context.Background(), ImportInput{Path: repoRoot})
+	result, err := svc.Import(context.Background(), ImportInput{Path: repoRoot}, nil)
 	require.NoError(t, err)
 	assert.False(t, result.ManifestCreated)
 	assert.Equal(t, "existing", result.Candidates[0].Slug)
@@ -135,7 +140,7 @@ func TestImportDryRunDoesNotWrite(t *testing.T) {
 	})
 	t.Cleanup(restore)
 
-	result, err := svc.Import(context.Background(), ImportInput{Path: repoRoot, DryRun: true})
+	result, err := svc.Import(context.Background(), ImportInput{Path: repoRoot, DryRun: true}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "skipped", result.IndexStatus)
 	assert.True(t, result.ManifestCreated)
@@ -166,10 +171,39 @@ func TestImportRejectsDuplicateSlug(t *testing.T) {
 	})
 	t.Cleanup(restore)
 
-	_, err := svc.Import(context.Background(), ImportInput{Path: repoRoot})
+	_, err := svc.Import(context.Background(), ImportInput{Path: repoRoot}, nil)
 	require.NoError(t, err)
 
-	_, err = svc.Import(context.Background(), ImportInput{Path: repoRoot})
+	_, err = svc.Import(context.Background(), ImportInput{Path: repoRoot}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "already exists")
+}
+
+func TestAddReturnsAmbiguousWhenSlugAlreadyRegistered(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+
+	memoriesHome := t.TempDir()
+	stateHome := t.TempDir()
+	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
+
+	repoRoot := t.TempDir()
+	manifest := manifestfmt.New()
+	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440111"
+	manifest.Name = "AmbiguousAdd"
+	manifest.Slug = "ambiguous-add"
+	manifest.MarkdownFormatVersion = 1
+	manifest.CreatedAt = time.Now().UTC().Unix()
+	manifest.UpdatedAt = manifest.CreatedAt
+	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(repoRoot, "mnemonic.toml"), manifest))
+
+	_, err := svc.Add(context.Background(), AddInput{Path: repoRoot}, nil)
+	require.NoError(t, err)
+
+	_, err = svc.Add(context.Background(), AddInput{Path: repoRoot}, nil)
+	require.Error(t, err)
+
+	var appErr *apperr.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, apperr.CodeAmbiguous, appErr.Code)
+	assert.Contains(t, appErr.Message, `project slug "ambiguous-add" already exists`)
 }

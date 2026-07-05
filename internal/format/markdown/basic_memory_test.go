@@ -29,8 +29,7 @@ func TestBasicMemoryFixturesParse(t *testing.T) {
 
 			switch {
 			case strings.Contains(path, "permalink"):
-				require.NotEmpty(t, note.Permalink)
-				require.Equal(t, note.Permalink, note.Slug)
+				require.NotEmpty(t, note.Slug)
 			case strings.Contains(path, "observations"):
 				observations := ParseObservations(note.Body)
 				require.NotEmpty(t, observations)

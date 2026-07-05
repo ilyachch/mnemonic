@@ -68,7 +68,7 @@ func TestBootstrapRuntimeResolvesSelector(t *testing.T) {
 	projectDir := filepath.Join(memoriesHome, slug)
 	require.NoError(t, os.MkdirAll(projectDir, 0o755))
 
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440001"
 	manifest.Name = "Demo"
 	manifest.Slug = slug
@@ -81,7 +81,7 @@ func TestBootstrapRuntimeResolvesSelector(t *testing.T) {
 	bootstrap, err := New(Input{})
 	require.NoError(t, err)
 
-	runtime, err := bootstrap.Runtime(context.Background(), "  "+slug+"  ")
+	runtime, err := bootstrap.Runtime(context.Background(), "  "+slug+"  ", nil)
 	require.NoError(t, err)
 	require.Equal(t, manifest.ProjectID, runtime.KB.ID)
 	require.Equal(t, manifest.Name, runtime.KB.Name)
@@ -102,7 +102,7 @@ func TestBootstrapRuntimeReturnsUsageErrorForEmptySelector(t *testing.T) {
 	bootstrap, err := New(Input{})
 	require.NoError(t, err)
 
-	_, err = bootstrap.Runtime(context.Background(), "   ")
+	_, err = bootstrap.Runtime(context.Background(), "   ", nil)
 	require.Error(t, err)
 
 	var appErr *apperr.Error

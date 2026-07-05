@@ -13,6 +13,7 @@ const (
 	CodeAmbiguous Code = 4
 	CodeUnsafe    Code = 5
 	CodeCorrupted Code = 6
+	CodeIO        Code = 7
 )
 
 // Error is the standard application error wrapping a code and details.
@@ -64,4 +65,8 @@ func Unsafe(msg string, err error) *Error {
 
 func Corrupted(msg string, err error) *Error {
 	return New(CodeCorrupted, msg, err)
+}
+
+func IO(msg string, err error) *Error {
+	return New(CodeIO, msg, err)
 }

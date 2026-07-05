@@ -57,7 +57,7 @@ func seedAddProject(t *testing.T) (string, string) {
 	importRoot := filepath.Join(cwd, "repo")
 	require.NoError(t, os.MkdirAll(importRoot, 0o755))
 
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
 	manifest.Name = "Backend"
 	manifest.Slug = "backend"

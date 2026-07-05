@@ -44,12 +44,10 @@ func runStdioAdapter(cmd *cobra.Command, args []string) error {
 		Notes:  runtime.Services.Notes,
 		Search: runtime.Services.Search,
 		Index:  runtime.Services.Index,
-	}, stdioReadOnlyEnabled(cmd))
+	}, stdioReadOnlyEnabled(cmd), loggerFromContext(commandContext(cmd)))
 	if err != nil {
 		return err
 	}
-
-	srv.Logger = loggerFromContext(commandContext(cmd))
 
 	return stdioRun(srv, commandContext(cmd), &mcp.StdioTransport{})
 }

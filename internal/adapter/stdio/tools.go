@@ -4,7 +4,7 @@ import (
 	"context"
 	"strconv"
 	"strings"
-	"time"
+	"unicode/utf8"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/service/indexsvc"
@@ -14,34 +14,47 @@ import (
 )
 
 const (
+	maxSearchLimit     = 100
+	maxQueryCount      = 8
+	maxQueryLength     = 500
+	maxReadIdentifiers = 50
+	maxBodyChars       = 100000
+	maxDiagnosticLimit = 200
+)
+
+const (
 	listNotesDescription = `List all notes in this knowledge base.`
 	readNotesDescription = `Read one or more notes by note_id, slug, path, or title.
 Provide an array of identifiers to batch-read multiple notes in a single call.
-Resolved notes are returned with their note_id, slug, title, path, frontmatter, body, content_hash, and updated_at (RFC 3339).
+note_id, slug, and title are always returned.
+By default returns note_id, slug, title, summary, tags, and body.
+Use the "fields" parameter to include path, frontmatter, content_hash, aliases, created_at, or updated_at.
 Unresolved identifiers are listed in the "missing" array.
+Per-selector errors (ambiguous, corrupted, io_error, internal) are reported in the "issues" array.
 
 Parameters:
-- identifiers ([]string, required): note IDs, slugs, file paths, or titles to resolve.
-- fields ([]string, optional): limit output to the specified fields.
-- max_body_chars (int, optional): truncate each note body to this many characters.`
+- identifiers ([]string, required): note IDs, slugs, file paths, or titles to resolve (max 50).
+- fields ([]string, optional): select which optional fields to include. Valid values: summary, tags, body, path, frontmatter, content_hash, aliases, created_at, updated_at.
+- max_body_chars (int, optional): truncate each note body to this many characters (max 100000).`
 	searchNotesDescription = `Search this knowledge base with multi-query full-text search, time filters, tag filters, and graph-aware reranking.
-Provide multiple distinct query variants via the "queries" array to improve recall — each query contributes to the combined ranking.
-Results include note_id, slug, title, and a relevance snippet. Set include_related to true to fetch linked notes for each hit.
+Provide multiple distinct query variants via the "queries" array to improve recall — each query contributes to the combined ranking via Reciprocal Rank Fusion.
+Results include note_id, slug, title, summary, tags, matched_queries, and a relevance snippet.
+Set include_related to true to fetch linked notes for each hit (with relation_type, source_kind, direction).
 Set debug to true to expose internal fields (path, score, content_hash).
 
 Parameters:
-- queries ([]string, optional): FTS5 query strings; submit several phrasing variants.
+- queries ([]string, optional): FTS5 query strings; submit several phrasing variants (max 8, 500 chars each).
 - tags ([]string, optional): restrict results to notes tagged with every listed tag (AND).
 - created_before / created_after (int64, optional): Unix timestamps for creation time range.
 - updated_before / updated_after (int64, optional): Unix timestamps for update time range.
 - created_since / updated_since (string, optional): relative duration (e.g. "24h", "7d").
-- limit (int, optional): maximum number of results (default 20).
-- include_related (bool, optional): return related notes (backlinks and forward links) with their relation_type.
+- limit (int, optional): maximum number of results (default 10, max 100).
+- include_related (bool, optional): return related notes (backlinks and forward links).
 - debug (bool, optional): expose path, score, and content_hash for each hit.`
 	listTagsDescription      = `List tags in this knowledge base.`
 	listBacklinksDescription = `List backlinks for a note.`
 	createNoteDescription    = `Create a new note.`
-	editNoteDescription      = `Edit an existing note.`
+	editNoteDescription      = `Edit an existing note by appending to the body, replacing the body, merging frontmatter, or setting/clearing tags and aliases. Tags and aliases are presence-aware: absent=no change, empty array=clear, non-empty=replace. Must not set tags or aliases through merge_frontmatter; use the typed fields.`
 	deleteNoteDescription    = `Delete a note.`
 	rebuildIndexDescription  = `Rebuild the index.`
 	doctorDescription        = `Run index and content health checks.`
@@ -50,8 +63,8 @@ Returns paginated diagnostic issues. Set include_suggestions to true to receive 
 Use this tool periodically to verify repository integrity after bulk changes.
 
 Parameters:
-- kinds ([]string, optional): filter by diagnostic kind. Valid values: "invalid_frontmatter", "missing_required_field", "missing_summary", "invalid_timestamp", "duplicate_slug", "duplicate_alias", "unresolved_link", "ambiguous_link", "empty_body".
-- limit (int, optional): maximum issues per page (default 50).
+- kinds ([]string, optional): filter by diagnostic kind. Valid values: "invalid_frontmatter", "missing_required_field", "missing_summary", "missing_timestamp", "invalid_timestamp", "duplicate_slug", "duplicate_alias", "unresolved_link", "ambiguous_link", "empty_body".
+- limit (int, optional): maximum issues per page (default 50, max 200).
 - cursor (int, optional): zero-based page offset.
 - include_suggestions (bool, optional): resolve broken links via search and include candidate notes.`
 )
@@ -73,19 +86,24 @@ type ReadNotesInput struct {
 }
 
 type ReadNotesOutput struct {
-	Notes   []ReadNotesNote `json:"notes"`
-	Missing []string        `json:"missing,omitempty"`
+	Notes   []ReadNotesNote         `json:"notes"`
+	Missing []string                `json:"missing,omitempty"`
+	Issues  []notesvc.ReadManyIssue `json:"issues,omitempty"`
 }
 
 type ReadNotesNote struct {
-	NoteID      string         `json:"note_id"`
-	Slug        string         `json:"slug"`
-	Title       string         `json:"title"`
-	Path        string         `json:"path"`
-	Frontmatter map[string]any `json:"frontmatter"`
-	Body        string         `json:"body"`
-	ContentHash string         `json:"content_hash"`
-	UpdatedAt   string         `json:"updated_at"`
+	NoteID      string          `json:"note_id"`
+	Slug        string          `json:"slug"`
+	Title       string          `json:"title"`
+	Summary     *string         `json:"summary,omitempty"`
+	Tags        *[]string       `json:"tags,omitempty"`
+	Aliases     *[]string       `json:"aliases,omitempty"`
+	Body        *string         `json:"body,omitempty"`
+	Path        *string         `json:"path,omitempty"`
+	Frontmatter *map[string]any `json:"frontmatter,omitempty"`
+	ContentHash *string         `json:"content_hash,omitempty"`
+	CreatedAt   *int64          `json:"created_at,omitempty"`
+	UpdatedAt   *int64          `json:"updated_at,omitempty"`
 }
 
 type SearchNotesInput struct {
@@ -103,22 +121,27 @@ type SearchNotesInput struct {
 }
 
 type SearchNotesHit struct {
-	NoteID       string                  `json:"note_id"`
-	Slug         string                  `json:"slug"`
-	Title        string                  `json:"title"`
-	Snippet      string                  `json:"snippet"`
-	Path         string                  `json:"path,omitempty"`
-	Score        float64                 `json:"score,omitempty"`
-	ContentHash  string                  `json:"content_hash,omitempty"`
-	RelatedNotes []searchNotesRelatedHit `json:"related_notes,omitempty"`
+	NoteID         string                  `json:"note_id"`
+	Slug           string                  `json:"slug"`
+	Title          string                  `json:"title"`
+	Snippet        string                  `json:"snippet"`
+	Summary        string                  `json:"summary,omitempty"`
+	Tags           []string                `json:"tags,omitempty"`
+	MatchedQueries []string                `json:"matched_queries,omitempty"`
+	Path           string                  `json:"path,omitempty"`
+	Score          *float64                `json:"score,omitempty"`
+	ContentHash    string                  `json:"content_hash,omitempty"`
+	RelatedNotes   []searchNotesRelatedHit `json:"related_notes,omitempty"`
 }
 
 type searchNotesRelatedHit struct {
 	NoteID       string `json:"note_id"`
 	Slug         string `json:"slug"`
 	Title        string `json:"title"`
-	Path         string `json:"path"`
+	Path         string `json:"path,omitempty"`
 	RelationType string `json:"relation_type"`
+	SourceKind   string `json:"source_kind"`
+	Direction    string `json:"direction"`
 }
 
 type SearchNotesOutput struct {
@@ -162,6 +185,8 @@ type EditNoteInput struct {
 	Append           string            `json:"append,omitempty"`
 	ReplaceBody      string            `json:"replace_body,omitempty"`
 	MergeFrontmatter map[string]string `json:"merge_frontmatter,omitempty"`
+	Tags             *[]string         `json:"tags,omitempty"`
+	Aliases          *[]string         `json:"aliases,omitempty"`
 	IfMatchHash      string            `json:"if_match_hash,omitempty"`
 }
 
@@ -228,7 +253,12 @@ type DiagnoseNotesIssue struct {
 	NoteID     string                         `json:"note_id,omitempty"`
 	Slug       string                         `json:"slug,omitempty"`
 	Path       string                         `json:"path,omitempty"`
+	Field      string                         `json:"field,omitempty"`
+	SourceLine int                            `json:"source_line,omitempty"`
+	SourceKind string                         `json:"source_kind,omitempty"`
+	LinkStyle  string                         `json:"link_style,omitempty"`
 	Detail     string                         `json:"detail,omitempty"`
+	Target     string                         `json:"target,omitempty"`
 	Candidates []indexsvc.DiagnosticCandidate `json:"candidates,omitempty"`
 }
 
@@ -263,6 +293,9 @@ func RegisterListNotes(server *sdkmcp.Server, deps Dependencies) {
 		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input ListNotesInput) (*sdkmcp.CallToolResult, ListNotesOutput, error) {
 		_ = ctx
+		if input.Limit < 0 {
+			return nil, ListNotesOutput{}, apperr.CLIUsage("limit must be >= 0", nil)
+		}
 		notes, err := deps.Notes.List()
 		if err != nil {
 			return nil, ListNotesOutput{}, err
@@ -273,8 +306,11 @@ func RegisterListNotes(server *sdkmcp.Server, deps Dependencies) {
 
 func paginateNotes(notes []notesvc.NoteSummary, input ListNotesInput) ListNotesOutput {
 	limit := input.Limit
-	if limit <= 0 {
+	if limit == 0 {
 		limit = 20
+	}
+	if limit < 0 {
+		return ListNotesOutput{}
 	}
 	cursor := parseCursor(input.Cursor, len(notes))
 	end := cursor + limit
@@ -307,31 +343,47 @@ func RegisterReadNotes(server *sdkmcp.Server, deps Dependencies) {
 		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input ReadNotesInput) (*sdkmcp.CallToolResult, ReadNotesOutput, error) {
 		_ = ctx
-		var notes []ReadNotesNote
-		var missing []string
-		for _, identifier := range input.Identifiers {
-			resolved, err := deps.Notes.Show(identifier)
-			if err != nil {
-				missing = append(missing, identifier)
-				continue
-			}
-			body := string(resolved.Note.Body)
-			if input.MaxBodyChars > 0 && len(body) > input.MaxBodyChars {
-				body = body[:input.MaxBodyChars]
-			}
-			notes = append(notes, ReadNotesNote{
-				NoteID:      resolved.Note.MnemonicNoteID,
-				Slug:        resolved.Note.EffectiveSlug(),
-				Title:       resolved.Note.Title,
-				Path:        resolved.Path,
-				Frontmatter: resolved.Note.Frontmatter,
-				Body:        body,
-				ContentHash: resolved.ContentHash,
-				UpdatedAt:   resolved.Note.UpdatedAt.UTC().Format(time.RFC3339),
-			})
+		if len(input.Identifiers) > maxReadIdentifiers {
+			return nil, ReadNotesOutput{}, apperr.CLIUsage("too many identifiers", nil)
 		}
-		return nil, ReadNotesOutput{Notes: notes, Missing: missing}, nil
+		if input.MaxBodyChars > maxBodyChars {
+			return nil, ReadNotesOutput{}, apperr.CLIUsage("max_body_chars exceeds maximum", nil)
+		}
+		fields, err := buildFieldSet(input.Fields)
+		if err != nil {
+			return nil, ReadNotesOutput{}, err
+		}
+		output, err := deps.Notes.ShowMany(notesvc.ReadManyInput{Selectors: input.Identifiers, MaxBodyChars: input.MaxBodyChars})
+		if err != nil {
+			return nil, ReadNotesOutput{}, err
+		}
+		var notes []ReadNotesNote
+		for _, item := range output.Notes {
+			notes = append(notes, buildReadNotesNote(fields, item.ShowResult, input.MaxBodyChars))
+		}
+		return nil, ReadNotesOutput{Notes: notes, Missing: output.Missing, Issues: output.Issues}, nil
 	})
+}
+
+func validateSearchNotesInput(input *SearchNotesInput) error {
+	if input.Limit < 0 {
+		return apperr.CLIUsage("limit must be >= 0", nil)
+	}
+	if input.Limit == 0 {
+		input.Limit = 10
+	}
+	if input.Limit > maxSearchLimit {
+		return apperr.CLIUsage("limit exceeds maximum", nil)
+	}
+	if len(input.Queries) > maxQueryCount {
+		return apperr.CLIUsage("too many queries", nil)
+	}
+	for _, q := range input.Queries {
+		if utf8.RuneCountInString(q) > maxQueryLength {
+			return apperr.CLIUsage("query too long", nil)
+		}
+	}
+	return nil
 }
 
 func RegisterSearchNotes(server *sdkmcp.Server, deps Dependencies, description string) {
@@ -340,8 +392,8 @@ func RegisterSearchNotes(server *sdkmcp.Server, deps Dependencies, description s
 		Description: buildToolDescription(description, searchNotesDescription),
 		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input SearchNotesInput) (*sdkmcp.CallToolResult, SearchNotesOutput, error) {
-		if input.Limit <= 0 {
-			input.Limit = 20
+		if err := validateSearchNotesInput(&input); err != nil {
+			return nil, SearchNotesOutput{}, err
 		}
 		advancedInput := searchsvc.AdvancedSearchInput{
 			Queries:        input.Queries,
@@ -361,27 +413,7 @@ func RegisterSearchNotes(server *sdkmcp.Server, deps Dependencies, description s
 		}
 		out := make([]SearchNotesHit, 0, len(hits))
 		for _, hit := range hits {
-			s := SearchNotesHit{
-				NoteID:  hit.NoteID,
-				Slug:    hit.Slug,
-				Title:   hit.Title,
-				Snippet: hit.Snippet,
-			}
-			if input.Debug {
-				s.Path = hit.Path
-				s.Score = hit.Score
-				s.ContentHash = hit.ContentHash
-			}
-			for _, rn := range hit.RelatedNotes {
-				s.RelatedNotes = append(s.RelatedNotes, searchNotesRelatedHit{
-					NoteID:       rn.NoteID,
-					Slug:         rn.Slug,
-					Title:        rn.Title,
-					Path:         rn.Path,
-					RelationType: rn.RelationType,
-				})
-			}
-			out = append(out, s)
+			out = append(out, toSearchNotesHit(hit, input.Debug))
 		}
 		return nil, SearchNotesOutput{Hits: out}, nil
 	})
@@ -393,15 +425,14 @@ func RegisterListTags(server *sdkmcp.Server, deps Dependencies) {
 		Description: listTagsDescription,
 		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input ListTagsInput) (*sdkmcp.CallToolResult, ListTagsOutput, error) {
-		out, err := deps.Search.ListTags(ctx)
+		if input.Limit < 0 {
+			return nil, ListTagsOutput{}, apperr.CLIUsage("limit must be >= 0", nil)
+		}
+		out, err := deps.Search.ListTags(ctx, searchsvc.ListTagsInput{Limit: input.Limit})
 		if err != nil {
 			return nil, ListTagsOutput{}, err
 		}
-		tags := out.Tags
-		if input.Limit > 0 && len(tags) > input.Limit {
-			tags = tags[:input.Limit]
-		}
-		return nil, ListTagsOutput{Tags: tags}, nil
+		return nil, ListTagsOutput{Tags: out.Tags}, nil
 	})
 }
 
@@ -411,6 +442,9 @@ func RegisterListBacklinks(server *sdkmcp.Server, deps Dependencies) {
 		Description: listBacklinksDescription,
 		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input ListBacklinksInput) (*sdkmcp.CallToolResult, ListBacklinksOutput, error) {
+		if input.Limit < 0 {
+			return nil, ListBacklinksOutput{}, apperr.CLIUsage("limit must be >= 0", nil)
+		}
 		links, err := deps.Search.Backlinks(ctx, searchsvc.BacklinksInput{Identifier: input.Identifier, Limit: input.Limit})
 		if err != nil {
 			return nil, ListBacklinksOutput{}, err
@@ -494,11 +528,14 @@ func validateEditInput(input EditNoteInput) error {
 	if len(input.MergeFrontmatter) > 0 {
 		modeCount++
 	}
+	if input.Tags != nil || input.Aliases != nil {
+		modeCount++
+	}
 	if modeCount == 0 {
-		return apperr.CLIUsage("edit requires append, replace_body, or merge_frontmatter", nil)
+		return apperr.CLIUsage("edit requires append, replace_body, merge_frontmatter, tags, or aliases", nil)
 	}
 	if modeCount > 1 {
-		return apperr.CLIUsage("edit modes append, replace_body, and merge_frontmatter are mutually exclusive", nil)
+		return apperr.CLIUsage("edit modes append, replace_body, merge_frontmatter, tags, and aliases are mutually exclusive", nil)
 	}
 	if input.ReplaceBody != "" && input.IfMatchHash == "" {
 		return apperr.Unsafe("replace_body requires if_match_hash from read_notes", nil)
@@ -517,6 +554,9 @@ func buildEditInput(input EditNoteInput) notesvc.EditInput {
 		editInput.HasBody = true
 	case input.Append != "":
 		editInput.Append = []byte(input.Append)
+	case input.Tags != nil || input.Aliases != nil:
+		editInput.Tags = input.Tags
+		editInput.Aliases = input.Aliases
 	default:
 		editInput.Set = input.MergeFrontmatter
 	}
@@ -617,10 +657,14 @@ func RegisterDiagnoseNotes(server *sdkmcp.Server, deps Dependencies) {
 		Description: diagnoseNotesDescription,
 		Annotations: &sdkmcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *sdkmcp.CallToolRequest, input DiagnoseNotesInput) (*sdkmcp.CallToolResult, DiagnoseNotesOutput, error) {
+		if input.Limit > maxDiagnosticLimit {
+			return nil, DiagnoseNotesOutput{}, apperr.CLIUsage("limit exceeds maximum", nil)
+		}
 		result, err := deps.Index.Diagnose(ctx, indexsvc.DiagnoseInput{
-			Kinds:  input.Kinds,
-			Limit:  input.Limit,
-			Cursor: input.Cursor,
+			Kinds:              input.Kinds,
+			Limit:              input.Limit,
+			Cursor:             input.Cursor,
+			IncludeSuggestions: input.IncludeSuggestions,
 		})
 		if err != nil {
 			return nil, DiagnoseNotesOutput{}, err
@@ -629,14 +673,17 @@ func RegisterDiagnoseNotes(server *sdkmcp.Server, deps Dependencies) {
 		issues := make([]DiagnoseNotesIssue, 0, len(result.Issues))
 		for _, issue := range result.Issues {
 			di := DiagnoseNotesIssue{
-				Kind:   issue.Kind,
-				NoteID: issue.NoteID,
-				Slug:   issue.Slug,
-				Path:   issue.Path,
-				Detail: issue.Detail,
-			}
-			if input.IncludeSuggestions && (issue.Kind == indexsvc.KindUnresolvedLink || issue.Kind == indexsvc.KindAmbiguousLink) {
-				di.Candidates = findLinkCandidates(ctx, deps, issue)
+				Kind:       issue.Kind,
+				NoteID:     issue.NoteID,
+				Slug:       issue.Slug,
+				Path:       issue.Path,
+				Field:      issue.Field,
+				SourceLine: issue.SourceLine,
+				SourceKind: issue.SourceKind,
+				LinkStyle:  issue.LinkStyle,
+				Detail:     issue.Detail,
+				Target:     issue.Target,
+				Candidates: issue.Candidates,
 			}
 			issues = append(issues, di)
 		}
@@ -647,41 +694,6 @@ func RegisterDiagnoseNotes(server *sdkmcp.Server, deps Dependencies) {
 			NextCursor: result.NextCursor,
 		}, nil
 	})
-}
-
-func findLinkCandidates(ctx context.Context, deps Dependencies, issue indexsvc.DiagnosticIssue) []indexsvc.DiagnosticCandidate {
-	target := extractLinkTarget(issue.Detail)
-	if target == "" {
-		return nil
-	}
-	hits, err := deps.Search.Search(ctx, searchsvc.SearchInput{Query: target, Limit: 3})
-	if err != nil {
-		return nil
-	}
-	candidates := make([]indexsvc.DiagnosticCandidate, 0, len(hits))
-	for _, hit := range hits {
-		candidates = append(candidates, indexsvc.DiagnosticCandidate{
-			NoteID: hit.NoteID,
-			Slug:   hit.Slug,
-			Title:  hit.Title,
-			Path:   hit.Path,
-		})
-	}
-	return candidates
-}
-
-func extractLinkTarget(detail string) string {
-	const prefix = `target "`
-	start := strings.Index(detail, prefix)
-	if start == -1 {
-		return ""
-	}
-	start += len(prefix)
-	end := strings.Index(detail[start:], `"`)
-	if end == -1 {
-		return ""
-	}
-	return detail[start : start+end]
 }
 
 func buildToolDescription(description, baseInstructions string) string {
@@ -697,6 +709,151 @@ func buildToolDescription(description, baseInstructions string) string {
 	}
 }
 
+var validReadFields = map[string]bool{
+	"summary":      true,
+	"tags":         true,
+	"body":         true,
+	"path":         true,
+	"frontmatter":  true,
+	"content_hash": true,
+	"aliases":      true,
+	"created_at":   true,
+	"updated_at":   true,
+}
+
+var defaultReadFields = map[string]bool{
+	"note_id": true,
+	"slug":    true,
+	"title":   true,
+	"summary": true,
+	"tags":    true,
+	"body":    true,
+}
+
+func buildFieldSet(fields []string) (map[string]bool, error) {
+	if len(fields) == 0 {
+		return defaultReadFields, nil
+	}
+	set := make(map[string]bool, len(fields))
+	for _, f := range fields {
+		f = strings.TrimSpace(f)
+		if f == "note_id" || f == "slug" || f == "title" {
+			continue
+		}
+		if !validReadFields[f] {
+			return nil, apperr.CLIUsage("unknown field: "+f, nil)
+		}
+		set[f] = true
+	}
+	return set, nil
+}
+
+func truncateRunes(s string, maxChars int) string {
+	if maxChars <= 0 {
+		return s
+	}
+	runes := []rune(s)
+	if len(runes) <= maxChars {
+		return s
+	}
+	return string(runes[:maxChars])
+}
+
 func BoolPtr(v bool) *bool {
 	return &v
+}
+
+func toSearchNotesHit(hit searchsvc.AdvancedSearchResult, debug bool) SearchNotesHit {
+	s := SearchNotesHit{
+		NoteID:         hit.NoteID,
+		Slug:           hit.Slug,
+		Title:          hit.Title,
+		Snippet:        hit.Snippet,
+		Summary:        hit.Summary,
+		Tags:           hit.Tags,
+		MatchedQueries: hit.MatchedQueries,
+	}
+	if debug {
+		s.Path = hit.Path
+		s.Score = &hit.Score
+		s.ContentHash = hit.ContentHash
+	}
+	for _, rn := range hit.RelatedNotes {
+		sr := searchNotesRelatedHit{
+			NoteID:       rn.NoteID,
+			Slug:         rn.Slug,
+			Title:        rn.Title,
+			RelationType: rn.RelationType,
+			SourceKind:   rn.SourceKind,
+			Direction:    rn.Direction,
+		}
+		if debug {
+			sr.Path = rn.Path
+		}
+		s.RelatedNotes = append(s.RelatedNotes, sr)
+	}
+	return s
+}
+
+func setOptionalSliceField(list []string) []string {
+	if list == nil {
+		return []string{}
+	}
+	return list
+}
+
+func setReadNotesBasicFields(note *ReadNotesNote, fields map[string]bool, resolved notesvc.ShowResult, maxBodyChars int) {
+	if fields["summary"] {
+		s := resolved.Note.Summary
+		note.Summary = &s
+	}
+	if fields["tags"] {
+		tags := setOptionalSliceField(resolved.Note.Tags)
+		note.Tags = &tags
+	}
+	if fields["aliases"] {
+		aliases := setOptionalSliceField(resolved.Note.Aliases)
+		note.Aliases = &aliases
+	}
+	if fields["body"] {
+		body := string(resolved.Note.Body)
+		if maxBodyChars > 0 {
+			body = truncateRunes(body, maxBodyChars)
+		}
+		note.Body = &body
+	}
+	if fields["path"] {
+		p := resolved.Path
+		note.Path = &p
+	}
+}
+
+func setReadNotesExtraFields(note *ReadNotesNote, fields map[string]bool, resolved notesvc.ShowResult) {
+	if fields["frontmatter"] {
+		fm := resolved.Note.Frontmatter
+		note.Frontmatter = &fm
+	}
+	if fields["content_hash"] {
+		h := resolved.ContentHash
+		note.ContentHash = &h
+	}
+	if fields["created_at"] && !resolved.Note.CreatedAt.IsZero() {
+		ca := resolved.Note.CreatedAt.Unix()
+		note.CreatedAt = &ca
+	}
+	if fields["updated_at"] && !resolved.Note.UpdatedAt.IsZero() {
+		ua := resolved.Note.UpdatedAt.Unix()
+		note.UpdatedAt = &ua
+	}
+}
+
+func buildReadNotesNote(fields map[string]bool, resolved notesvc.ShowResult, maxBodyChars int) ReadNotesNote {
+	note := ReadNotesNote{
+		NoteID: resolved.Note.MnemonicNoteID,
+		Slug:   resolved.Note.EffectiveSlug(),
+		Title:  resolved.Note.Title,
+	}
+	setReadNotesBasicFields(&note, fields, resolved, maxBodyChars)
+	setReadNotesExtraFields(&note, fields, resolved)
+	return note
 }

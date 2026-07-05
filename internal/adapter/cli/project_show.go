@@ -13,32 +13,33 @@ func newProjectShowCommand() *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeProjectNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
-		container, err := bootstrapFromContext(commandContext(cmd))
-		if err != nil {
-			return err
-		}
-		result, err := container.Services.Catalog.Show(args[0])
-		if err != nil {
-			return err
-		}
+			container, err := bootstrapFromContext(commandContext(cmd))
+			if err != nil {
+				return err
+			}
+			result, err := container.Services.Catalog.Show(args[0], loggerFromContext(commandContext(cmd)))
+			if err != nil {
+				return err
+			}
 
-		project := projectShowOutput{
-			ProjectID:          result.ProjectID,
-			Name:               result.Name,
-			Slug:               result.Slug,
-			Type:               result.Type,
-			Description:        result.Description,
-			CustomInstructions: result.CustomInstructions,
-			StateHome:          result.StateHome,
-			Location: projectLocationOutput{
-				MemoriesAbs: result.Location.MemoriesAbs,
-				ManifestAbs: result.Location.ManifestAbs,
-				RepoRootAbs: result.Location.RepoRootAbs,
-			},
-		}
-		human := fmt.Sprintf("%s %s\n", project.ProjectID, project.Name)
-		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, project)
-	},
+			project := projectShowOutput{
+				ProjectID:          result.ProjectID,
+				Name:               result.Name,
+				Slug:               result.Slug,
+				Type:               result.Type,
+				Description:        result.Description,
+				CustomInstructions: result.CustomInstructions,
+				LinksStyle:         result.LinksStyle,
+				StateHome:          result.StateHome,
+				Location: projectLocationOutput{
+					MemoriesAbs: result.Location.MemoriesAbs,
+					ManifestAbs: result.Location.ManifestAbs,
+					RepoRootAbs: result.Location.RepoRootAbs,
+				},
+			}
+			human := fmt.Sprintf("%s %s\n  links_style: %s\n", project.ProjectID, project.Name, project.LinksStyle)
+			return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, project)
+		},
 	}
 }
 
@@ -49,6 +50,7 @@ type projectShowOutput struct {
 	Type               string                `json:"type"`
 	Description        string                `json:"description"`
 	CustomInstructions string                `json:"custom_instructions"`
+	LinksStyle         string                `json:"links_style"`
 	StateHome          string                `json:"state_home"`
 	Location           projectLocationOutput `json:"location"`
 }

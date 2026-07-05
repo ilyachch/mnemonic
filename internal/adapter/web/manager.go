@@ -1,6 +1,7 @@
 package web
 
 import (
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -24,6 +25,7 @@ type ServerInput struct {
 	Services     app.RuntimeServices
 	ProjectToken string
 	ReadOnly     bool
+	Logger       *slog.Logger
 }
 
 // Server serves one resolved project over HTTP/SSE.
@@ -54,7 +56,7 @@ func NewServer(input ServerInput) (*Server, error) {
 		Notes:  input.Services.Notes,
 		Search: input.Services.Search,
 		Index:  input.Services.Index,
-	}, input.ReadOnly)
+	}, input.ReadOnly, input.Logger)
 	if err != nil {
 		return nil, err
 	}

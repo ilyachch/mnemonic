@@ -3,7 +3,7 @@ package searchsvc
 import (
 	"context"
 	"log/slog"
-	"strings"
+	"unicode/utf8"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
@@ -17,25 +17,12 @@ type Service struct {
 	Logger *slog.Logger
 }
 
-// SearchInput configures a runtime search query.
-type SearchInput struct {
-	Query string
+// ListTagsInput configures tag listing.
+type ListTagsInput struct {
 	Limit int
-	Tag   string
 }
 
-// SearchResult mirrors the legacy search payload.
-type SearchResult struct {
-	NoteID      string  `json:"note_id"`
-	Slug        string  `json:"slug"`
-	Title       string  `json:"title"`
-	Path        string  `json:"path"`
-	Score       float64 `json:"score"`
-	Snippet     string  `json:"snippet"`
-	ContentHash string  `json:"content_hash"`
-}
-
-// ListTagsOutput mirrors the legacy tag listing payload.
+// ListTagsOutput wraps a tag listing result.
 type ListTagsOutput struct {
 	Tags []ListTagsItem `json:"tags"`
 }
@@ -52,7 +39,7 @@ type BacklinksInput struct {
 	Limit      int
 }
 
-// Backlink mirrors the legacy backlink payload.
+// Backlink wraps a backlink reference.
 type Backlink struct {
 	LinkID       string `json:"link_id"`
 	NoteID       string `json:"note_id"`
@@ -60,6 +47,7 @@ type Backlink struct {
 	Title        string `json:"title"`
 	Path         string `json:"path"`
 	RelationType string `json:"relation_type"`
+	SourceKind   string `json:"source_kind"`
 	SourceLine   int    `json:"source_line"`
 }
 
@@ -81,14 +69,17 @@ type AdvancedSearchInput struct {
 // AdvancedSearchResult mirrors an advanced search hit with optional related
 // notes.
 type AdvancedSearchResult struct {
-	NoteID       string            `json:"note_id"`
-	Slug         string            `json:"slug"`
-	Title        string            `json:"title"`
-	Path         string            `json:"path"`
-	Score        float64           `json:"score"`
-	Snippet      string            `json:"snippet"`
-	ContentHash  string            `json:"content_hash"`
-	RelatedNotes []RelatedNoteItem `json:"related_notes,omitempty"`
+	NoteID         string            `json:"note_id"`
+	Slug           string            `json:"slug"`
+	Title          string            `json:"title"`
+	Path           string            `json:"path"`
+	Score          float64           `json:"score"`
+	Snippet        string            `json:"snippet"`
+	ContentHash    string            `json:"content_hash"`
+	Summary        string            `json:"summary"`
+	Tags           []string          `json:"tags,omitempty"`
+	MatchedQueries []string          `json:"matched_queries,omitempty"`
+	RelatedNotes   []RelatedNoteItem `json:"related_notes,omitempty"`
 }
 
 // RelatedNoteItem is a short linked-note reference for the service layer.
@@ -98,10 +89,12 @@ type RelatedNoteItem struct {
 	Title        string `json:"title"`
 	Path         string `json:"path"`
 	RelationType string `json:"relation_type"`
+	SourceKind   string `json:"source_kind"`
+	Direction    string `json:"direction"`
 }
 
 // New constructs the runtime search service for one knowledge base.
-func New(k kb.KnowledgeBase) *Service {
+func New(k kb.KnowledgeBase, logger *slog.Logger) *Service {
 	return &Service{
 		Index: sqliteindex.Store{
 			IndexPath: k.IndexPath,
@@ -109,52 +102,16 @@ func New(k kb.KnowledgeBase) *Service {
 			StateDir:  k.StateDir,
 			KBID:      k.ID,
 		},
+		Logger: logger,
 	}
-}
-
-// Search runs a full-text query against the bound index.
-func (s Service) Search(ctx context.Context, input SearchInput) ([]SearchResult, error) {
-	_ = ctx
-	db, err := s.Index.OpenReadonly()
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = db.Close() }()
-
-	hits, err := s.Index.Search(db, input.Query, input.Limit, input.Tag)
-	if err != nil {
-		return nil, err
-	}
-
-	if s.Logger != nil {
-		s.Logger.Debug("search executed",
-			"terms", input.Query,
-			"tag", input.Tag,
-			"limit", input.Limit,
-		)
-		s.Logger.Info("search completed",
-			"count", len(hits),
-		)
-	}
-
-	out := make([]SearchResult, 0, len(hits))
-	for _, hit := range hits {
-		out = append(out, SearchResult{
-			NoteID:      hit.NoteID,
-			Slug:        hit.Slug,
-			Title:       hit.Title,
-			Path:        hit.Path,
-			Score:       hit.Score,
-			Snippet:     hit.Snippet,
-			ContentHash: hit.ContentHash,
-		})
-	}
-	return out, nil
 }
 
 // ListTags returns tag counts from the bound index.
-func (s Service) ListTags(ctx context.Context) (ListTagsOutput, error) {
+func (s Service) ListTags(ctx context.Context, input ListTagsInput) (ListTagsOutput, error) {
 	_ = ctx
+	if input.Limit < 0 {
+		return ListTagsOutput{}, apperr.CLIUsage("limit must be >= 0", nil)
+	}
 	db, err := s.Index.OpenReadonly()
 	if err != nil {
 		return ListTagsOutput{}, err
@@ -170,12 +127,18 @@ func (s Service) ListTags(ctx context.Context) (ListTagsOutput, error) {
 	for _, tag := range tags {
 		out.Tags = append(out.Tags, ListTagsItem{Tag: tag.Tag, Count: tag.Count})
 	}
+	if input.Limit > 0 && len(out.Tags) > input.Limit {
+		out.Tags = out.Tags[:input.Limit]
+	}
 	return out, nil
 }
 
 // Backlinks resolves a note identifier and returns inbound links.
 func (s Service) Backlinks(ctx context.Context, input BacklinksInput) ([]Backlink, error) {
 	_ = ctx
+	if input.Limit < 0 {
+		return nil, apperr.CLIUsage("limit must be >= 0", nil)
+	}
 	db, err := s.Index.OpenReadonly()
 	if err != nil {
 		return nil, err
@@ -184,9 +147,6 @@ func (s Service) Backlinks(ctx context.Context, input BacklinksInput) ([]Backlin
 
 	target, err := s.Index.LookupNoteByIdentifier(db, input.Identifier)
 	if err != nil {
-		if strings.HasPrefix(err.Error(), "note ") && strings.HasSuffix(err.Error(), " not found") {
-			return nil, apperr.NotFound(err.Error(), nil)
-		}
 		return nil, err
 	}
 
@@ -204,6 +164,7 @@ func (s Service) Backlinks(ctx context.Context, input BacklinksInput) ([]Backlin
 			Title:        link.Title,
 			Path:         link.Path,
 			RelationType: link.RelationType,
+			SourceKind:   link.SourceKind,
 			SourceLine:   link.SourceLine,
 		})
 	}
@@ -214,6 +175,17 @@ func (s Service) Backlinks(ctx context.Context, input BacklinksInput) ([]Backlin
 // filters, graph-aware reranking, and optional related notes.
 func (s Service) AdvancedSearch(ctx context.Context, input AdvancedSearchInput) ([]AdvancedSearchResult, error) {
 	_ = ctx
+
+	if input.Limit < 0 {
+		return nil, apperr.CLIUsage("limit must be >= 0", nil)
+	}
+	if input.Limit == 0 {
+		input.Limit = 10
+	}
+	if err := validateAdvancedSearchInput(input); err != nil {
+		return nil, err
+	}
+
 	db, err := s.Index.OpenReadonly()
 	if err != nil {
 		return nil, err
@@ -264,18 +236,38 @@ func (s Service) AdvancedSearch(ctx context.Context, input AdvancedSearchInput) 
 				Title:        rn.Title,
 				Path:         rn.Path,
 				RelationType: rn.RelationType,
+				SourceKind:   rn.SourceKind,
+				Direction:    rn.Direction,
 			})
 		}
 		out = append(out, AdvancedSearchResult{
-			NoteID:       hit.NoteID,
-			Slug:         hit.Slug,
-			Title:        hit.Title,
-			Path:         hit.Path,
-			Score:        hit.Score,
-			Snippet:      hit.Snippet,
-			ContentHash:  hit.ContentHash,
-			RelatedNotes: related,
+			NoteID:         hit.NoteID,
+			Slug:           hit.Slug,
+			Title:          hit.Title,
+			Path:           hit.Path,
+			Score:          hit.Score,
+			Snippet:        hit.Snippet,
+			ContentHash:    hit.ContentHash,
+			Summary:        hit.Summary,
+			Tags:           hit.Tags,
+			MatchedQueries: hit.MatchedQueries,
+			RelatedNotes:   related,
 		})
 	}
 	return out, nil
+}
+
+func validateAdvancedSearchInput(input AdvancedSearchInput) error {
+	if input.Limit < 1 || input.Limit > 100 {
+		return apperr.CLIUsage("limit must be between 1 and 100", nil)
+	}
+	if len(input.Queries) > 8 {
+		return apperr.CLIUsage("too many queries", nil)
+	}
+	for _, q := range input.Queries {
+		if utf8.RuneCountInString(q) > 500 {
+			return apperr.CLIUsage("query too long", nil)
+		}
+	}
+	return nil
 }

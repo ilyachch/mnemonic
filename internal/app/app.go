@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/ilyachch/mnemonic/internal/domain/kb"
 	manifest "github.com/ilyachch/mnemonic/internal/format/manifest"
@@ -23,9 +24,6 @@ type Bootstrap struct {
 	Paths    paths.EffectivePaths
 	Services Services
 }
-
-// App is a compatibility alias for Bootstrap.
-type App = Bootstrap
 
 // New builds the application container from environment and config discovery.
 func New(input Input) (*Bootstrap, error) {
@@ -63,20 +61,23 @@ func New(input Input) (*Bootstrap, error) {
 		Registry:     registryStore,
 	}
 
-	return &Bootstrap{
+	b := &Bootstrap{
 		Config: cfg,
 		Paths:  effective,
 		Services: Services{
 			Catalog: catalog,
 			Maint: &maintsvc.Service{
 				Catalog: catalog,
-				RuntimeFactory: func(ctx context.Context, k kb.KnowledgeBase) (maintsvc.Runtime, error) {
-					_ = ctx
-					return NewRuntimeApp(RuntimeInput{Config: cfg, KB: k})
-				},
 			},
 		},
-	}, nil
+	}
+
+	b.Services.Maint.RuntimeFactory = func(ctx context.Context, k kb.KnowledgeBase, logger *slog.Logger) (maintsvc.Runtime, error) {
+		_ = ctx
+		return NewRuntimeApp(RuntimeInput{Config: cfg, KB: k, Logger: logger})
+	}
+
+	return b, nil
 }
 
 // Close shuts down app-owned resources.

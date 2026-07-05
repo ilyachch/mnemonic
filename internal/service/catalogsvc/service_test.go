@@ -20,7 +20,7 @@ import (
 func TestResolveTrimsSelectorAndReturnsUsageError(t *testing.T) {
 	svc := Service{MemoriesHome: t.TempDir(), StateHome: t.TempDir()}
 
-	_, err := svc.Resolve("   ")
+	_, err := svc.Resolve("   ", nil)
 	require.Error(t, err)
 
 	var appErr *apperr.Error
@@ -37,7 +37,7 @@ func TestResolveBuildsKnowledgeBase(t *testing.T) {
 	projectDir := filepath.Join(memoriesHome, slug)
 	require.NoError(t, os.MkdirAll(projectDir, 0o755))
 
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440000"
 	manifest.Name = "Demo"
 	manifest.Slug = slug
@@ -50,7 +50,7 @@ func TestResolveBuildsKnowledgeBase(t *testing.T) {
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(projectDir, "mnemonic.toml"), manifest))
 
 	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
-	resolved, err := svc.Resolve("  " + slug + "  ")
+	resolved, err := svc.Resolve("  "+slug+"  ", nil)
 	require.NoError(t, err)
 	require.Equal(t, manifest.ProjectID, resolved.ID)
 	require.Equal(t, manifest.Name, resolved.Name)
@@ -69,7 +69,7 @@ func TestKnowledgeBaseFromEntryPrefersEntryMetadataAndFallsBackToManifest(t *tes
 	svc := Service{MemoriesHome: t.TempDir(), StateHome: t.TempDir()}
 	manifestDir := t.TempDir()
 	manifestPath := filepath.Join(manifestDir, "mnemonic.toml")
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440099"
 	manifest.Name = "Manifest Name"
 	manifest.Slug = "demo"
@@ -159,7 +159,7 @@ func TestInitCreatesCentralProjectAndIndex(t *testing.T) {
 		Name:        "Backend",
 		Description: desc,
 		Mode:        InitModeCentral,
-	})
+	}, nil)
 	require.NoError(t, err)
 	require.Equal(t, "550e8400-e29b-41d4-a716-446655440010", result.ID)
 	require.Equal(t, "Backend", result.Name)
@@ -204,7 +204,7 @@ func TestInitReturnsStaleIndexWhenRebuildFails(t *testing.T) {
 		Name:        "Backend",
 		Description: "Central knowledge base",
 		Mode:        InitModeCentral,
-	})
+	}, nil)
 	require.NoError(t, err)
 	require.Equal(t, "550e8400-e29b-41d4-a716-446655440012", result.ID)
 	require.Equal(t, "Backend", result.Name)
@@ -241,7 +241,7 @@ func TestInitCreatesLocalProjectAndIndex(t *testing.T) {
 		Name:        "Personal",
 		Description: "Local knowledge base",
 		Mode:        InitModeLocal,
-	})
+	}, nil)
 	require.NoError(t, err)
 	require.Equal(t, "550e8400-e29b-41d4-a716-446655440011", result.ID)
 	require.Equal(t, "Personal", result.Name)
@@ -276,14 +276,14 @@ func TestInitRejectsDuplicateSlug(t *testing.T) {
 		WorkingDir: cwd,
 		Name:       "Backend",
 		Mode:       InitModeLocal,
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	_, err = svc.Init(context.Background(), InitInput{
 		WorkingDir: cwd,
 		Name:       "backend",
 		Mode:       InitModeLocal,
-	})
+	}, nil)
 	require.Error(t, err)
 
 	var appErr *apperr.Error
@@ -301,7 +301,7 @@ func TestListAndShowShapeRegistryData(t *testing.T) {
 	centralSlug := "backend"
 	centralDir := filepath.Join(memoriesHome, centralSlug)
 	require.NoError(t, os.MkdirAll(centralDir, 0o755))
-	centralManifest := manifestfmt.NewMnemonicManifest()
+	centralManifest := manifestfmt.New()
 	centralManifest.ProjectID = "550e8400-e29b-41d4-a716-446655440001"
 	centralManifest.Name = "Backend"
 	centralManifest.Slug = centralSlug
@@ -316,7 +316,7 @@ func TestListAndShowShapeRegistryData(t *testing.T) {
 	localSlug := "personal"
 	localManifestDir := filepath.Join(repoRoot, ".mnemonic-memories", localSlug)
 	require.NoError(t, os.MkdirAll(localManifestDir, 0o755))
-	localManifest := manifestfmt.NewMnemonicManifest()
+	localManifest := manifestfmt.New()
 	localManifest.ProjectID = "550e8400-e29b-41d4-a716-446655440002"
 	localManifest.Name = "Personal"
 	localManifest.Slug = localSlug
@@ -330,7 +330,7 @@ func TestListAndShowShapeRegistryData(t *testing.T) {
 	require.NoError(t, manifestfmt.WritePointerFile(filepath.Join(memoriesHome, localSlug+".toml"), &manifestfmt.PointerFile{ManifestPath: filepath.Join(localManifestDir, "mnemonic.toml")}))
 
 	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
-	list, err := svc.List()
+	list, err := svc.List(nil)
 	require.NoError(t, err)
 	require.Len(t, list.Projects, 2)
 
@@ -353,7 +353,7 @@ func TestListAndShowShapeRegistryData(t *testing.T) {
 	require.Equal(t, "ok", personal.Status)
 	require.Equal(t, filepath.Join(stateHome, "mnemonic", "projects", localManifest.ProjectID), personal.StatePath)
 
-	shown, err := svc.Show("  " + centralSlug + " ")
+	shown, err := svc.Show("  "+centralSlug+" ", nil)
 	require.NoError(t, err)
 	require.Equal(t, centralManifest.ProjectID, shown.ProjectID)
 	require.Equal(t, "Backend", shown.Name)
@@ -401,7 +401,7 @@ func TestImportRemoveAndSlugs(t *testing.T) {
 	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
 
 	repoRoot := t.TempDir()
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440003"
 	manifest.Name = "Import Demo"
 	manifest.Slug = "import-demo"
@@ -410,7 +410,7 @@ func TestImportRemoveAndSlugs(t *testing.T) {
 	manifest.UpdatedAt = manifest.CreatedAt
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(repoRoot, "mnemonic.toml"), manifest))
 
-	imported, err := svc.Import(context.Background(), ImportInput{Path: repoRoot})
+	imported, err := svc.Import(context.Background(), ImportInput{Path: repoRoot}, nil)
 	require.NoError(t, err)
 	require.Equal(t, 1, imported.Imported)
 	require.Equal(t, 1, imported.Indexed)
@@ -426,7 +426,7 @@ func TestImportRemoveAndSlugs(t *testing.T) {
 
 	projectDir := filepath.Join(memoriesHome, manifest.Slug)
 	require.NoError(t, os.MkdirAll(projectDir, 0o755))
-	removedManifest := manifestfmt.NewMnemonicManifest()
+	removedManifest := manifestfmt.New()
 	removedManifest.ProjectID = manifest.ProjectID
 	removedManifest.Name = manifest.Name
 	removedManifest.Slug = manifest.Slug
@@ -442,7 +442,7 @@ func TestImportRemoveAndSlugs(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(stateDir, "index.sqlite-wal"), []byte("wal"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(stateDir, "index.sqlite-shm"), []byte("shm"), 0o644))
 
-	removed, err := svc.Remove(manifest.Slug, true)
+	removed, err := svc.Remove(manifest.Slug, true, nil)
 	require.NoError(t, err)
 	require.Equal(t, manifest.ProjectID, removed.ProjectID)
 	require.True(t, removed.RegistryRemoved)
@@ -463,7 +463,7 @@ func TestImportReturnsSkippedIndexStatusForDryRun(t *testing.T) {
 	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
 
 	repoRoot := t.TempDir()
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440010"
 	manifest.Name = "Dry Run"
 	manifest.Slug = "dry-run"
@@ -472,7 +472,7 @@ func TestImportReturnsSkippedIndexStatusForDryRun(t *testing.T) {
 	manifest.UpdatedAt = manifest.CreatedAt
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(repoRoot, "mnemonic.toml"), manifest))
 
-	imported, err := svc.Import(context.Background(), ImportInput{Path: repoRoot, DryRun: true})
+	imported, err := svc.Import(context.Background(), ImportInput{Path: repoRoot, DryRun: true}, nil)
 	require.NoError(t, err)
 	require.Equal(t, 1, imported.Imported)
 	require.Equal(t, 0, imported.Indexed)
@@ -496,7 +496,7 @@ func TestFinalizeImportIndexStatusReportsPartialFailures(t *testing.T) {
 
 	result := svc.finalizeImportIndexStatus(context.Background(), ImportResult{
 		Candidates: append(okResult.Candidates, failResult.Candidates...),
-	})
+	}, nil)
 
 	require.Equal(t, 1, result.Indexed)
 	require.Equal(t, "stale", result.IndexStatus)
@@ -524,7 +524,7 @@ func TestFinalizeImportIndexStatusReportsAllFailures(t *testing.T) {
 
 	result := svc.finalizeImportIndexStatus(context.Background(), ImportResult{
 		Candidates: append(firstResult.Candidates, secondResult.Candidates...),
-	})
+	}, nil)
 
 	require.Equal(t, 0, result.Indexed)
 	require.Equal(t, "stale", result.IndexStatus)
@@ -546,7 +546,7 @@ func TestImportReturnsErrorWhenRegistrationFails(t *testing.T) {
 	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
 
 	repoRoot := t.TempDir()
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440050"
 	manifest.Name = "Duplicate"
 	manifest.Slug = "duplicate"
@@ -555,9 +555,9 @@ func TestImportReturnsErrorWhenRegistrationFails(t *testing.T) {
 	manifest.UpdatedAt = manifest.CreatedAt
 	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(repoRoot, "mnemonic.toml"), manifest))
 
-	_, err := svc.Import(context.Background(), ImportInput{Path: repoRoot})
+	_, err := svc.Import(context.Background(), ImportInput{Path: repoRoot}, nil)
 	require.NoError(t, err)
-	_, err = svc.Import(context.Background(), ImportInput{Path: repoRoot})
+	_, err = svc.Import(context.Background(), ImportInput{Path: repoRoot}, nil)
 	require.Error(t, err)
 }
 
@@ -565,7 +565,7 @@ func seedImportedProject(t *testing.T, memoriesHome, projectID, name, slug strin
 	t.Helper()
 
 	repoRoot := t.TempDir()
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = projectID
 	manifest.Name = name
 	manifest.Slug = slug
@@ -624,4 +624,18 @@ func TestResolveImportPath(t *testing.T) {
 	_, err = resolveImportPath(ImportInput{Path: "/nonexistent/path/12345"})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not found")
+
+	var appErr *apperr.Error
+	require.ErrorAs(t, err, &appErr)
+	require.Equal(t, apperr.CodeNotFound, appErr.Code)
+}
+
+func TestResolveAddPathReturnsNotFoundForMissingPath(t *testing.T) {
+	_, err := resolveAddPath(AddInput{Path: "/nonexistent/path/for-add-test"})
+	require.Error(t, err)
+
+	var appErr *apperr.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, apperr.CodeNotFound, appErr.Code)
+	assert.Contains(t, appErr.Message, "add path")
 }

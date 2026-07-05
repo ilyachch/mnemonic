@@ -16,6 +16,7 @@ type projectShowJSON struct {
 	Type               string `json:"type"`
 	Description        string `json:"description"`
 	CustomInstructions string `json:"custom_instructions"`
+	LinksStyle         string `json:"links_style"`
 	StateHome          string `json:"state_home"`
 	Location           struct {
 		MemoriesAbs string `json:"memories_abs"`
@@ -45,6 +46,7 @@ func TestProjectShowCommandFindsProject(t *testing.T) {
 	require.Equal(t, "central", got.Type)
 	require.Equal(t, "Central description", got.Description)
 	require.Equal(t, "Central instructions", got.CustomInstructions)
+	require.Equal(t, "wiki", got.LinksStyle)
 }
 
 func TestProjectShowCommandMissingProject(t *testing.T) {

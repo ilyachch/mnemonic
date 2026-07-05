@@ -23,36 +23,36 @@ func newProjectListCommand() *cobra.Command {
 		Use:   "list",
 		Short: "List registered projects",
 		RunE: func(cmd *cobra.Command, args []string) error {
-		container, err := bootstrapFromContext(commandContext(cmd))
-		if err != nil {
-			return err
-		}
+			container, err := bootstrapFromContext(commandContext(cmd))
+			if err != nil {
+				return err
+			}
 
-		result, err := container.Services.Catalog.List()
-		if err != nil {
-			return err
-		}
+			result, err := container.Services.Catalog.List(loggerFromContext(commandContext(cmd)))
+			if err != nil {
+				return err
+			}
 
-		output := projectListOutput{Projects: make([]projectListItem, 0, len(result.Projects))}
-		for _, project := range result.Projects {
-			output.Projects = append(output.Projects, projectListItem{
-				ProjectID:    project.ProjectID,
-				Name:         project.Name,
-				Slug:         project.Slug,
-				Type:         project.Type,
-				MemoriesPath: project.MemoriesPath,
-				StatePath:    project.StatePath,
-				Status:       project.Status,
-				Issue:        project.Issue,
-			})
-		}
-		if output.Projects == nil {
-			output.Projects = []projectListItem{}
-		}
+			output := projectListOutput{Projects: make([]projectListItem, 0, len(result.Projects))}
+			for _, project := range result.Projects {
+				output.Projects = append(output.Projects, projectListItem{
+					ProjectID:    project.ProjectID,
+					Name:         project.Name,
+					Slug:         project.Slug,
+					Type:         project.Type,
+					MemoriesPath: project.MemoriesPath,
+					StatePath:    project.StatePath,
+					Status:       project.Status,
+					Issue:        project.Issue,
+				})
+			}
+			if output.Projects == nil {
+				output.Projects = []projectListItem{}
+			}
 
-		human := formatProjectListHuman(output.Projects)
-		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, output)
-	},
+			human := formatProjectListHuman(output.Projects)
+			return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, output)
+		},
 	}
 }
 

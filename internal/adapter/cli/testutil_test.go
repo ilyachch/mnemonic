@@ -114,7 +114,7 @@ func writeCentralProjectFixture(t *testing.T, memoriesHome, slug, projectID stri
 		t.Fatal(err)
 	}
 
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = projectID
 	manifest.Name = slug
 	manifest.Slug = slug
@@ -144,7 +144,7 @@ func writeLocalProjectFixture(t *testing.T, cwd, slug string) error {
 
 	projectID := "550e8400-e29b-41d4-a716-446655440000"
 
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = projectID
 	manifest.Name = slug
 	manifest.Slug = slug

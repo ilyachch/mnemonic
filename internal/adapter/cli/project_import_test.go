@@ -151,4 +151,4 @@ func seedRawNote(t *testing.T, root, name, content string) {
 }
 
 // Ensure manifestfmt import is used (referenced in helpers above).
-var _ = manifestfmt.NewMnemonicManifest
+var _ = manifestfmt.New

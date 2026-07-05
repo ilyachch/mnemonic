@@ -3,6 +3,7 @@ package maintsvc
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -40,7 +41,7 @@ func TestReindexAllVisitsEveryProject(t *testing.T) {
 			StateHome:    stateHome,
 			Registry:     testCatalogStore(memoriesHome),
 		},
-		RuntimeFactory: func(ctx context.Context, resolved kb.KnowledgeBase) (Runtime, error) {
+		RuntimeFactory: func(ctx context.Context, resolved kb.KnowledgeBase, logger *slog.Logger) (Runtime, error) {
 			switch resolved.Slug {
 			case "bravo":
 				return fakeMaintRuntime{index: fakeMaintIndexService{
@@ -64,7 +65,7 @@ func TestReindexAllVisitsEveryProject(t *testing.T) {
 		},
 	}
 
-	result, err := svc.ReindexAll(context.Background())
+	result, err := svc.ReindexAll(context.Background(), nil)
 	require.NoError(t, err)
 	require.Equal(t, 3, result.Total)
 	require.Equal(t, 2, result.Indexed)
@@ -102,7 +103,7 @@ func TestDoctorAllVisitsEveryProject(t *testing.T) {
 			StateHome:    stateHome,
 			Registry:     testCatalogStore(memoriesHome),
 		},
-		RuntimeFactory: func(ctx context.Context, resolved kb.KnowledgeBase) (Runtime, error) {
+		RuntimeFactory: func(ctx context.Context, resolved kb.KnowledgeBase, logger *slog.Logger) (Runtime, error) {
 			switch resolved.Slug {
 			case "alpha":
 				return fakeMaintRuntime{index: fakeMaintIndexService{
@@ -135,7 +136,7 @@ func TestDoctorAllVisitsEveryProject(t *testing.T) {
 		},
 	}
 
-	result, err := svc.DoctorAll(context.Background())
+	result, err := svc.DoctorAll(context.Background(), nil)
 	require.NoError(t, err)
 	require.Equal(t, 3, result.Total)
 	require.Equal(t, 1, result.Ok)
@@ -167,13 +168,13 @@ func TestCatalogEnumerationFailureReturnsImmediately(t *testing.T) {
 			StateHome:    t.TempDir(),
 			Registry:     testCatalogStore(memoriesHome),
 		},
-		RuntimeFactory: func(context.Context, kb.KnowledgeBase) (Runtime, error) {
+		RuntimeFactory: func(context.Context, kb.KnowledgeBase, *slog.Logger) (Runtime, error) {
 			t.Fatal("runtime factory should not be called")
 			return nil, nil
 		},
 	}
 
-	_, err := svc.ReindexAll(context.Background())
+	_, err := svc.ReindexAll(context.Background(), nil)
 	require.Error(t, err)
 }
 
@@ -221,7 +222,7 @@ func createMaintProject(t *testing.T, memoriesHome, slug, projectID string) proj
 	projectDir := filepath.Join(memoriesHome, slug)
 	require.NoError(t, os.MkdirAll(projectDir, 0o755))
 
-	manifest := manifestfmt.NewMnemonicManifest()
+	manifest := manifestfmt.New()
 	manifest.ProjectID = projectID
 	manifest.Name = slug
 	manifest.Slug = slug

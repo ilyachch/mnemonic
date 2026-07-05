@@ -42,7 +42,7 @@ func runProjectReindex(cmd *cobra.Command, args []string) error {
 		if container.Services.Maint == nil {
 			return errors.New("maintenance service is not configured")
 		}
-		result, err := container.Services.Maint.ReindexAll(commandContext(cmd))
+		result, err := container.Services.Maint.ReindexAll(commandContext(cmd), loggerFromContext(commandContext(cmd)))
 		if err != nil {
 			return err
 		}
