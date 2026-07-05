@@ -166,6 +166,21 @@ func validateEditFlags(appendText, bodyFile string, setFields map[string]string,
 	if appendText != "" && bodyFile != "" {
 		return notesEditFlags{}, apperr.CLIUsage("--append and --body-file cannot be combined", nil)
 	}
+
+	modeCount := 0
+	if appendText != "" || bodyFile != "" {
+		modeCount++
+	}
+	if len(setFields) > 0 {
+		modeCount++
+	}
+	if setTags != nil || setAliases != nil {
+		modeCount++
+	}
+	if modeCount > 1 {
+		return notesEditFlags{}, apperr.CLIUsage("edit modes append/body-file, --set, and tags/aliases are mutually exclusive", nil)
+	}
+
 	return notesEditFlags{appendText: appendText, bodyFile: bodyFile, ifMatch: ifMatch, setFields: setFields, setTags: setTags, setAliases: setAliases}, nil
 }
 

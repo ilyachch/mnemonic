@@ -1020,8 +1020,9 @@ func (s Store) SearchCandidatesByTargets(db *sql.DB, targets []string, limitPerT
 		limitPerTarget = 3
 	}
 
-	sortedTargets := append([]string(nil), targets...)
-	sort.Strings(sortedTargets)
+	copied := append([]string(nil), targets...)
+	sort.Strings(copied)
+	sortedTargets := dedupSortedStrings(copied)
 
 	parts := make([]string, 0, len(sortedTargets))
 	args := make([]any, 0, len(sortedTargets)*3)
@@ -1048,7 +1049,7 @@ func (s Store) SearchCandidatesByTargets(db *sql.DB, targets []string, limitPerT
 		return map[string][]SearchResult{}, nil
 	}
 
-	query := strings.Join(parts, " UNION ALL ")
+	query := "SELECT * FROM (" + strings.Join(parts, " UNION ALL ") + ") ORDER BY _target, score, slug, note_id"
 	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("candidate search: %w", err)
@@ -1069,6 +1070,21 @@ func (s Store) SearchCandidatesByTargets(db *sql.DB, targets []string, limitPerT
 	}
 
 	return result, nil
+}
+
+func dedupSortedStrings(sorted []string) []string {
+	if len(sorted) <= 1 {
+		return sorted
+	}
+	out := make([]string, 0, len(sorted))
+	prev := ""
+	for _, s := range sorted {
+		if s != prev {
+			out = append(out, s)
+			prev = s
+		}
+	}
+	return out
 }
 
 func (s Store) validateIndexPath() error {

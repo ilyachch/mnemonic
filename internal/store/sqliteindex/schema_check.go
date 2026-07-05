@@ -3,6 +3,7 @@ package sqliteindex
 import (
 	"database/sql"
 	"fmt"
+	"sort"
 )
 
 var requiredTables = map[string][]string{
@@ -17,11 +18,18 @@ var requiredTables = map[string][]string{
 // ValidateSchema checks that the required tables and columns exist in the
 // current index schema. It does not compare versions or attempt migrations.
 func ValidateSchema(db *sql.DB) error {
-	for table, columns := range requiredTables {
+	tables := make([]string, 0, len(requiredTables))
+	for table := range requiredTables {
+		tables = append(tables, table)
+	}
+	sort.Strings(tables)
+
+	for _, table := range tables {
 		existing, err := tableColumns(db, table)
 		if err != nil {
-			return fmt.Errorf("table %q is missing", table)
+			return fmt.Errorf("inspect table %q: %w", table, err)
 		}
+		columns := requiredTables[table]
 		for _, col := range columns {
 			if !existing[col] {
 				return fmt.Errorf("column %q.%q is missing", table, col)

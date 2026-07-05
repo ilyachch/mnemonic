@@ -280,9 +280,6 @@ func TestNotesEditCommandRejectsProtectedFrontmatterField(t *testing.T) {
 	notePath := filepath.Join(projectRoot, ".mnemonic-memories", "personal", "auth-migration.md")
 	require.NoError(t, os.MkdirAll(filepath.Dir(notePath), 0o755))
 	require.NoError(t, os.WriteFile(notePath, rendered, 0o644))
-
-	bodyFile := filepath.Join(projectRoot, "body.md")
-	require.NoError(t, os.WriteFile(bodyFile, []byte("replacement\n"), 0o644))
 	seedLocalProjectIndex(t, projectRoot, "550e8400-e29b-41d4-a716-446655440000",
 		seededIndexNote{
 			NoteID:      initial.MnemonicNoteID,
@@ -295,7 +292,7 @@ func TestNotesEditCommandRejectsProtectedFrontmatterField(t *testing.T) {
 		},
 	)
 
-	result := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--body-file", bodyFile, "--set", "created_at=2026-06-02T12:00:00Z", "--json")
+	result := executeCommand("notes", "edit", "auth-migration", "--project", "personal", "--set", "created_at=2026-06-02T12:00:00Z", "--json")
 	require.Error(t, result.Err)
 	require.Equal(t, 5, ExitCodeForError(result.Err))
 }
@@ -613,6 +610,30 @@ func TestNotesEditCommandRejectsClearAliasesWithSetAliases(t *testing.T) {
 	result := executeCommand("notes", "edit", "note", "--project", "p", "--clear-aliases", "--set-aliases", "one", "--json")
 	require.Error(t, result.Err)
 	require.Contains(t, result.Stderr, "--set-aliases and --clear-aliases cannot be combined")
+}
+
+func TestNotesEditCommandRejectsAppendWithSetTags(t *testing.T) {
+	result := executeCommand("notes", "edit", "note", "--project", "p", "--append", "text", "--set-tags", "one", "--json")
+	require.Error(t, result.Err)
+	require.Contains(t, result.Stderr, "mutually exclusive")
+}
+
+func TestNotesEditCommandRejectsSetFieldWithClearTags(t *testing.T) {
+	result := executeCommand("notes", "edit", "note", "--project", "p", "--set", "type=decision", "--clear-tags", "--json")
+	require.Error(t, result.Err)
+	require.Contains(t, result.Stderr, "mutually exclusive")
+}
+
+func TestNotesEditCommandRejectsBodyFileWithSetAliases(t *testing.T) {
+	result := executeCommand("notes", "edit", "note", "--project", "p", "--body-file", "/tmp/body", "--set-aliases", "one", "--json")
+	require.Error(t, result.Err)
+	require.Contains(t, result.Stderr, "mutually exclusive")
+}
+
+func TestNotesEditCommandRejectsAppendWithSet(t *testing.T) {
+	result := executeCommand("notes", "edit", "note", "--project", "p", "--append", "text", "--set", "type=note", "--json")
+	require.Error(t, result.Err)
+	require.Contains(t, result.Stderr, "mutually exclusive")
 }
 
 func readNoteFile(t *testing.T, path string) []byte {

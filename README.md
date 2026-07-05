@@ -130,11 +130,11 @@ markdown_format_version = 1
 description = "Project description for MCP tool context"
 custom_instructions = "Custom MCP server instructions"
 
-[format]
-links_style = "wiki"
-
 created_at = 1741737600
 updated_at = 1741824000
+
+[format]
+links_style = "wiki"
 
 [layout]
 notes_glob = ["**/*.md"]
@@ -186,7 +186,7 @@ mnemonic notes edit "deployment-guide" --set-aliases deploy-intro
 # Clear all aliases
 mnemonic notes edit "deployment-guide" --clear-aliases
 
-# Combine clear and set in one call
+# Combine clear and set in one call (both are tags/aliases mode)
 mnemonic notes edit "deployment-guide" --clear-tags --set-aliases current
 ```
 
@@ -241,21 +241,21 @@ mnemonic tags list
 
 ```bash
 # Full scan
-mnemonic notes diagnose
+mnemonic project doctor
 
 # Filter by kind
-mnemonic notes diagnose --kinds unresolved_link,ambiguous_link
+mnemonic project doctor --kinds unresolved_link,ambiguous_link
 
 # Paginate
-mnemonic notes diagnose --limit 20
+mnemonic project doctor --limit 20
 
 # With candidate suggestions for broken links
-mnemonic notes diagnose --include-suggestions
+mnemonic project doctor --include-suggestions
 ```
 
 ### Rebuild Index
 
-The SQLite index is a disposable artifact derived from the Markdown notes. Incompatible index schemas are not automatically migrated or rebuilt — the application rejects an invalid index with the message `index is invalid; run `mnemonic project reindex``.
+The SQLite index is a disposable artifact derived from the Markdown notes. Incompatible index schemas are not automatically migrated or rebuilt — the application reports `index is invalid` and asks the user to run `mnemonic project reindex`.
 
 ```bash
 mnemonic project reindex
