@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ilyachch/mnemonic/internal/apperr"
 	manifestfmt "github.com/ilyachch/mnemonic/internal/format/manifest"
 	"github.com/ilyachch/mnemonic/internal/platform/clock"
 	"github.com/ilyachch/mnemonic/internal/testutil"
@@ -53,6 +54,10 @@ func TestAddRejectsMissingManifest(t *testing.T) {
 	_, err := svc.Add(context.Background(), AddInput{Path: repoRoot}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "mnemonic.toml not found")
+
+	var appErr *apperr.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, apperr.CodeNotFound, appErr.Code)
 }
 
 func TestImportGeneratesManifestAndHydratesRawDirectory(t *testing.T) {
@@ -172,4 +177,33 @@ func TestImportRejectsDuplicateSlug(t *testing.T) {
 	_, err = svc.Import(context.Background(), ImportInput{Path: repoRoot}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "already exists")
+}
+
+func TestAddReturnsAmbiguousWhenSlugAlreadyRegistered(t *testing.T) {
+	testutil.CleanEnvForTest(t)
+
+	memoriesHome := t.TempDir()
+	stateHome := t.TempDir()
+	svc := Service{MemoriesHome: memoriesHome, StateHome: stateHome, Registry: testRegistryStore(memoriesHome)}
+
+	repoRoot := t.TempDir()
+	manifest := manifestfmt.New()
+	manifest.ProjectID = "550e8400-e29b-41d4-a716-446655440111"
+	manifest.Name = "AmbiguousAdd"
+	manifest.Slug = "ambiguous-add"
+	manifest.MarkdownFormatVersion = 1
+	manifest.CreatedAt = time.Now().UTC().Unix()
+	manifest.UpdatedAt = manifest.CreatedAt
+	require.NoError(t, manifestfmt.WriteMnemonicManifest(filepath.Join(repoRoot, "mnemonic.toml"), manifest))
+
+	_, err := svc.Add(context.Background(), AddInput{Path: repoRoot}, nil)
+	require.NoError(t, err)
+
+	_, err = svc.Add(context.Background(), AddInput{Path: repoRoot}, nil)
+	require.Error(t, err)
+
+	var appErr *apperr.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, apperr.CodeAmbiguous, appErr.Code)
+	assert.Contains(t, appErr.Message, `project slug "ambiguous-add" already exists`)
 }

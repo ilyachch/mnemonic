@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/store/markdownstore"
 	"github.com/spf13/cobra"
 )
@@ -39,7 +38,7 @@ func runProjectSync(cmd *cobra.Command, args []string) error {
 		DryRun: dryRun,
 	})
 	if err != nil {
-		return wrapSyncError(err)
+		return err
 	}
 
 	output := projectSyncOutput{
@@ -90,13 +89,6 @@ func formatSyncHuman(output projectSyncOutput, dryRun bool) string {
 	}
 	human += humanSb84.String()
 	return human
-}
-
-func wrapSyncError(err error) error {
-	if err == nil {
-		return nil
-	}
-	return apperr.CLIUsage(err.Error(), nil)
 }
 
 type projectSyncOutput struct {

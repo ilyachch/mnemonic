@@ -1,9 +1,6 @@
 package cli
 
 import (
-	"strings"
-
-	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/service/catalogsvc"
 	"github.com/spf13/cobra"
 )
@@ -31,7 +28,7 @@ func runProjectAdd(cmd *cobra.Command, args []string) error {
 
 	result, err := container.Services.Catalog.Add(commandContext(cmd), catalogsvc.AddInput{Path: pathArg}, loggerFromContext(commandContext(cmd)))
 	if err != nil {
-		return wrapAddError(err)
+		return err
 	}
 
 	if !jsonOutputEnabled(cmd) {
@@ -47,22 +44,6 @@ func runProjectAdd(cmd *cobra.Command, args []string) error {
 	}
 	human := result.Slug + " added\n"
 	return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), human, output)
-}
-
-func wrapAddError(err error) error {
-	if err == nil {
-		return nil
-	}
-	msg := err.Error()
-	switch {
-	case strings.HasPrefix(msg, "add path") && strings.Contains(msg, "not found"):
-		return apperr.NotFound(msg, nil)
-	case strings.HasPrefix(msg, "mnemonic.toml not found at"):
-		return apperr.NotFound(msg, nil)
-	case strings.HasPrefix(msg, "project slug") && strings.Contains(msg, "already exists"):
-		return apperr.Ambiguous(msg, nil)
-	}
-	return err
 }
 
 type projectAddOutput struct {

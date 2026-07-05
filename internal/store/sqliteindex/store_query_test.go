@@ -13,6 +13,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestLookupNoteByIdentifierReturnsNotFoundForUnknownNote(t *testing.T) {
+	store, db := seedQueryStore(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	_, err := store.LookupNoteByIdentifier(db, "this-slug-does-not-exist")
+	require.Error(t, err)
+
+	var appErr *apperr.Error
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, apperr.CodeNotFound, appErr.Code)
+	assert.Contains(t, appErr.Message, `note "this-slug-does-not-exist" not found`)
+}
+
 func TestListTagsAggregatesCounts(t *testing.T) {
 	store, db := seedQueryStore(t)
 	t.Cleanup(func() { _ = db.Close() })

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/service/catalogsvc"
 	"github.com/ilyachch/mnemonic/internal/store/markdownstore"
 	"github.com/spf13/cobra"
@@ -38,7 +37,7 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 
 	result, err := container.Services.Catalog.Import(commandContext(cmd), catalogsvc.ImportInput{Path: pathArg, DryRun: dryRun}, loggerFromContext(commandContext(cmd)))
 	if err != nil {
-		return wrapImportError(err)
+		return err
 	}
 
 	if !jsonOutputEnabled(cmd) {
@@ -88,20 +87,6 @@ func formatImportHuman(result catalogsvc.ImportResult, dryRun bool) string {
 	}
 	human += humanSb83.String()
 	return human
-}
-
-func wrapImportError(err error) error {
-	if err == nil {
-		return nil
-	}
-	msg := err.Error()
-	switch {
-	case strings.HasPrefix(msg, "import path") && strings.Contains(msg, "not found"):
-		return apperr.NotFound(msg, nil)
-	case strings.HasPrefix(msg, "project slug") && strings.Contains(msg, "already exists"):
-		return apperr.Ambiguous(msg, nil)
-	}
-	return err
 }
 
 type projectImportOutput struct {

@@ -624,4 +624,18 @@ func TestResolveImportPath(t *testing.T) {
 	_, err = resolveImportPath(ImportInput{Path: "/nonexistent/path/12345"})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not found")
+
+	var appErr *apperr.Error
+	require.ErrorAs(t, err, &appErr)
+	require.Equal(t, apperr.CodeNotFound, appErr.Code)
+}
+
+func TestResolveAddPathReturnsNotFoundForMissingPath(t *testing.T) {
+	_, err := resolveAddPath(AddInput{Path: "/nonexistent/path/for-add-test"})
+	require.Error(t, err)
+
+	var appErr *apperr.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, apperr.CodeNotFound, appErr.Code)
+	assert.Contains(t, appErr.Message, "add path")
 }

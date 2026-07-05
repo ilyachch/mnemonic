@@ -3,7 +3,6 @@ package searchsvc
 import (
 	"context"
 	"log/slog"
-	"strings"
 	"unicode/utf8"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
@@ -134,9 +133,6 @@ func (s Service) Backlinks(ctx context.Context, input BacklinksInput) ([]Backlin
 
 	target, err := s.Index.LookupNoteByIdentifier(db, input.Identifier)
 	if err != nil {
-		if strings.HasPrefix(err.Error(), "note ") && strings.HasSuffix(err.Error(), " not found") {
-			return nil, apperr.NotFound(err.Error(), nil)
-		}
 		return nil, err
 	}
 

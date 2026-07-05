@@ -880,7 +880,7 @@ func (s Store) LookupNoteByIdentifier(db *sql.DB, identifier string) (IndexedNot
 	var note IndexedNote
 	if err := row.Scan(&note.NoteID, &note.Slug, &note.Title, &note.Path); err != nil {
 		if err == sql.ErrNoRows {
-			return IndexedNote{}, fmt.Errorf("note %q not found", identifier)
+			return IndexedNote{}, apperr.NotFound(fmt.Sprintf("note %q not found", identifier), nil)
 		}
 		return IndexedNote{}, fmt.Errorf("query note %q: %w", identifier, err)
 	}

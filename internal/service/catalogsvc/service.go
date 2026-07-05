@@ -354,7 +354,7 @@ func (s Service) Add(ctx context.Context, input AddInput, logger *slog.Logger) (
 	manifestPath := filepath.Join(resolvedPath, "mnemonic.toml")
 	if _, statErr := os.Stat(manifestPath); statErr != nil {
 		if os.IsNotExist(statErr) {
-			return AddResult{}, fmt.Errorf("mnemonic.toml not found at %s", resolvedPath)
+			return AddResult{}, apperr.NotFound("mnemonic.toml not found at "+resolvedPath, statErr)
 		}
 		return AddResult{}, fmt.Errorf("stat mnemonic.toml: %w", statErr)
 	}
@@ -424,7 +424,8 @@ func ensureManifest(manifestPath, resolvedPath string, dryRun bool) (*manifestfm
 // exists, returning an Ambiguous-style error on conflict.
 func (s Service) registerPointer(pointerPath, manifestPath string) error {
 	if _, err := os.Stat(pointerPath); err == nil {
-		return fmt.Errorf("project slug %q already exists", strings.TrimSuffix(filepath.Base(pointerPath), ".toml"))
+		slug := strings.TrimSuffix(filepath.Base(pointerPath), ".toml")
+		return apperr.Ambiguous(fmt.Sprintf("project slug %q already exists", slug), nil)
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("stat pointer file: %w", err)
 	}
@@ -450,7 +451,7 @@ func resolveAddPath(input AddInput) (string, error) {
 	}
 	if _, err := os.Stat(absPath); err != nil {
 		if os.IsNotExist(err) {
-			return "", fmt.Errorf("add path %q not found", path)
+			return "", apperr.NotFound(fmt.Sprintf("add path %q not found", path), err)
 		}
 		return "", fmt.Errorf("stat add path %s: %w", absPath, err)
 	}
@@ -508,7 +509,7 @@ func (s Service) Init(ctx context.Context, input InitInput, logger *slog.Logger)
 		Description:  input.Description,
 		Mode:         input.Mode,
 	}); err != nil {
-		return InitResult{}, wrapInitError(err)
+		return InitResult{}, err
 	}
 
 	resolved, err := s.Resolve(slugValue, logger)
@@ -788,18 +789,6 @@ func (s Service) registryStore() registry.Store {
 	return store
 }
 
-func wrapInitError(err error) error {
-	if err == nil {
-		return nil
-	}
-
-	if strings.Contains(err.Error(), "project slug") && strings.Contains(err.Error(), "already exists") {
-		return apperr.Ambiguous(err.Error(), nil)
-	}
-
-	return err
-}
-
 // InitProjectInput configures the direct project init helper.
 type InitProjectInput struct {
 	CWD          string
@@ -835,7 +824,7 @@ func initCentralProject(memoriesHome, name, slugValue, description, projectID st
 		return err
 	}
 	if exists {
-		return fmt.Errorf("project slug %q already exists", slugValue)
+		return apperr.Ambiguous(fmt.Sprintf("project slug %q already exists", slugValue), nil)
 	}
 	if err := os.MkdirAll(filepath.Join(memoriesHome, slugValue), 0o755); err != nil {
 		return fmt.Errorf("create central memories directory: %w", err)
@@ -855,7 +844,7 @@ func initLocalProject(memoriesHome, cwd, name, slugValue, description, projectID
 		return err
 	}
 	if exists {
-		return fmt.Errorf("project slug %q already exists", slugValue)
+		return apperr.Ambiguous(fmt.Sprintf("project slug %q already exists", slugValue), nil)
 	}
 	memoriesPath := filepath.Join(cwd, ".mnemonic-memories", slugValue)
 	if err := os.MkdirAll(memoriesPath, 0o755); err != nil {
@@ -899,7 +888,7 @@ func resolveImportPath(input ImportInput) (string, error) {
 	}
 	if _, err := os.Stat(absPath); err != nil {
 		if os.IsNotExist(err) {
-			return "", fmt.Errorf("import path %q not found", path)
+			return "", apperr.NotFound(fmt.Sprintf("import path %q not found", path), err)
 		}
 		return "", fmt.Errorf("stat import path %s: %w", absPath, err)
 	}
