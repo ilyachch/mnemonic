@@ -16,7 +16,6 @@ type notesEditOutput struct {
 	Slug        string `json:"slug"`
 	Path        string `json:"path"`
 	ContentHash string `json:"content_hash"`
-	CreatedAt   string `json:"created_at"`
 	UpdatedAt   string `json:"updated_at"`
 	IndexStatus string `json:"index_status"`
 	IndexError  string `json:"index_error,omitempty"`
@@ -47,7 +46,6 @@ func newNotesEditOutput(result notesvc.EditResult) notesEditOutput {
 		Slug:        result.Slug,
 		Path:        result.Path,
 		ContentHash: result.ContentHash,
-		CreatedAt:   result.CreatedAt,
 		UpdatedAt:   result.UpdatedAt,
 		IndexStatus: result.IndexStatus,
 		IndexError:  result.IndexError,

@@ -57,7 +57,6 @@ type EditResult struct {
 	Slug        string `json:"slug"`
 	Path        string `json:"path"`
 	ContentHash string `json:"content_hash"`
-	CreatedAt   string `json:"created_at"`
 	UpdatedAt   string `json:"updated_at"`
 	IndexStatus string `json:"index_status"`
 	IndexError  string `json:"index_error,omitempty"`
@@ -185,7 +184,6 @@ func (s Service) Edit(input EditInput) (EditResult, error) {
 		Slug:        edited.Slug,
 		Path:        edited.Path,
 		ContentHash: edited.ContentHash,
-		CreatedAt:   edited.CreatedAt,
 		UpdatedAt:   edited.UpdatedAt,
 		IndexStatus: "skipped",
 	}

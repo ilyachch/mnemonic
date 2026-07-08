@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,8 +19,6 @@ func TestParseNoteReadsCanonicalFieldsAndPreservesBody(t *testing.T) {
 		"tags:\n" +
 		"  - django\n" +
 		"  - auth\n" +
-		"created_at: 1780394400\n" +
-		"updated_at: 1780398000\n" +
 		"type: decision\n" +
 		"permalink: example-note\n" +
 		"extra_field: keep-me\n" +
@@ -36,10 +33,6 @@ func TestParseNoteReadsCanonicalFieldsAndPreservesBody(t *testing.T) {
 	require.Equal(t, "Example Note", note.Title)
 	require.Equal(t, "example-note", note.Slug)
 	require.Equal(t, []string{"django", "auth"}, note.Tags)
-	wantCreatedAt := time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
-	require.True(t, note.CreatedAt.Equal(wantCreatedAt))
-	wantUpdatedAt := time.Date(2026, time.June, 2, 11, 0, 0, 0, time.UTC)
-	require.True(t, note.UpdatedAt.Equal(wantUpdatedAt))
 	require.Equal(t, "decision", note.Type)
 	require.Equal(t, 20, len(note.Body))
 	require.True(t, bytes.HasSuffix(note.Body, []byte("Body text\n")))
@@ -56,8 +49,6 @@ func TestParseNoteParsesSummaryAndAliases(t *testing.T) {
 		"aliases:\n" +
 		"  - alias-one\n" +
 		"  - alias-two\n" +
-		"created_at: 1780394400\n" +
-		"updated_at: 1780394400\n" +
 		"---\n" +
 		"Body\n")
 
@@ -76,8 +67,6 @@ func TestParseNoteWithoutSlugReturnsEmpty(t *testing.T) {
 		"mnemonic_note_id: 550e8400-e29b-41d4-a716-446655440001\n" +
 		"title: Permalink Note\n" +
 		"permalink: permalink-note\n" +
-		"created_at: 1780394400\n" +
-		"updated_at: 1780394400\n" +
 		"---\n" +
 		"Body\n"))
 	require.NoError(t, err)
@@ -94,78 +83,21 @@ func TestParseNoteWithoutFrontmatterReturnsFullBody(t *testing.T) {
 	require.True(t, bytes.Equal(note.Body, input))
 }
 
-func TestParseNoteRejectsRFC3339StringTimestamp(t *testing.T) {
+func TestParseNoteAcceptsMinimalFrontmatter(t *testing.T) {
 	t.Parallel()
 
-	_, err := ParseNote([]byte("---\n" +
-		"mnemonic_note_id: 550e8400-e29b-41d4-a716-446655440002\n" +
-		"title: Bad Note\n" +
-		"created_at: 2026-06-02T10:00:00Z\n" +
-		"updated_at: 1780394400\n" +
+	input := []byte("---\n" +
+		"mnemonic_note_id: 550e8400-e29b-41d4-a716-446655440009\n" +
 		"---\n" +
-		"Body\n"))
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "created_at")
-}
+		"Body without heavy frontmatter.\n")
 
-func TestParseNoteRejectsStringTimestamp(t *testing.T) {
-	t.Parallel()
-
-	_, err := ParseNote([]byte("---\n" +
-		"mnemonic_note_id: 550e8400-e29b-41d4-a716-446655440003\n" +
-		"title: Bad Note\n" +
-		"created_at: 1780394400\n" +
-		"updated_at: \"2026-06-02T10:00:00Z\"\n" +
-		"---\n" +
-		"Body\n"))
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "updated_at")
-}
-
-func TestNoteTimeField_IntType(t *testing.T) {
-	t.Parallel()
-
-	raw := map[string]any{"created_at": 1780394400}
-	result, err := noteTimeField(raw, "created_at")
+	note, err := ParseNote(input)
 	require.NoError(t, err)
-	want := time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
-	require.Equal(t, want, result)
-}
-
-func TestNoteTimeField_MissingField(t *testing.T) {
-	t.Parallel()
-
-	raw := map[string]any{"other": "value"}
-	result, err := noteTimeField(raw, "created_at")
-	require.NoError(t, err)
-	require.True(t, result.IsZero())
-}
-
-func TestNoteTimeField_NilValue(t *testing.T) {
-	t.Parallel()
-
-	raw := map[string]any{"created_at": nil}
-	result, err := noteTimeField(raw, "created_at")
-	require.NoError(t, err)
-	require.True(t, result.IsZero())
-}
-
-func TestFrontmatterFieldError_Timestamp(t *testing.T) {
-	t.Parallel()
-
-	_, err := ParseNote([]byte("---\n" +
-		"mnemonic_note_id: 550e8400-e29b-41d4-a716-446655440002\n" +
-		"title: Bad Note\n" +
-		"created_at: yesterday\n" +
-		"updated_at: 1780394400\n" +
-		"---\n" +
-		"Body\n"))
-	require.Error(t, err)
-
-	var fieldErr *FrontmatterFieldError
-	require.True(t, errors.As(err, &fieldErr))
-	assert.Equal(t, "created_at", fieldErr.Field)
-	assert.Equal(t, FieldErrKindInvalidTimestamp, fieldErr.Kind)
+	require.Equal(t, "550e8400-e29b-41d4-a716-446655440009", note.MnemonicNoteID)
+	require.Empty(t, note.Title)
+	require.Empty(t, note.Slug)
+	require.Empty(t, note.Tags)
+	require.Contains(t, string(note.Body), "without heavy frontmatter")
 }
 
 func TestFrontmatterFieldError_TagsInvalidType(t *testing.T) {
@@ -174,8 +106,6 @@ func TestFrontmatterFieldError_TagsInvalidType(t *testing.T) {
 	_, err := ParseNote([]byte("---\n" +
 		"mnemonic_note_id: 550e8400-e29b-41d4-a716-446655440002\n" +
 		"title: Note\n" +
-		"created_at: 1780394400\n" +
-		"updated_at: 1780394400\n" +
 		"tags: 123\n" +
 		"---\n" +
 		"Body\n"))
@@ -193,8 +123,6 @@ func TestFrontmatterFieldError_TagsScalarRejected(t *testing.T) {
 	_, err := ParseNote([]byte("---\n" +
 		"mnemonic_note_id: 550e8400-e29b-41d4-a716-446655440002\n" +
 		"title: Note\n" +
-		"created_at: 1780394400\n" +
-		"updated_at: 1780394400\n" +
 		"tags: payment\n" +
 		"---\n" +
 		"Body\n"))
@@ -212,8 +140,6 @@ func TestFrontmatterFieldError_AliasesScalarRejected(t *testing.T) {
 	_, err := ParseNote([]byte("---\n" +
 		"mnemonic_note_id: 550e8400-e29b-41d4-a716-446655440002\n" +
 		"title: Note\n" +
-		"created_at: 1780394400\n" +
-		"updated_at: 1780394400\n" +
 		"aliases: \"old title\"\n" +
 		"---\n" +
 		"Body\n"))
@@ -231,8 +157,6 @@ func TestFrontmatterFieldError_TagsListWithNonString(t *testing.T) {
 	_, err := ParseNote([]byte("---\n" +
 		"mnemonic_note_id: 550e8400-e29b-41d4-a716-446655440002\n" +
 		"title: Note\n" +
-		"created_at: 1780394400\n" +
-		"updated_at: 1780394400\n" +
 		"tags:\n" +
 		"  - payment\n" +
 		"  - 123\n" +
@@ -252,8 +176,6 @@ func TestFrontmatterFieldError_TitleInvalidType(t *testing.T) {
 	_, err := ParseNote([]byte("---\n" +
 		"mnemonic_note_id: 550e8400-e29b-41d4-a716-446655440002\n" +
 		"title: 42\n" +
-		"created_at: 1780394400\n" +
-		"updated_at: 1780394400\n" +
 		"---\n" +
 		"Body\n"))
 	require.Error(t, err)
@@ -273,4 +195,48 @@ func TestFrontmatterFieldError_YAMLSyntaxIsNotFieldError(t *testing.T) {
 	var fieldErr *FrontmatterFieldError
 	assert.False(t, errors.As(err, &fieldErr))
 	assert.Contains(t, err.Error(), "parse frontmatter")
+}
+
+func TestGetOrDeriveTitleReturnsExplicitTitle(t *testing.T) {
+	t.Parallel()
+
+	note := Note{Title: "Explicit Title"}
+	require.Equal(t, "Explicit Title", note.GetOrDeriveTitle("any.md"))
+}
+
+func TestGetOrDeriveTitleFallsBackToH1(t *testing.T) {
+	t.Parallel()
+
+	note := Note{Body: []byte("# My H1 Title\n\nBody text.\n")}
+	require.Equal(t, "My H1 Title", note.GetOrDeriveTitle("untitled.md"))
+}
+
+func TestGetOrDeriveTitleFallsBackToFilename(t *testing.T) {
+	t.Parallel()
+
+	note := Note{Body: []byte("Just body text without a heading.\n")}
+	require.Equal(t, "untitled-note", note.GetOrDeriveTitle("untitled-note.md"))
+}
+
+func TestGetOrDeriveSlugReturnsExplicitSlug(t *testing.T) {
+	t.Parallel()
+
+	note := Note{Slug: "explicit-slug"}
+	require.Equal(t, "explicit-slug", note.GetOrDeriveSlug("any.md"))
+}
+
+func TestGetOrDeriveSlugDerivesFromTitle(t *testing.T) {
+	t.Parallel()
+
+	note := Note{Title: "Auth Migration Plan"}
+	require.Equal(t, "auth-migration-plan", note.GetOrDeriveSlug("auth.md"))
+}
+
+func TestGetOrDeriveSlugFallsBackToFilename(t *testing.T) {
+	t.Parallel()
+
+	// Non-ASCII title forces Slugify to error; expect filename-based slug
+	// derived from the file's base name.
+	note := Note{Title: "Заметка", Body: []byte("body\n")}
+	require.Equal(t, "my-note", note.GetOrDeriveSlug("My Note!.md"))
 }

@@ -16,13 +16,13 @@ var canonicalFrontmatterKeys = map[string]struct{}{
 	"tags":             {},
 	"summary":          {},
 	"aliases":          {},
-	"created_at":       {},
-	"updated_at":       {},
 	"type":             {},
 }
 
 var removedFrontmatterKeys = map[string]struct{}{
-	"permalink": {},
+	"permalink":  {},
+	"created_at": {},
+	"updated_at": {},
 }
 
 // RenderNote serializes a note into canonical YAML frontmatter plus body.
@@ -32,9 +32,6 @@ func RenderNote(note Note) ([]byte, error) {
 	}
 
 	slug := note.EffectiveSlug()
-	if slug == "" {
-		return nil, errors.New("slug is required")
-	}
 
 	var buf bytes.Buffer
 	buf.WriteString("---\n")
@@ -63,10 +60,12 @@ func renderCanonicalFrontmatter(buf *bytes.Buffer, note Note, slug string) error
 			value any
 		}{"title", note.Title})
 	}
-	pairs = append(pairs, struct {
-		key   string
-		value any
-	}{"slug", slug})
+	if slug != "" {
+		pairs = append(pairs, struct {
+			key   string
+			value any
+		}{"slug", slug})
+	}
 	if len(note.Tags) > 0 {
 		pairs = append(pairs, struct {
 			key   string
@@ -84,18 +83,6 @@ func renderCanonicalFrontmatter(buf *bytes.Buffer, note Note, slug string) error
 			key   string
 			value any
 		}{"aliases", note.Aliases})
-	}
-	if !note.CreatedAt.IsZero() {
-		pairs = append(pairs, struct {
-			key   string
-			value any
-		}{"created_at", note.CreatedAt.Unix()})
-	}
-	if !note.UpdatedAt.IsZero() {
-		pairs = append(pairs, struct {
-			key   string
-			value any
-		}{"updated_at", note.UpdatedAt.Unix()})
 	}
 	if note.Type != "" {
 		pairs = append(pairs, struct {

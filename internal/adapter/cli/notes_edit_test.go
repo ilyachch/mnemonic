@@ -32,8 +32,6 @@ func TestNotesEditCommandAppendsBodyAndUpdatesTimestamp(t *testing.T) {
 		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440000",
 		Title:          "Auth migration",
 		Slug:           "auth-migration",
-		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		Body:           []byte("## Summary\n"),
 	}
 	rendered, err := markdown.RenderNote(initial)
@@ -48,8 +46,8 @@ func TestNotesEditCommandAppendsBodyAndUpdatesTimestamp(t *testing.T) {
 			Title:       initial.Title,
 			RelPath:     "auth-migration.md",
 			ContentHash: "seeded-auth-migration",
-			CreatedAt:   initial.CreatedAt,
-			UpdatedAt:   initial.UpdatedAt,
+			CreatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+			UpdatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		},
 	)
 
@@ -82,12 +80,6 @@ func TestNotesEditCommandAppendsBodyAndUpdatesTimestamp(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(showResult.Stdout), &got), "stdout: %s", showResult.Stdout)
 	require.Equal(t, "## Summary\nNext step", got.Note.Body)
 	require.NotEmpty(t, got.Note.ContentHash)
-
-	parsed, err := markdown.ParseNote(readNoteFile(t, notePath))
-	require.NoError(t, err)
-	require.Equal(t, "## Summary\nNext step", got.Note.Body)
-	require.Equal(t, "2026-06-02T12:34:56Z", parsed.CreatedAt.UTC().Format(time.RFC3339))
-	require.Equal(t, "2026-06-02T12:35:56Z", parsed.UpdatedAt.UTC().Format(time.RFC3339))
 }
 
 func TestNotesEditCommandReplacesBodyFromFile(t *testing.T) {
@@ -108,8 +100,6 @@ func TestNotesEditCommandReplacesBodyFromFile(t *testing.T) {
 		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440000",
 		Title:          "Auth migration",
 		Slug:           "auth-migration",
-		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		Body:           []byte("## Summary\n"),
 	}
 	rendered, err := markdown.RenderNote(initial)
@@ -126,8 +116,8 @@ func TestNotesEditCommandReplacesBodyFromFile(t *testing.T) {
 			Title:       initial.Title,
 			RelPath:     "auth-migration.md",
 			ContentHash: "seeded-auth-migration",
-			CreatedAt:   initial.CreatedAt,
-			UpdatedAt:   initial.UpdatedAt,
+			CreatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+			UpdatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		},
 	)
 
@@ -142,8 +132,6 @@ func TestNotesEditCommandReplacesBodyFromFile(t *testing.T) {
 	parsed, err := markdown.ParseNote(readNoteFile(t, notePath))
 	require.NoError(t, err)
 	require.Equal(t, "Replacement body\n", string(parsed.Body))
-	require.Equal(t, "2026-06-02T12:34:56Z", parsed.CreatedAt.UTC().Format(time.RFC3339))
-	require.Equal(t, "2026-06-02T12:35:56Z", parsed.UpdatedAt.UTC().Format(time.RFC3339))
 }
 
 func TestNotesEditCommandAllowsEmptyBodyFile(t *testing.T) {
@@ -164,8 +152,6 @@ func TestNotesEditCommandAllowsEmptyBodyFile(t *testing.T) {
 		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440000",
 		Title:          "Auth migration",
 		Slug:           "auth-migration",
-		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		Body:           []byte("## Summary\n"),
 	}
 	rendered, err := markdown.RenderNote(initial)
@@ -182,8 +168,8 @@ func TestNotesEditCommandAllowsEmptyBodyFile(t *testing.T) {
 			Title:       initial.Title,
 			RelPath:     "auth-migration.md",
 			ContentHash: "seeded-auth-migration",
-			CreatedAt:   initial.CreatedAt,
-			UpdatedAt:   initial.UpdatedAt,
+			CreatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+			UpdatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		},
 	)
 
@@ -198,8 +184,6 @@ func TestNotesEditCommandAllowsEmptyBodyFile(t *testing.T) {
 	parsed, err := markdown.ParseNote(readNoteFile(t, notePath))
 	require.NoError(t, err)
 	require.Empty(t, parsed.Body)
-	require.Equal(t, "2026-06-02T12:34:56Z", parsed.CreatedAt.UTC().Format(time.RFC3339))
-	require.Equal(t, "2026-06-02T12:35:56Z", parsed.UpdatedAt.UTC().Format(time.RFC3339))
 }
 
 func TestNotesEditCommandSetsFrontmatterField(t *testing.T) {
@@ -220,8 +204,6 @@ func TestNotesEditCommandSetsFrontmatterField(t *testing.T) {
 		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440000",
 		Title:          "Auth migration",
 		Slug:           "auth-migration",
-		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		Body:           []byte("## Summary\n"),
 	}
 	rendered, err := markdown.RenderNote(note)
@@ -236,8 +218,8 @@ func TestNotesEditCommandSetsFrontmatterField(t *testing.T) {
 			Title:       note.Title,
 			RelPath:     "auth-migration.md",
 			ContentHash: "seeded-auth-migration",
-			CreatedAt:   note.CreatedAt,
-			UpdatedAt:   note.UpdatedAt,
+			CreatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+			UpdatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		},
 	)
 
@@ -271,8 +253,6 @@ func TestNotesEditCommandRejectsProtectedFrontmatterField(t *testing.T) {
 		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440000",
 		Title:          "Auth migration",
 		Slug:           "auth-migration",
-		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		Body:           []byte("## Summary\n"),
 	}
 	rendered, err := markdown.RenderNote(initial)
@@ -287,8 +267,8 @@ func TestNotesEditCommandRejectsProtectedFrontmatterField(t *testing.T) {
 			Title:       initial.Title,
 			RelPath:     "auth-migration.md",
 			ContentHash: "seeded-auth-migration",
-			CreatedAt:   initial.CreatedAt,
-			UpdatedAt:   initial.UpdatedAt,
+			CreatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+			UpdatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		},
 	)
 
@@ -314,8 +294,6 @@ func TestNotesEditCommandEnforcesIfMatch(t *testing.T) {
 		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440000",
 		Title:          "Auth migration",
 		Slug:           "auth-migration",
-		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		Body:           []byte("## Summary\n"),
 	}
 	rendered, err := markdown.RenderNote(initial)
@@ -330,8 +308,8 @@ func TestNotesEditCommandEnforcesIfMatch(t *testing.T) {
 			Title:       initial.Title,
 			RelPath:     "auth-migration.md",
 			ContentHash: "seeded-auth-migration",
-			CreatedAt:   initial.CreatedAt,
-			UpdatedAt:   initial.UpdatedAt,
+			CreatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+			UpdatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		},
 	)
 
@@ -377,8 +355,6 @@ func TestNotesEditCommandSetsTags(t *testing.T) {
 		Title:          "Auth migration",
 		Slug:           "auth-migration",
 		Tags:           []string{"old-tag"},
-		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		Body:           []byte("## Summary\n"),
 	}
 	rendered, err := markdown.RenderNote(note)
@@ -393,8 +369,8 @@ func TestNotesEditCommandSetsTags(t *testing.T) {
 			Title:       note.Title,
 			RelPath:     "auth-migration.md",
 			ContentHash: "seeded-auth-migration",
-			CreatedAt:   note.CreatedAt,
-			UpdatedAt:   note.UpdatedAt,
+			CreatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+			UpdatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		},
 	)
 
@@ -425,8 +401,6 @@ func TestNotesEditCommandSetsAliases(t *testing.T) {
 		Title:          "Auth migration",
 		Slug:           "auth-migration",
 		Aliases:        []string{"old-alias"},
-		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		Body:           []byte("## Summary\n"),
 	}
 	rendered, err := markdown.RenderNote(note)
@@ -441,8 +415,8 @@ func TestNotesEditCommandSetsAliases(t *testing.T) {
 			Title:       note.Title,
 			RelPath:     "auth-migration.md",
 			ContentHash: "seeded-auth-migration",
-			CreatedAt:   note.CreatedAt,
-			UpdatedAt:   note.UpdatedAt,
+			CreatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+			UpdatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		},
 	)
 
@@ -473,8 +447,6 @@ func TestNotesEditCommandClearsTags(t *testing.T) {
 		Title:          "Auth migration",
 		Slug:           "auth-migration",
 		Tags:           []string{"old-tag", "another-tag"},
-		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		Body:           []byte("## Summary\n"),
 	}
 	rendered, err := markdown.RenderNote(note)
@@ -489,8 +461,8 @@ func TestNotesEditCommandClearsTags(t *testing.T) {
 			Title:       note.Title,
 			RelPath:     "auth-migration.md",
 			ContentHash: "seeded-auth-migration",
-			CreatedAt:   note.CreatedAt,
-			UpdatedAt:   note.UpdatedAt,
+			CreatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+			UpdatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		},
 	)
 
@@ -521,8 +493,6 @@ func TestNotesEditCommandClearsAliases(t *testing.T) {
 		Title:          "Auth migration",
 		Slug:           "auth-migration",
 		Aliases:        []string{"old-alias"},
-		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		Body:           []byte("## Summary\n"),
 	}
 	rendered, err := markdown.RenderNote(note)
@@ -537,8 +507,8 @@ func TestNotesEditCommandClearsAliases(t *testing.T) {
 			Title:       note.Title,
 			RelPath:     "auth-migration.md",
 			ContentHash: "seeded-auth-migration",
-			CreatedAt:   note.CreatedAt,
-			UpdatedAt:   note.UpdatedAt,
+			CreatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+			UpdatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		},
 	)
 
@@ -570,8 +540,6 @@ func TestNotesEditCommandClearTagsAndSetAliases(t *testing.T) {
 		Slug:           "auth-migration",
 		Tags:           []string{"old-tag"},
 		Aliases:        []string{"old-alias"},
-		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		Body:           []byte("## Summary\n"),
 	}
 	rendered, err := markdown.RenderNote(note)
@@ -586,8 +554,8 @@ func TestNotesEditCommandClearTagsAndSetAliases(t *testing.T) {
 			Title:       note.Title,
 			RelPath:     "auth-migration.md",
 			ContentHash: "seeded-auth-migration",
-			CreatedAt:   note.CreatedAt,
-			UpdatedAt:   note.UpdatedAt,
+			CreatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+			UpdatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		},
 	)
 

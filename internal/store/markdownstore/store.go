@@ -72,7 +72,6 @@ type EditResult struct {
 	Slug        string `json:"slug"`
 	Path        string `json:"path"`
 	ContentHash string `json:"content_hash"`
-	CreatedAt   string `json:"created_at"`
 	UpdatedAt   string `json:"updated_at"`
 }
 
@@ -112,8 +111,9 @@ type ResolvedNote struct {
 // ShowResult describes a note show response.
 type ShowResult struct {
 	ResolvedNote
-	ContentHash string `json:"content_hash"`
-	RawMarkdown []byte `json:"-"`
+	ContentHash string    `json:"content_hash"`
+	RawMarkdown []byte    `json:"-"`
+	UpdatedAt   time.Time // System-derived modification timestamp
 }
 
 // Create writes a new markdown note beneath the store root.
@@ -137,23 +137,16 @@ func (s Store) Create(input CreateInput) (CreateResult, error) {
 		return CreateResult{}, err
 	}
 
-	now := input.Now
-	if now == nil {
-		now = clock.NowUTC
-	}
 	uuidFn := input.UUID
 	if uuidFn == nil {
 		uuidFn = idgen.NewUUID
 	}
 
-	timestamp := now().UTC()
 	note := markdown.Note{
 		MnemonicNoteID: uuidFn(),
 		Title:          input.Title,
 		Slug:           slugValue,
 		Tags:           dedupeTags(input.Tags),
-		CreatedAt:      timestamp,
-		UpdatedAt:      timestamp,
 		Body:           append([]byte(nil), input.Body...),
 	}
 
@@ -192,16 +185,11 @@ func applyEditInput(edited *markdown.Note, input EditInput) error {
 	if input.Aliases != nil {
 		edited.Aliases = *input.Aliases
 	}
-	now := input.Now
-	if now == nil {
-		now = clock.NowUTC
-	}
 	if input.HasBody {
 		edited.Body = append([]byte(nil), input.Body...)
 	} else {
 		edited.Body = append(append([]byte(nil), edited.Body...), input.Append...)
 	}
-	edited.UpdatedAt = now().UTC()
 	return nil
 }
 
@@ -243,6 +231,11 @@ func (s Store) Edit(input EditInput) (EditResult, error) {
 		}
 	}
 
+	now := input.Now
+	if now == nil {
+		now = clock.NowUTC
+	}
+
 	if err = applyEditInput(&edited, input); err != nil {
 		return EditResult{}, err
 	}
@@ -261,8 +254,7 @@ func (s Store) Edit(input EditInput) (EditResult, error) {
 		Slug:        edited.EffectiveSlug(),
 		Path:        resolved.Path,
 		ContentHash: HashBytes(rendered),
-		CreatedAt:   edited.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt:   edited.UpdatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:   now().UTC().Format(time.RFC3339),
 	}, nil
 }
 
@@ -360,16 +352,18 @@ func (s Store) List() ([]NoteSummary, error) {
 		if note.MnemonicNoteID == "" {
 			return NoteSummary{}, fmt.Errorf("note %q is missing mnemonic_note_id", relPath)
 		}
-		if note.UpdatedAt.IsZero() {
-			return NoteSummary{}, fmt.Errorf("note %q is missing updated_at", relPath)
+
+		st, err := os.Stat(absPath)
+		if err != nil {
+			return NoteSummary{}, fmt.Errorf("stat note %q: %w", relPath, err)
 		}
 
 		return NoteSummary{
 			NoteID:      note.MnemonicNoteID,
-			Slug:        note.EffectiveSlug(),
-			Title:       note.Title,
+			Slug:        note.GetOrDeriveSlug(relPath),
+			Title:       note.GetOrDeriveTitle(relPath),
 			Path:        relPath,
-			UpdatedAt:   note.UpdatedAt.UTC().Format(time.RFC3339),
+			UpdatedAt:   st.ModTime().UTC().Format(time.RFC3339),
 			ContentHash: HashBytes(data),
 		}, nil
 	})
@@ -390,7 +384,8 @@ func (s Store) Show(selector string) (ShowResult, error) {
 		return ShowResult{}, err
 	}
 
-	data, err := os.ReadFile(filepath.Join(s.rootDir(), filepath.FromSlash(resolved.Path)))
+	absPath := filepath.Join(s.rootDir(), filepath.FromSlash(resolved.Path))
+	data, err := os.ReadFile(absPath)
 	if err != nil {
 		return ShowResult{}, apperr.IO(fmt.Sprintf("read note %q", resolved.Path), err)
 	}
@@ -400,6 +395,11 @@ func (s Store) Show(selector string) (ShowResult, error) {
 		return ShowResult{}, apperr.Corrupted(fmt.Sprintf("parse note %q", resolved.Path), err)
 	}
 
+	st, err := os.Stat(absPath)
+	if err != nil {
+		return ShowResult{}, apperr.IO(fmt.Sprintf("stat note %q", resolved.Path), err)
+	}
+
 	return ShowResult{
 		ResolvedNote: ResolvedNote{
 			Note: note,
@@ -407,6 +407,7 @@ func (s Store) Show(selector string) (ShowResult, error) {
 		},
 		ContentHash: HashBytes(data),
 		RawMarkdown: append([]byte(nil), data...),
+		UpdatedAt:   st.ModTime().UTC(),
 	}, nil
 }
 
@@ -566,10 +567,6 @@ func (s Store) Hydrate(input HydrateInput) (HydrateResult, error) {
 		return HydrateResult{}, errors.New("root directory is required")
 	}
 
-	now := input.Now
-	if now == nil {
-		now = clock.NowUTC
-	}
 	uuidFn := input.UUID
 	if uuidFn == nil {
 		uuidFn = idgen.NewUUID
@@ -592,7 +589,7 @@ func (s Store) Hydrate(input HydrateInput) (HydrateResult, error) {
 
 	result := HydrateResult{DryRun: input.DryRun}
 	for _, relPath := range relPaths {
-		entry, skip, err := s.hydrateOne(root, relPath, input.DryRun, now, uuidFn)
+		entry, skip, err := s.hydrateOne(root, relPath, input.DryRun, uuidFn)
 		if err != nil {
 			return HydrateResult{}, err
 		}
@@ -607,9 +604,10 @@ func (s Store) Hydrate(input HydrateInput) (HydrateResult, error) {
 }
 
 // hydrateOne processes a single note file: reads, parses, and either reports
-// it as skipped (when it already has a mnemonic_note_id) or hydrates missing
-// metadata and writes it back (unless dry-run).
-func (s Store) hydrateOne(root, relPath string, dryRun bool, now func() time.Time, uuidFn func() string) (HydratedNote, bool, error) {
+// it as skipped (when it already has a mnemonic_note_id) or hydrates the
+// mnemonic_note_id and writes it back (unless dry-run). Title and slug in
+// the result are derived dynamically for reporting purposes.
+func (s Store) hydrateOne(root, relPath string, dryRun bool, uuidFn func() string) (HydratedNote, bool, error) {
 	absPath := filepath.Join(root, filepath.FromSlash(relPath))
 	data, err := os.ReadFile(absPath)
 	if err != nil {
@@ -625,7 +623,7 @@ func (s Store) hydrateOne(root, relPath string, dryRun bool, now func() time.Tim
 		return HydratedNote{}, true, nil
 	}
 
-	hydrated, err := s.hydrateNote(relPath, absPath, note, now, uuidFn)
+	hydrated, err := s.hydrateNote(note, uuidFn)
 	if err != nil {
 		return HydratedNote{}, false, fmt.Errorf("hydrate note %q: %w", relPath, err)
 	}
@@ -643,8 +641,8 @@ func (s Store) hydrateOne(root, relPath string, dryRun bool, now func() time.Tim
 	return HydratedNote{
 		Path:   relPath,
 		NoteID: hydrated.note.MnemonicNoteID,
-		Title:  hydrated.note.Title,
-		Slug:   hydrated.note.EffectiveSlug(),
+		Title:  hydrated.note.GetOrDeriveTitle(relPath),
+		Slug:   hydrated.note.GetOrDeriveSlug(relPath),
 	}, false, nil
 }
 
@@ -707,73 +705,15 @@ type hydratedNote struct {
 	note markdown.Note
 }
 
-// hydrateNote fills missing canonical fields on a parsed note using the
-// supplied time and UUID providers. It never overwrites fields that already
-// carry a value.
-func (s Store) hydrateNote(relPath, absPath string, note markdown.Note, now func() time.Time, uuidFn func() string) (hydratedNote, error) {
+// hydrateNote fills the mnemonic_note_id on a parsed note when missing. Per
+// the minimal frontmatter model, no other canonical fields (title, slug,
+// timestamps) are written to disk; they are resolved dynamically at runtime.
+func (s Store) hydrateNote(note markdown.Note, uuidFn func() string) (hydratedNote, error) {
 	if note.MnemonicNoteID == "" {
 		note.MnemonicNoteID = uuidFn()
 	}
 
-	if note.Title == "" {
-		note.Title = deriveNoteTitle(note.Body, relPath)
-	}
-
-	if note.EffectiveSlug() == "" {
-		slugValue, err := slug.Slugify(note.Title)
-		if err != nil || slugValue == "" {
-			slugValue = slugFromBaseName(relPath)
-		}
-		note.Slug = slugValue
-	}
-
-	mtime := fileMtime(absPath, now)
-	if note.CreatedAt.IsZero() {
-		note.CreatedAt = mtime
-	}
-	if note.UpdatedAt.IsZero() {
-		note.UpdatedAt = mtime
-	}
-
 	return hydratedNote{note: note}, nil
-}
-
-// deriveNoteTitle resolves a title from the note body's first H1 heading,
-// falling back to the file's base name (without extension) when no heading
-// is present.
-func deriveNoteTitle(body []byte, relPath string) string {
-	if title := markdown.ExtractH1Title(body); title != "" {
-		return title
-	}
-	return strings.TrimSuffix(filepath.Base(relPath), ".md")
-}
-
-// slugFromBaseName produces a best-effort slug from a file's base name by
-// stripping the extension and lowercasing. Used when Slugify rejects the
-// title (e.g. non-ASCII input).
-func slugFromBaseName(relPath string) string {
-	base := strings.TrimSuffix(filepath.Base(relPath), ".md")
-	base = strings.ToLower(base)
-	var b strings.Builder
-	for _, r := range base {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-			b.WriteRune(r)
-		default:
-			b.WriteByte('-')
-		}
-	}
-	return strings.Trim(b.String(), "-")
-}
-
-// fileMtime returns the file's modification time in UTC, falling back to the
-// supplied now() provider when the stat fails or the time is zero.
-func fileMtime(absPath string, now func() time.Time) time.Time {
-	info, err := os.Stat(absPath)
-	if err != nil || info.ModTime().IsZero() {
-		return now().UTC()
-	}
-	return info.ModTime().UTC()
 }
 
 type TrashPathInput struct {

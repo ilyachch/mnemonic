@@ -31,8 +31,6 @@ func TestNotesDeleteCommandDryRunShowsTrashPath(t *testing.T) {
 		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440000",
 		Title:          "Auth migration",
 		Slug:           "auth-migration",
-		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		Body:           []byte("## Summary\n"),
 	}
 	rendered, err := markdown.RenderNote(initial)
@@ -47,8 +45,8 @@ func TestNotesDeleteCommandDryRunShowsTrashPath(t *testing.T) {
 			Title:       initial.Title,
 			RelPath:     "auth-migration.md",
 			ContentHash: "seeded-auth-migration",
-			CreatedAt:   initial.CreatedAt,
-			UpdatedAt:   initial.UpdatedAt,
+			CreatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+			UpdatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		},
 	)
 
@@ -90,8 +88,6 @@ func TestNotesDeleteCommandMovesNoteToTrash(t *testing.T) {
 		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440000",
 		Title:          "Auth migration",
 		Slug:           "auth-migration",
-		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		Body:           []byte("## Summary\n"),
 	}
 	rendered, err := markdown.RenderNote(initial)
@@ -106,8 +102,8 @@ func TestNotesDeleteCommandMovesNoteToTrash(t *testing.T) {
 			Title:       initial.Title,
 			RelPath:     "auth-migration.md",
 			ContentHash: "seeded-auth-migration",
-			CreatedAt:   initial.CreatedAt,
-			UpdatedAt:   initial.UpdatedAt,
+			CreatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+			UpdatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		},
 	)
 
@@ -159,8 +155,6 @@ func TestNotesDeleteCommandHardRequiresYes(t *testing.T) {
 		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440000",
 		Title:          "Auth migration",
 		Slug:           "auth-migration",
-		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		Body:           []byte("## Summary\n"),
 	}
 	rendered, err := markdown.RenderNote(initial)
@@ -175,8 +169,8 @@ func TestNotesDeleteCommandHardRequiresYes(t *testing.T) {
 			Title:       initial.Title,
 			RelPath:     "auth-migration.md",
 			ContentHash: "seeded-auth-migration",
-			CreatedAt:   initial.CreatedAt,
-			UpdatedAt:   initial.UpdatedAt,
+			CreatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+			UpdatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		},
 	)
 
@@ -204,8 +198,6 @@ func TestNotesDeleteCommandHardDeletesWhenConfirmed(t *testing.T) {
 		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440000",
 		Title:          "Auth migration",
 		Slug:           "auth-migration",
-		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		Body:           []byte("## Summary\n"),
 	}
 	rendered, err := markdown.RenderNote(initial)
@@ -220,8 +212,8 @@ func TestNotesDeleteCommandHardDeletesWhenConfirmed(t *testing.T) {
 			Title:       initial.Title,
 			RelPath:     "auth-migration.md",
 			ContentHash: "seeded-auth-migration",
-			CreatedAt:   initial.CreatedAt,
-			UpdatedAt:   initial.UpdatedAt,
+			CreatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+			UpdatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		},
 	)
 

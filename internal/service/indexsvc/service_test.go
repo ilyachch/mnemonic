@@ -121,16 +121,12 @@ func newTestService(t *testing.T) (*Service, kb.KnowledgeBase) {
 		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440001",
 		Title:          "Target Note",
 		Slug:           "target-note",
-		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		Body:           []byte("target body\n"),
 	}))
 	require.NoError(t, writeNote(root, markdown.Note{
 		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440002",
 		Title:          "Source Note",
 		Slug:           "source-note",
-		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		Body:           []byte("See [[target-note]].\n"),
 	}))
 
@@ -140,8 +136,6 @@ func newTestService(t *testing.T) (*Service, kb.KnowledgeBase) {
 		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440003",
 		Title:          "Trash Note",
 		Slug:           "trash-note",
-		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		Body:           []byte("ignored\n"),
 	}))
 

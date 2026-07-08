@@ -59,7 +59,10 @@ updated_at: 1780394400
 # Intro
 `)
 	require.NoError(t, os.MkdirAll(filepath.Join(projectRoot, "docs"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(projectRoot, "docs", "intro.md"), noteBody, 0o644))
+	notePath := filepath.Join(projectRoot, "docs", "intro.md")
+	require.NoError(t, os.WriteFile(notePath, noteBody, 0o644))
+	wantUpdatedAt := time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC)
+	require.NoError(t, os.Chtimes(notePath, wantUpdatedAt, wantUpdatedAt))
 	require.NoError(t, os.MkdirAll(filepath.Join(projectRoot, ".trash"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(projectRoot, ".trash", "deleted.md"), []byte("trash"), 0o644))
 
@@ -76,8 +79,6 @@ updated_at: 1780394400
 	require.Equal(t, "intro", note.Slug)
 	require.Equal(t, "Intro", note.Title)
 	require.Equal(t, "docs/intro.md", note.Path)
-	wantUpdatedAt, err := time.Parse(time.RFC3339, "2026-06-02T10:00:00Z")
-	require.NoError(t, err)
 	require.True(t, note.UpdatedAt.Equal(wantUpdatedAt))
 	require.NotEmpty(t, note.ContentHash)
 	require.Equal(t, markdownstore.HashBytes(noteBody), note.ContentHash)

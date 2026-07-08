@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -23,8 +22,6 @@ func TestRenderNoteRoundTripPreservesMetadata(t *testing.T) {
 		Tags:           []string{"django", "auth"},
 		Summary:        "Plan for migrating auth system",
 		Aliases:        []string{"auth-plan", "migration-plan"},
-		CreatedAt:      time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 11, 0, 0, 0, time.UTC),
 		Type:           "note",
 		Body:           body,
 	}
@@ -34,6 +31,8 @@ func TestRenderNoteRoundTripPreservesMetadata(t *testing.T) {
 
 	renderedText := string(rendered)
 	require.NotContains(t, renderedText, "permalink:")
+	require.NotContains(t, renderedText, "created_at:")
+	require.NotContains(t, renderedText, "updated_at:")
 	require.Contains(t, renderedText, "tags:\n  - django\n  - auth\n")
 	require.Contains(t, renderedText, "summary: Plan for migrating auth system\n")
 	require.Contains(t, renderedText, "aliases:\n  - auth-plan\n  - migration-plan\n")
@@ -44,8 +43,6 @@ func TestRenderNoteRoundTripPreservesMetadata(t *testing.T) {
 		"tags:",
 		"summary:",
 		"aliases:",
-		"created_at:",
-		"updated_at:",
 		"type:",
 		"extra_field:",
 	)
@@ -60,21 +57,16 @@ func TestRenderNoteRoundTripPreservesMetadata(t *testing.T) {
 	require.Equal(t, note.Tags, roundTripped.Tags)
 	require.Equal(t, note.Summary, roundTripped.Summary)
 	require.Equal(t, note.Aliases, roundTripped.Aliases)
-	require.True(t, roundTripped.CreatedAt.Equal(note.CreatedAt))
-	require.True(t, roundTripped.UpdatedAt.Equal(note.UpdatedAt))
 	require.Equal(t, note.Type, roundTripped.Type)
 	require.Equal(t, "keep-me", roundTripped.Frontmatter["extra_field"])
 	require.True(t, bytes.Equal(roundTripped.Body, body))
 }
 
-func TestRenderNoteEmitsIntegerTimestamps(t *testing.T) {
+func TestRenderNoteMinimalFrontmatterWritesNoOptionalKeys(t *testing.T) {
 	t.Parallel()
 
 	note := Note{
-		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440020",
-		Slug:           "timestamp-test",
-		CreatedAt:      time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 11, 0, 0, 0, time.UTC),
+		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440040",
 		Body:           []byte("body\n"),
 	}
 
@@ -82,8 +74,11 @@ func TestRenderNoteEmitsIntegerTimestamps(t *testing.T) {
 	require.NoError(t, err)
 
 	renderedText := string(rendered)
-	require.Contains(t, renderedText, "created_at: 1780394400\n")
-	require.Contains(t, renderedText, "updated_at: 1780398000\n")
+	require.Contains(t, renderedText, "mnemonic_note_id: 550e8400-e29b-41d4-a716-446655440040\n")
+	require.NotContains(t, renderedText, "created_at:")
+	require.NotContains(t, renderedText, "updated_at:")
+	require.NotContains(t, renderedText, "title:")
+	require.NotContains(t, renderedText, "slug:")
 }
 
 func TestRenderNoteSingleTagUsesYAMLList(t *testing.T) {
@@ -125,6 +120,27 @@ func TestRenderNoteStripsPermalink(t *testing.T) {
 
 	renderedText := string(rendered)
 	require.NotContains(t, renderedText, "permalink:")
+}
+
+func TestRenderNoteStripsLegacyTimestamps(t *testing.T) {
+	t.Parallel()
+
+	note := Note{
+		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440041",
+		Slug:           "legacy-timestamps",
+		Frontmatter: map[string]any{
+			"created_at": 1741737600,
+			"updated_at": 1741824000,
+		},
+		Body: []byte("body\n"),
+	}
+
+	rendered, err := RenderNote(note)
+	require.NoError(t, err)
+
+	renderedText := string(rendered)
+	require.NotContains(t, renderedText, "created_at:")
+	require.NotContains(t, renderedText, "updated_at:")
 }
 
 func assertOrderedSubstrings(t *testing.T, text string, substrings ...string) {

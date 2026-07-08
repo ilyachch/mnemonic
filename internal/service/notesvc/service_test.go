@@ -176,7 +176,8 @@ func seedServiceIndexFromFile(t *testing.T, indexPath, path string) {
 		`INSERT INTO notes(note_id, project_id, slug, rel_path, title, content_hash, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		note.MnemonicNoteID, "kb-1", note.EffectiveSlug(), filepath.Base(path), note.Title, "hash-"+note.MnemonicNoteID,
-		note.CreatedAt.UTC().Format(time.RFC3339), note.UpdatedAt.UTC().Format(time.RFC3339),
+		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC).Format(time.RFC3339),
+		time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC).Format(time.RFC3339),
 	)
 	require.NoError(t, err)
 }

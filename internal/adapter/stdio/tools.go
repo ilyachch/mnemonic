@@ -63,7 +63,7 @@ Returns paginated diagnostic issues. Set include_suggestions to true to receive 
 Use this tool periodically to verify repository integrity after bulk changes.
 
 Parameters:
-- kinds ([]string, optional): filter by diagnostic kind. Valid values: "invalid_frontmatter", "missing_required_field", "missing_summary", "missing_timestamp", "invalid_timestamp", "duplicate_slug", "duplicate_alias", "unresolved_link", "ambiguous_link", "empty_body".
+- kinds ([]string, optional): filter by diagnostic kind. Valid values: "invalid_frontmatter", "missing_required_field", "missing_summary", "duplicate_slug", "duplicate_alias", "unresolved_link", "ambiguous_link", "empty_body".
 - limit (int, optional): maximum issues per page (default 50, max 200).
 - cursor (int, optional): zero-based page offset.
 - include_suggestions (bool, optional): resolve broken links via search and include candidate notes.`
@@ -195,7 +195,6 @@ type EditNoteOutput struct {
 	Slug        string `json:"slug"`
 	Path        string `json:"path"`
 	ContentHash string `json:"content_hash"`
-	CreatedAt   string `json:"created_at"`
 	UpdatedAt   string `json:"updated_at"`
 	IndexStatus string `json:"index_status"`
 	IndexError  string `json:"index_error,omitempty"`
@@ -506,7 +505,6 @@ func RegisterEditNote(server *sdkmcp.Server, deps Dependencies) {
 			Slug:        edited.Slug,
 			Path:        edited.Path,
 			ContentHash: edited.ContentHash,
-			CreatedAt:   edited.CreatedAt,
 			UpdatedAt:   edited.UpdatedAt,
 			IndexStatus: edited.IndexStatus,
 			IndexError:  edited.IndexError,
@@ -837,14 +835,38 @@ func setReadNotesExtraFields(note *ReadNotesNote, fields map[string]bool, resolv
 		h := resolved.ContentHash
 		note.ContentHash = &h
 	}
-	if fields["created_at"] && !resolved.Note.CreatedAt.IsZero() {
-		ca := resolved.Note.CreatedAt.Unix()
-		note.CreatedAt = &ca
+	if fields["created_at"] {
+		if ca, ok := frontmatterUnixTime(resolved.Note.Frontmatter, "created_at"); ok {
+			note.CreatedAt = &ca
+		}
 	}
-	if fields["updated_at"] && !resolved.Note.UpdatedAt.IsZero() {
-		ua := resolved.Note.UpdatedAt.Unix()
-		note.UpdatedAt = &ua
+	if fields["updated_at"] {
+		if ua, ok := frontmatterUnixTime(resolved.Note.Frontmatter, "updated_at"); ok {
+			note.UpdatedAt = &ua
+		} else if !resolved.UpdatedAt.IsZero() {
+			ua := resolved.UpdatedAt.Unix()
+			note.UpdatedAt = &ua
+		}
 	}
+}
+
+// frontmatterUnixTime extracts a Unix epoch integer from raw frontmatter.
+// YAML unmarshals integers as `int` (or `int64`); both are accepted.
+func frontmatterUnixTime(fm map[string]any, key string) (int64, bool) {
+	if fm == nil {
+		return 0, false
+	}
+	value, ok := fm[key]
+	if !ok || value == nil {
+		return 0, false
+	}
+	switch v := value.(type) {
+	case int:
+		return int64(v), true
+	case int64:
+		return v, true
+	}
+	return 0, false
 }
 
 func buildReadNotesNote(fields map[string]bool, resolved notesvc.ShowResult, maxBodyChars int) ReadNotesNote {

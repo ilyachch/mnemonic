@@ -56,9 +56,8 @@ func TestStoreHydrateAddsFrontmatterToRawNote(t *testing.T) {
 	note, err := markdown.ParseNote(data)
 	require.NoError(t, err)
 	assert.Equal(t, "11111111-2222-3333-4444-555555555555", note.MnemonicNoteID)
-	assert.Equal(t, "My Raw Note", note.Title)
-	assert.Equal(t, "my-raw-note", note.Slug)
-	assert.Equal(t, "My Raw Note", note.Title)
+	assert.Equal(t, "My Raw Note", note.GetOrDeriveTitle("raw.md"))
+	assert.Equal(t, "my-raw-note", note.GetOrDeriveSlug("raw.md"))
 	assert.Contains(t, string(note.Body), "Some body text.")
 }
 
@@ -84,7 +83,7 @@ func TestStoreHydratePreservesCustomFrontmatter(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "22222222-3333-4444-5555-666666666666", note.MnemonicNoteID)
 	assert.Equal(t, "Custom Title", note.Title)
-	assert.Equal(t, "custom-title", note.Slug)
+	assert.Equal(t, "custom-title", note.GetOrDeriveSlug("custom.md"))
 	assert.Equal(t, "jane", note.Frontmatter["author"])
 	assert.Equal(t, "draft", note.Frontmatter["status"])
 	assert.Contains(t, string(note.Body), "Body.")
@@ -153,33 +152,6 @@ func TestStoreHydrateDryRunDoesNotWrite(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(root, "dry.md"))
 	require.NoError(t, err)
 	assert.Equal(t, raw, data)
-}
-
-func TestStoreHydrateUsesFileMtimeForTimestamps(t *testing.T) {
-	testutil.CleanEnvForTest(t)
-	root := t.TempDir()
-	store := Store{RootDir: root, StateDir: t.TempDir()}
-
-	raw := []byte("# Mtime Note\n\nBody.\n")
-	notePath := filepath.Join(root, "mtime.md")
-	writeTestFile(t, notePath, raw)
-
-	mtime := time.Date(2025, time.December, 25, 8, 30, 0, 0, time.UTC)
-	require.NoError(t, os.Chtimes(notePath, mtime, mtime))
-
-	fallback := time.Date(2026, time.June, 29, 10, 0, 0, 0, time.UTC)
-	_, err := store.Hydrate(HydrateInput{
-		Now:  func() time.Time { return fallback },
-		UUID: func() string { return "66666666-7777-8888-9999-000000000000" },
-	})
-	require.NoError(t, err)
-
-	data, err := os.ReadFile(notePath)
-	require.NoError(t, err)
-	note, err := markdown.ParseNote(data)
-	require.NoError(t, err)
-	assert.True(t, note.CreatedAt.Equal(mtime))
-	assert.True(t, note.UpdatedAt.Equal(mtime))
 }
 
 func TestStoreHydrateRejectsFileOutsideRoot(t *testing.T) {

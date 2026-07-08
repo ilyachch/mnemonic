@@ -216,7 +216,7 @@ func countNoteIDs(paths []string, root string, trashIgnored *int) (seenUUID, see
 		if note.MnemonicNoteID != "" {
 			seenUUID[note.MnemonicNoteID]++
 		}
-		if slug := note.EffectiveSlug(); slug != "" {
+		if slug := note.GetOrDeriveSlug(rel); slug != "" {
 			seenSlug[slug]++
 		}
 	}

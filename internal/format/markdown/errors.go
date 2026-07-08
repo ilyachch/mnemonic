@@ -23,7 +23,6 @@ const (
 	FieldErrKindInvalidType       = "invalid_type"
 	FieldErrKindInvalidString     = "invalid_string"
 	FieldErrKindInvalidStringList = "invalid_string_list"
-	FieldErrKindInvalidTimestamp  = "invalid_timestamp"
 )
 
 func newStringFieldError(key string, err error) error {
@@ -32,8 +31,4 @@ func newStringFieldError(key string, err error) error {
 
 func newStringSliceFieldError(key string, err error) error {
 	return &FrontmatterFieldError{Field: key, Kind: FieldErrKindInvalidStringList, Err: err}
-}
-
-func newTimeFieldError(key string, err error) error {
-	return &FrontmatterFieldError{Field: key, Kind: FieldErrKindInvalidTimestamp, Err: err}
 }
