@@ -9,8 +9,8 @@ Notes are indexed into a local SQLite database with FTS5 (Full-Text Search) for 
 ## Features
 
 - **Local-first Architecture**: Plain Markdown files and an SQLite index stored in the user's workspace.
-- **Markdown Frontmatter**: Every note carries YAML frontmatter with `mnemonic_note_id`, `slug`, `title`, `tags`, `summary`, `created_at`, `updated_at`, `type`, and `aliases`.
-- **Unix Integer Timestamps**: `created_at` and `updated_at` are stored and returned as Unix epoch seconds (e.g. `1741737600`).
+- **Markdown Frontmatter**: Every note carries YAML frontmatter with a required `mnemonic_note_id`. Optional fields (`slug`, `title`, `tags`, `summary`, `type`, `aliases`) are written when present; `title` and `slug` are dynamically derived from the H1 heading or filename at runtime when absent.
+- **Hybrid Timestamp Resolution**: `created_at` and `updated_at` are no longer stored in frontmatter by default. The SQLite index resolves them at rebuild time: YAML values take precedence if present (legacy files), otherwise the file's filesystem birth time (`btime`) and modification time (`mtime`) are used. The MCP `read_notes` tool surfaces `updated_at` from the filesystem mtime when YAML is absent.
 - **Slug-based Wiki-Links**: `[[target-slug]]` and `[[target-slug|Display Label]]` syntax for bidirectional linking. Standard markdown links are also supported: `[Label](target-slug.md)`.
 - **Inline Metadata**:
   - Inline hashtags (`#tag`) extracted alongside frontmatter tags.
@@ -20,7 +20,7 @@ Notes are indexed into a local SQLite database with FTS5 (Full-Text Search) for 
 - **Graph-aware Reranking**: Top results are multiplicatively boosted based on link connections to higher-ranked documents.
 - **Related Notes**: Opt-in per-query retrieval of backlinks and forward links with `relation_type`, `source_kind`, and `direction`.
 - **Batch Read**: Read multiple notes in a single `read_notes` call by providing an array of identifiers (note_id, slug, path, or title). Optional field selection controls payload size.
-- **Repository Diagnostics**: `diagnose_notes` scans for invalid frontmatter, missing required fields, missing/invalid timestamps, duplicate slugs/aliases, unresolved or ambiguous wiki-links, and empty bodies. Optionally resolves broken links via search and suggests candidate targets.
+- **Repository Diagnostics**: `diagnose_notes` scans for invalid frontmatter, missing required fields, missing summary, duplicate slugs/aliases, unresolved or ambiguous wiki-links, and empty bodies. Optionally resolves broken links via search and suggests candidate targets.
 - **MCP Transport**: stdio and HTTP/SSE transport with optional Bearer token authentication.
 
 ---
@@ -37,7 +37,7 @@ go install ./cmd/mnemonic
 
 ## Note Format
 
-Every note is a Markdown file with YAML frontmatter. Timestamps are Unix epoch seconds as integers.
+Every note is a Markdown file with YAML frontmatter. The only strictly required field is `mnemonic_note_id`. All other fields (`title`, `slug`, `tags`, `summary`, `type`, `aliases`) are optional — when absent, `title` and `slug` are derived at runtime from the first H1 heading or the filename. Timestamps (`created_at`, `updated_at`) are no longer written to frontmatter; the index resolves them from the filesystem.
 
 ```markdown
 ---
@@ -48,8 +48,6 @@ tags:
   - project
   - draft
 summary: A brief description of the note content.
-created_at: 1741737600
-updated_at: 1741824000
 type: note
 aliases:
   - intro-note
@@ -345,7 +343,7 @@ Scan for metadata issues, broken links, and content problems.
 | `cursor` | `int` | Zero-based page offset (>= 0) |
 | `include_suggestions` | `bool` | Resolve broken links via search |
 
-Diagnostic kinds: `invalid_frontmatter`, `missing_required_field`, `missing_summary`, `missing_timestamp`, `invalid_timestamp`, `duplicate_slug`, `duplicate_alias`, `unresolved_link`, `ambiguous_link`, `empty_body`.
+Diagnostic kinds: `invalid_frontmatter`, `missing_required_field`, `missing_summary`, `duplicate_slug`, `duplicate_alias`, `unresolved_link`, `ambiguous_link`, `empty_body`.
 
 ### `list_notes`
 List all notes with pagination (`limit`, `cursor`).

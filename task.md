@@ -58,16 +58,4 @@ DONE
 ---
 
 ## 4. Testing Plan (Instructions for Verification)
-
-To verify that everything is running correctly, execute these tests and write new test scenarios:
-
-1.  **Parser Verification (`internal/format/markdown/note_test.go`)**:
-    *   *Add test:* Pass a file containing only `mnemonic_note_id` in its frontmatter. Verify that `ParseNote()` parses it without error.
-    *   *Add test:* Call `GetOrDeriveTitle()` on a note without a YAML title but with a `# My Title` H1 header. Assert it returns `My Title`.
-    *   *Add test:* Call `GetOrDeriveTitle()` on a note without any header and verify it extracts the filename.
-2.  **Rendereer Verification (`internal/format/markdown/render_test.go`)**:
-    *   *Add test:* Render a note with only `mnemonic_note_id`. Assert that the resulting string contains no `created_at`, `updated_at`, `title`, or `slug` parameters in its frontmatter block.
-3.  **Platform Verification (`internal/platform/fs/times_test.go`)**:
-    *   Write a unit test that creates a temporary file on disk, waits a brief moment (e.g. 50ms), modifies it, and asserts that `GetFileTimes()` returns `birthTime` <= `modTime` correctly on the target operating systems.
-4.  **Full Rebuild Integration Verification (`internal/store/sqliteindex/rebuild_test.go`)**:
-    *   Ensure that running `Rebuild()` successfully populates the SQLite tables `notes` with the extracted file timestamps and that searches using relative intervals like `--created-since 1h` correctly find the indexed files.
+DONE
