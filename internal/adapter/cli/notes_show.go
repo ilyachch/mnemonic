@@ -25,8 +25,8 @@ func newNotesShowCommand() *cobra.Command {
 			output := notesShowOutput{
 				Note: notesShowItem{
 					NoteID:      resolved.Note.MnemonicNoteID,
-					Slug:        resolved.Note.EffectiveSlug(),
-					Title:       resolved.Note.Title,
+					Slug:        resolved.Note.GetOrDeriveSlug(resolved.Path),
+					Title:       resolved.Note.GetOrDeriveTitle(resolved.Path),
 					Path:        resolved.Path,
 					Frontmatter: resolved.Note.Frontmatter,
 					Body:        string(resolved.Note.Body),
