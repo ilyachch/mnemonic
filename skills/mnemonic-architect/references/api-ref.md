@@ -24,6 +24,45 @@ mnemonic project init NAME [--local] [--description TEXT]
 - Local mode creates `<cwd>/.mnemonic-memories/<slug>/mnemonic.toml` and a pointer file under the memories home.
 - Initialization builds the initial index.
 
+## Project Description and Custom Instructions
+
+Both fields are optional strings in `mnemonic.toml`:
+
+```toml
+description = "Engineering knowledge for the Heimdall Python project, including architecture decisions, implementation notes, and runbooks."
+custom_instructions = """
+Use English for note titles and bodies.
+Record accepted architecture changes as decision notes.
+Do not store secrets or transient debugging output.
+"""
+```
+
+Runtime behavior:
+
+- `description` is added to MCP global instructions under `Project Description`. It is also included in the descriptions of the `search_notes` and `create_note` tools.
+- `custom_instructions` is added to MCP global instructions under `Custom Instructions`.
+- Empty or whitespace-only values are omitted.
+- The fields are loaded when the project runtime and MCP server are created. Restart or reconnect the server after editing them.
+- Changing these fields alone does not require index rebuild.
+
+Use `description` for factual scope: what the knowledge base contains, which project or domain it covers, and any important exclusions. Use `custom_instructions` for project-specific agent behavior: language, evidence rules, note conventions, linking policy, durable-write criteria, and prohibited content.
+
+Initialization accepts only the description directly:
+
+```bash
+mnemonic project init NAME [--local] --description TEXT
+```
+
+To update either value, resolve the manifest and edit it as TOML:
+
+```bash
+manifest_path=$(mnemonic --json project show SLUG | jq -r '.location.manifest_abs')
+$EDITOR "$manifest_path"
+mnemonic --json project show SLUG | jq '{description, custom_instructions}'
+```
+
+Preserve `project_id`. Do not place credentials, tokens, temporary task state, or instructions that attempt to bypass read-only mode or mutation safety in either field.
+
 ## `project import`
 
 ```bash

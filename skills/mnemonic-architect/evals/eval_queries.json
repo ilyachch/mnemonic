@@ -24,7 +24,7 @@
     "should_trigger": true
   },
   {
-    "query": "Configure the link style and ignore patterns in mnemonic.toml.",
+    "query": "Configure the project description, custom MCP instructions, link style, and ignore patterns in mnemonic.toml.",
     "should_trigger": true
   },
   {

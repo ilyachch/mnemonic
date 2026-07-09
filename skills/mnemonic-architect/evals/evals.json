@@ -44,6 +44,20 @@
         "The project is registered with mnemonic project add ~/Projects/new-location",
         "The agent runs project doctor after re-registration"
       ]
+    },
+    {
+      "id": 5,
+      "prompt": "Configure the research project so agents understand that it contains source-backed research on local-first knowledge systems and must separate sourced facts from hypotheses, cite sources, and never store secrets.",
+      "expected_output": "The agent places factual knowledge scope in description, behavioral rules in custom_instructions, preserves project identity, verifies the manifest through project show, and notes that the MCP server must be reconnected without rebuilding the index.",
+      "assertions": [
+        "The description states what knowledge the research project contains rather than giving behavioral commands",
+        "The custom_instructions require separating sourced facts from hypotheses and citing sources",
+        "The custom_instructions prohibit storing secrets",
+        "The agent resolves or edits the project mnemonic.toml while preserving project_id",
+        "The agent verifies description and custom_instructions with mnemonic --json project show research",
+        "The agent restarts or reconnects the MCP server after the metadata change",
+        "The agent does not rebuild the index solely because description or custom_instructions changed"
+      ]
     }
   ]
 }
