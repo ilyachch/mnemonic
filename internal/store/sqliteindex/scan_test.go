@@ -37,8 +37,6 @@ func writeScanTestNote(t testing.TB, path, noteID, title, slug string, now time.
 		MnemonicNoteID: noteID,
 		Title:          title,
 		Slug:           slug,
-		CreatedAt:      now,
-		UpdatedAt:      now,
 		Body:           []byte("# " + title + "\n"),
 	})
 	require.NoError(t, err)

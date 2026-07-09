@@ -1,0 +1,74 @@
+[
+  {
+    "query": "Create a local mnemonic project called research in this repository.",
+    "should_trigger": true
+  },
+  {
+    "query": "Import ~/Downloads/docs as its own mnemonic knowledge base.",
+    "should_trigger": true
+  },
+  {
+    "query": "Register this existing directory that already has mnemonic.toml.",
+    "should_trigger": true
+  },
+  {
+    "query": "Move my local project and repair its registry pointer.",
+    "should_trigger": true
+  },
+  {
+    "query": "Remove the research project but preserve all Markdown files.",
+    "should_trigger": true
+  },
+  {
+    "query": "Show me where mnemonic stores central projects and derived indexes.",
+    "should_trigger": true
+  },
+  {
+    "query": "Configure the project description, custom MCP instructions, link style, and ignore patterns in mnemonic.toml.",
+    "should_trigger": true
+  },
+  {
+    "query": "Copy these Markdown files into an existing project and synchronize it.",
+    "should_trigger": true
+  },
+  {
+    "query": "Add information about empty interfaces to an existing note.",
+    "should_trigger": false
+  },
+  {
+    "query": "Search my notes for Go architecture.",
+    "should_trigger": false
+  },
+  {
+    "query": "Fix unresolved links in the personal knowledge base.",
+    "should_trigger": false
+  },
+  {
+    "query": "Delete a note after checking backlinks.",
+    "should_trigger": false
+  },
+  {
+    "query": "Rebuild a single invalid project index.",
+    "should_trigger": false
+  },
+  {
+    "query": "Change the summary and tags of this note.",
+    "should_trigger": false
+  },
+  {
+    "query": "Resolve duplicate slugs in two notes.",
+    "should_trigger": false
+  },
+  {
+    "query": "Find every note updated during the last week.",
+    "should_trigger": false
+  },
+  {
+    "query": "Repair malformed YAML frontmatter in a note.",
+    "should_trigger": false
+  },
+  {
+    "query": "Explain how Reciprocal Rank Fusion ranks search results.",
+    "should_trigger": false
+  }
+]

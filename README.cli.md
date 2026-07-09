@@ -485,7 +485,7 @@ mnemonic project doctor [PROJECT] [flags]
 ```
       --all            run doctor across all active projects
   -h, --help           help for doctor
-      --kind strings   filter diagnostics by kind (invalid_frontmatter, missing_required_field, missing_summary, missing_timestamp, invalid_timestamp, duplicate_slug, duplicate_alias, unresolved_link, ambiguous_link, empty_body)
+      --kind strings   filter diagnostics by kind (invalid_frontmatter, missing_required_field, missing_summary, duplicate_slug, duplicate_alias, unresolved_link, ambiguous_link, empty_body)
 ```
 
 ### Options inherited from parent commands

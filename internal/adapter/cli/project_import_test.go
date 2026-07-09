@@ -53,8 +53,8 @@ func TestProjectImportCommandOnboardsRawDirectory(t *testing.T) {
 	note, err := markdown.ParseNote(data)
 	require.NoError(t, err)
 	require.Equal(t, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", note.MnemonicNoteID)
-	require.Equal(t, "Raw Note", note.Title)
-	require.Equal(t, "raw-note", note.Slug)
+	require.Equal(t, "Raw Note", note.GetOrDeriveTitle("raw-note.md"))
+	require.Equal(t, "raw-note", note.GetOrDeriveSlug("raw-note.md"))
 	require.Contains(t, string(note.Body), "Body.")
 }
 
@@ -83,8 +83,8 @@ func TestProjectImportCommandPreservesCustomFrontmatter(t *testing.T) {
 	note, err := markdown.ParseNote(data)
 	require.NoError(t, err)
 	require.Equal(t, "22222222-3333-4444-5555-666666666666", note.MnemonicNoteID)
-	require.Equal(t, "Custom Title", note.Title)
-	require.Equal(t, "custom-title", note.Slug)
+	require.Equal(t, "Custom Title", note.GetOrDeriveTitle("custom.md"))
+	require.Equal(t, "custom-title", note.GetOrDeriveSlug("custom.md"))
 	require.Equal(t, "jane", note.Frontmatter["author"])
 	require.Equal(t, "draft", note.Frontmatter["status"])
 	require.Contains(t, string(note.Body), "Body.")

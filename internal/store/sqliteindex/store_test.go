@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/ilyachch/mnemonic/internal/apperr"
 	"github.com/ilyachch/mnemonic/internal/format/markdown"
@@ -87,8 +86,6 @@ func TestRebuild(t *testing.T) {
 		Title:          "Test Note",
 		Slug:           "test-note",
 		Tags:           []string{"django"},
-		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
 		Body:           []byte("## Summary\n\nTest body.\n"),
 	}
 	rendered, err := markdown.RenderNote(note)

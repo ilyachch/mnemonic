@@ -21,7 +21,7 @@ func newProjectDoctorCommand() *cobra.Command {
 		RunE:              runProjectDoctor,
 	}
 	cmd.Flags().Bool("all", false, "run doctor across all active projects")
-	cmd.Flags().StringSlice("kind", nil, "filter diagnostics by kind (invalid_frontmatter, missing_required_field, missing_summary, missing_timestamp, invalid_timestamp, duplicate_slug, duplicate_alias, unresolved_link, ambiguous_link, empty_body)")
+	cmd.Flags().StringSlice("kind", nil, "filter diagnostics by kind (invalid_frontmatter, missing_required_field, missing_summary, duplicate_slug, duplicate_alias, unresolved_link, ambiguous_link, empty_body)")
 	return cmd
 }
 

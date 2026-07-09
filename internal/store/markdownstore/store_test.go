@@ -87,36 +87,26 @@ func TestStoreResolveSelectorPrecedenceFromIndex(t *testing.T) {
 		MnemonicNoteID: "11111111-1111-1111-1111-111111111111",
 		Title:          "UUID Note",
 		Slug:           "uuid-note",
-		CreatedAt:      noteTime(),
-		UpdatedAt:      noteTime(),
 	}, "uuid.md")
 	seedIndexedNote(t, db, markdown.Note{
 		MnemonicNoteID: "22222222-2222-2222-2222-222222222222",
 		Title:          "Slug Note",
 		Slug:           "slug-note",
-		CreatedAt:      noteTime(),
-		UpdatedAt:      noteTime(),
 	}, "slug.md")
 	seedIndexedNote(t, db, markdown.Note{
 		MnemonicNoteID: "33333333-3333-3333-3333-333333333333",
 		Title:          "Path Note",
 		Slug:           "path-note",
-		CreatedAt:      noteTime(),
-		UpdatedAt:      noteTime(),
 	}, filepath.ToSlash(filepath.Join("folder", "path.md")))
 	seedIndexedNote(t, db, markdown.Note{
 		MnemonicNoteID: "44444444-4444-4444-4444-444444444444",
 		Title:          "Exact Title",
 		Slug:           "exact-title-slug",
-		CreatedAt:      noteTime(),
-		UpdatedAt:      noteTime(),
 	}, "title.md")
 	seedIndexedNote(t, db, markdown.Note{
 		MnemonicNoteID: "55555555-5555-5555-5555-555555555555",
 		Title:          "Normalized Title",
 		Slug:           "custom-slug",
-		CreatedAt:      noteTime(),
-		UpdatedAt:      noteTime(),
 	}, "normalized.md")
 
 	cases := []struct {
@@ -159,15 +149,11 @@ func TestStoreResolveNotFoundAndAmbiguous(t *testing.T) {
 		MnemonicNoteID: "66666666-6666-6666-6666-666666666666",
 		Title:          "Shared Title",
 		Slug:           "shared-one",
-		CreatedAt:      noteTime(),
-		UpdatedAt:      noteTime(),
 	}, "shared-one.md")
 	seedIndexedNote(t, db, markdown.Note{
 		MnemonicNoteID: "77777777-7777-7777-7777-777777777777",
 		Title:          "Shared Title",
 		Slug:           "shared-two",
-		CreatedAt:      noteTime(),
-		UpdatedAt:      noteTime(),
 	}, "shared-two.md")
 
 	_, err := store.Resolve("missing")
@@ -186,8 +172,6 @@ func TestStoreListAndWalkIgnoreTrash(t *testing.T) {
 		MnemonicNoteID: "550e8400-e29b-41d4-a716-446655440000",
 		Title:          "Auth Migration",
 		Slug:           "auth-migration",
-		CreatedAt:      noteTime(),
-		UpdatedAt:      noteTime(),
 		Body:           []byte("# Heading\n"),
 	}
 	rendered, err := markdown.RenderNote(note)
@@ -244,8 +228,6 @@ func renderedListTestNote(t testing.TB, noteID, title, slug string, now time.Tim
 		MnemonicNoteID: noteID,
 		Title:          title,
 		Slug:           slug,
-		CreatedAt:      now,
-		UpdatedAt:      now,
 		Body:           []byte("# " + title + "\n"),
 	})
 	require.NoError(t, err)
@@ -313,16 +295,13 @@ func listSequential(store Store) ([]NoteSummary, error) {
 		if note.MnemonicNoteID == "" {
 			return nil, fmt.Errorf("note %q is missing mnemonic_note_id", relPath)
 		}
-		if note.UpdatedAt.IsZero() {
-			return nil, fmt.Errorf("note %q is missing updated_at", relPath)
-		}
 
 		notes = append(notes, NoteSummary{
 			NoteID:      note.MnemonicNoteID,
 			Slug:        note.EffectiveSlug(),
 			Title:       note.Title,
 			Path:        relPath,
-			UpdatedAt:   note.UpdatedAt.UTC().Format(time.RFC3339),
+			UpdatedAt:   noteTime().UTC().Format(time.RFC3339),
 			ContentHash: HashBytes(data),
 		})
 	}
@@ -388,7 +367,7 @@ func seedIndexedNote(t *testing.T, db *sql.DB, note markdown.Note, relPath strin
 		`INSERT INTO notes(note_id, project_id, slug, rel_path, title, content_hash, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		note.MnemonicNoteID, "kb-1", note.EffectiveSlug(), relPath, note.Title, "hash-"+note.MnemonicNoteID,
-		note.CreatedAt.UTC().Format(time.RFC3339), note.UpdatedAt.UTC().Format(time.RFC3339),
+		noteTime().UTC().Format(time.RFC3339), noteTime().UTC().Format(time.RFC3339),
 	)
 	require.NoError(t, err)
 }

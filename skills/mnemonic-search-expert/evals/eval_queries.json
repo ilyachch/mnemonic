@@ -1,0 +1,74 @@
+[
+  {
+    "query": "Find the note where I wrote down our PostgreSQL replica retry strategy.",
+    "should_trigger": true
+  },
+  {
+    "query": "I only remember that a note mentioned a reindex lock and atomic rename. Can you recover it?",
+    "should_trigger": true
+  },
+  {
+    "query": "Show everything I wrote about Redis migration in the last 30 days.",
+    "should_trigger": true
+  },
+  {
+    "query": "Which notes link back to the architecture decision about hexagonal boundaries?",
+    "should_trigger": true
+  },
+  {
+    "query": "Search my mnemonic knowledge base for deployment incidents tagged ops.",
+    "should_trigger": true
+  },
+  {
+    "query": "I cannot remember the title, but it discussed Go package boundaries and adapters.",
+    "should_trigger": true
+  },
+  {
+    "query": "Find related notes that may supersede my old RabbitMQ scaling decision.",
+    "should_trigger": true
+  },
+  {
+    "query": "Look through my notes for mentions of content hashes and optimistic concurrency.",
+    "should_trigger": true
+  },
+  {
+    "query": "Create a new note summarizing Django cache aliases.",
+    "should_trigger": false
+  },
+  {
+    "query": "Fix all broken wiki links in the knowledge base.",
+    "should_trigger": false
+  },
+  {
+    "query": "Initialize a local mnemonic project in this repository.",
+    "should_trigger": false
+  },
+  {
+    "query": "Delete the obsolete deployment note.",
+    "should_trigger": false
+  },
+  {
+    "query": "Rebuild the mnemonic index because search is failing.",
+    "should_trigger": false
+  },
+  {
+    "query": "Change the tags on my Go interfaces note.",
+    "should_trigger": false
+  },
+  {
+    "query": "Import ~/Downloads/docs as a new mnemonic project.",
+    "should_trigger": false
+  },
+  {
+    "query": "Explain how SQLite FTS5 works in general without looking at my notes.",
+    "should_trigger": false
+  },
+  {
+    "query": "Rename the research project and move it to another directory.",
+    "should_trigger": false
+  },
+  {
+    "query": "Repair invalid YAML frontmatter in several notes.",
+    "should_trigger": false
+  }
+]

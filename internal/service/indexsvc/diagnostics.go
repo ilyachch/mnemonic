@@ -22,8 +22,6 @@ const (
 	KindInvalidFrontmatter   DiagnosticKind = "invalid_frontmatter"
 	KindMissingRequiredField DiagnosticKind = "missing_required_field"
 	KindMissingSummary       DiagnosticKind = "missing_summary"
-	KindMissingTimestamp     DiagnosticKind = "missing_timestamp"
-	KindInvalidTimestamp     DiagnosticKind = "invalid_timestamp"
 	KindDuplicateSlug        DiagnosticKind = "duplicate_slug"
 	KindDuplicateAlias       DiagnosticKind = "duplicate_alias"
 	KindUnresolvedLink       DiagnosticKind = "unresolved_link"
@@ -134,8 +132,6 @@ var validDiagnosticKinds = map[DiagnosticKind]bool{
 	KindInvalidFrontmatter:   true,
 	KindMissingRequiredField: true,
 	KindMissingSummary:       true,
-	KindMissingTimestamp:     true,
-	KindInvalidTimestamp:     true,
 	KindDuplicateSlug:        true,
 	KindDuplicateAlias:       true,
 	KindUnresolvedLink:       true,
@@ -226,7 +222,7 @@ func (s Service) checkOneNote(root, rel string, filter kindFilter) (issues []Dia
 	}
 
 	issues = s.checkNoteFields(note, rel, filter)
-	if s := note.EffectiveSlug(); s != "" {
+	if s := note.GetOrDeriveSlug(rel); s != "" {
 		slugs = append(slugs, s)
 	}
 	for _, a := range note.Aliases {
@@ -241,18 +237,10 @@ func (s Service) classifyParseError(parseErr error, rel string, filter kindFilte
 	var issues []DiagnosticIssue
 	var fieldErr *markdown.FrontmatterFieldError
 	if errors.As(parseErr, &fieldErr) {
-		if fieldErr.Kind == markdown.FieldErrKindInvalidTimestamp {
-			if filter.include(KindInvalidTimestamp) {
-				issues = append(issues, DiagnosticIssue{
-					Kind: KindInvalidTimestamp, Path: rel, Field: fieldErr.Field, Detail: parseErr.Error(),
-				})
-			}
-		} else {
-			if filter.include(KindInvalidFrontmatter) {
-				issues = append(issues, DiagnosticIssue{
-					Kind: KindInvalidFrontmatter, Path: rel, Field: fieldErr.Field, Detail: parseErr.Error(),
-				})
-			}
+		if filter.include(KindInvalidFrontmatter) {
+			issues = append(issues, DiagnosticIssue{
+				Kind: KindInvalidFrontmatter, Path: rel, Field: fieldErr.Field, Detail: parseErr.Error(),
+			})
 		}
 	} else {
 		if filter.include(KindInvalidFrontmatter) {
@@ -267,9 +255,10 @@ func (s Service) classifyParseError(parseErr error, rel string, filter kindFilte
 func (s Service) checkNoteFields(note markdown.Note, path string, filter kindFilter) []DiagnosticIssue {
 	issues := make([]DiagnosticIssue, 0, 7)
 	noteID := note.MnemonicNoteID
-	slug := note.EffectiveSlug()
+	slug := note.GetOrDeriveSlug(path)
+	title := note.GetOrDeriveTitle(path)
 
-	issues = append(issues, s.checkRequiredFields(noteID, slug, note.Title, path, filter)...)
+	issues = append(issues, s.checkRequiredFields(noteID, slug, title, path, filter)...)
 	issues = append(issues, s.checkContentFields(noteID, slug, note, path, filter)...)
 	return issues
 }
@@ -304,47 +293,10 @@ func (s Service) checkContentFields(noteID, slug string, note markdown.Note, pat
 			Kind: KindMissingSummary, NoteID: noteID, Slug: slug, Path: path,
 		})
 	}
-	issues = append(issues, s.checkTimestamps(noteID, slug, note, path, filter)...)
 	if len(strings.TrimSpace(string(note.Body))) == 0 && filter.include(KindEmptyBody) {
 		issues = append(issues, DiagnosticIssue{
 			Kind: KindEmptyBody, NoteID: noteID, Slug: slug, Path: path,
 		})
-	}
-	return issues
-}
-
-func (s Service) checkTimestamps(noteID, slug string, note markdown.Note, path string, filter kindFilter) []DiagnosticIssue {
-	var issues []DiagnosticIssue
-	addMissing := func(field string) {
-		if filter.include(KindMissingTimestamp) {
-			issues = append(issues, DiagnosticIssue{
-				Kind: KindMissingTimestamp, NoteID: noteID, Slug: slug, Path: path,
-				Field:  field,
-				Detail: "missing " + field,
-			})
-		}
-	}
-	addInvalid := func(detail, field string) {
-		if filter.include(KindInvalidTimestamp) {
-			issues = append(issues, DiagnosticIssue{
-				Kind: KindInvalidTimestamp, NoteID: noteID, Slug: slug, Path: path,
-				Field:  field,
-				Detail: detail,
-			})
-		}
-	}
-	if note.CreatedAt.IsZero() {
-		addMissing("created_at")
-	} else if note.CreatedAt.Unix() <= 0 {
-		addInvalid("created_at <= 0", "created_at")
-	}
-	if note.UpdatedAt.IsZero() {
-		addMissing("updated_at")
-	} else if note.UpdatedAt.Unix() <= 0 {
-		addInvalid("updated_at <= 0", "updated_at")
-	}
-	if !note.CreatedAt.IsZero() && !note.UpdatedAt.IsZero() && note.CreatedAt.After(note.UpdatedAt) {
-		addInvalid("created_at > updated_at", "created_at")
 	}
 	return issues
 }

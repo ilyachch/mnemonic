@@ -39,8 +39,6 @@ func TestProjectSyncCommandHydratesRawNotesAndSkipsIndexed(t *testing.T) {
 		MnemonicNoteID: "existing-id-0001",
 		Title:          "Indexed",
 		Slug:           "indexed",
-		CreatedAt:      time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 10, 0, 0, 0, time.UTC),
 		Body:           []byte("# Indexed\n"),
 	}
 	indexedRendered, err := markdown.RenderNote(indexedNote)

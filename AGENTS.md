@@ -89,6 +89,16 @@ Errors must be wrapped in the `apperr.Error` struct to return the correct exit c
 - It does **not** use version numbers, `PRAGMA user_version`, or any migration-like mechanisms.
 - The index is a disposable derived artifact — incompatibility is resolved by an explicit `mnemonic project reindex`, never automatically.
 
+### 7. Minimal Frontmatter Model
+
+The `Note` struct (`internal/format/markdown/note.go`) does **not** carry `CreatedAt`/`UpdatedAt` fields. Timestamps are resolved at runtime:
+
+- **Indexer** (`sqliteindex/scan.go`): uses `fs.GetFileTimes` to obtain `btime`/`mtime`. `CreatedAt` = YAML `frontmatter["created_at"]` if present, else `btime`, else `mtime`. `UpdatedAt` = YAML `frontmatter["updated_at"]` if present, else `mtime`.
+- **read_notes / show**: `ShowResult.UpdatedAt` (system mtime) is the fallback when YAML timestamps are absent.
+- **RenderNote**: omits empty optional fields; `created_at`/`updated_at` are in `removedFrontmatterKeys` and are stripped from legacy files on write.
+- **Hydrate**: only writes `mnemonic_note_id`; `title` and `slug` are derived dynamically via `Note.GetOrDeriveTitle(relPath)` and `Note.GetOrDeriveSlug(relPath)`.
+- **Diagnostics**: `KindMissingTimestamp` and `KindInvalidTimestamp` no longer exist.
+
 ---
 
 ## Guidelines for Extending Code

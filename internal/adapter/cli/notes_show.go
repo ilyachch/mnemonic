@@ -12,30 +12,30 @@ func newNotesShowCommand() *cobra.Command {
 		Short: "Show a note",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-		runtime, err := runtimeAppForSelectedProject(cmd)
-		if err != nil {
-			return err
-		}
+			runtime, err := runtimeAppForSelectedProject(cmd)
+			if err != nil {
+				return err
+			}
 
-		resolved, err := runtime.Services.Notes.Show(args[0])
-		if err != nil {
-			return err
-		}
+			resolved, err := runtime.Services.Notes.Show(args[0])
+			if err != nil {
+				return err
+			}
 
-		output := notesShowOutput{
-			Note: notesShowItem{
-				NoteID:      resolved.Note.MnemonicNoteID,
-				Slug:        resolved.Note.EffectiveSlug(),
-				Title:       resolved.Note.Title,
-				Path:        resolved.Path,
-				Frontmatter: resolved.Note.Frontmatter,
-				Body:        string(resolved.Note.Body),
-				ContentHash: resolved.ContentHash,
-				UpdatedAt:   resolved.Note.UpdatedAt.UTC().Format(time.RFC3339),
-			},
-		}
-		return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), string(resolved.RawMarkdown), output)
-	},
+			output := notesShowOutput{
+				Note: notesShowItem{
+					NoteID:      resolved.Note.MnemonicNoteID,
+					Slug:        resolved.Note.GetOrDeriveSlug(resolved.Path),
+					Title:       resolved.Note.GetOrDeriveTitle(resolved.Path),
+					Path:        resolved.Path,
+					Frontmatter: resolved.Note.Frontmatter,
+					Body:        string(resolved.Note.Body),
+					ContentHash: resolved.ContentHash,
+					UpdatedAt:   resolved.UpdatedAt.UTC().Format(time.RFC3339),
+				},
+			}
+			return PrintOutput(cmd.OutOrStdout(), jsonOutputEnabled(cmd), string(resolved.RawMarkdown), output)
+		},
 	}
 }
 

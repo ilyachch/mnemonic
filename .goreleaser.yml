@@ -31,6 +31,7 @@ archives:
       - README*
       - PROMPTS*
       - LICENSE*
+      - src: "skills/**/*"
 checksum:
   name_template: "checksums.txt"
   algorithm: sha256

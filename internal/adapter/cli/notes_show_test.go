@@ -33,8 +33,6 @@ func TestNotesShowCommandReturnsJSONAndHumanOutput(t *testing.T) {
 		Title:          "Auth migration",
 		Slug:           "auth-migration",
 		Tags:           []string{"django", "auth"},
-		CreatedAt:      time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
-		UpdatedAt:      time.Date(2026, time.June, 2, 12, 35, 56, 0, time.UTC),
 		Body:           []byte("## Summary\n\nPlan.\n"),
 	}
 	rendered, err := markdown.RenderNote(note)
@@ -49,8 +47,8 @@ func TestNotesShowCommandReturnsJSONAndHumanOutput(t *testing.T) {
 			Title:       note.Title,
 			RelPath:     "auth-migration.md",
 			ContentHash: "seeded-auth-migration",
-			CreatedAt:   note.CreatedAt,
-			UpdatedAt:   note.UpdatedAt,
+			CreatedAt:   time.Date(2026, time.June, 2, 12, 34, 56, 0, time.UTC),
+			UpdatedAt:   time.Date(2026, time.June, 2, 12, 35, 56, 0, time.UTC),
 		},
 	)
 

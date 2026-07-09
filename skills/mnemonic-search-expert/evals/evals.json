@@ -1,0 +1,41 @@
+{
+  "skill_name": "mnemonic-search-expert",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Find everything I wrote about Go architecture during the last week.",
+      "expected_output": "The agent performs a diverse multi-query search limited to notes updated in the last seven days, without inventing a Go tag, then batch-reads relevant notes and inspects relationships only when useful.",
+      "assertions": [
+        "The first search_notes call contains at least three semantically distinct query variants",
+        "The search uses updated_since set to 7d",
+        "The first search does not use tags unless list_tags previously confirmed the tag",
+        "The initial search does not set include_related unless graph context becomes necessary",
+        "The agent batch-reads selected notes before presenting their content"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Find my deployment notes updated during the last 30 days under the ops tag, even if the first search is empty.",
+      "expected_output": "The agent starts with diverse queries, the requested ops tag, and updated_since set to 30d; after an empty result it removes the tag, preserves the 30-day window, and checks available tags for alternatives.",
+      "assertions": [
+        "The initial search uses multiple semantically distinct queries",
+        "The initial search applies the requested ops tag",
+        "The initial search uses updated_since set to 30d",
+        "After an empty result the next search removes the tag filter",
+        "The expanded search preserves updated_since set to 30d",
+        "The agent calls list_tags before substituting an alternative tag"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "I remember a note mentioning a write lock and a temporary database, but not its title. Find it and show me the surrounding context.",
+      "expected_output": "The agent searches both remembered fragments and conceptual variants, batch-reads candidates, and uses backlinks to reconstruct surrounding context.",
+      "assertions": [
+        "Search variants cover both write lock and temporary database concepts",
+        "Plausible candidates are read in one batch",
+        "The selected note is followed with list_backlinks because context was requested",
+        "Backlink content is read before it is used as evidence"
+      ]
+    }
+  ]
+}

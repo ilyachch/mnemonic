@@ -2,8 +2,10 @@ package markdown
 
 import (
 	"fmt"
-	"time"
+	"path/filepath"
+	"strings"
 
+	"github.com/ilyachch/mnemonic/internal/domain/slug"
 	"gopkg.in/yaml.v3"
 )
 
@@ -16,8 +18,6 @@ type Note struct {
 	Tags           []string
 	Summary        string
 	Aliases        []string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
 	Type           string
 	Body           []byte
 }
@@ -78,12 +78,6 @@ func (n *Note) populateFromRaw(raw map[string]any) error {
 	if n.Aliases, errField = noteStringSliceField(raw, "aliases"); errField != nil {
 		return errField
 	}
-	if n.CreatedAt, errField = noteTimeField(raw, "created_at"); errField != nil {
-		return errField
-	}
-	if n.UpdatedAt, errField = noteTimeField(raw, "updated_at"); errField != nil {
-		return errField
-	}
 	if n.Type, errField = noteStringField(raw, "type"); errField != nil {
 		return errField
 	}
@@ -129,18 +123,48 @@ func noteStringSliceField(raw map[string]any, key string) ([]string, error) {
 	}
 }
 
-func noteTimeField(raw map[string]any, key string) (time.Time, error) {
-	value, ok := raw[key]
-	if !ok || value == nil {
-		return time.Time{}, nil
+// GetOrDeriveTitle returns the note's title, deriving it dynamically when the
+// YAML title is absent. Derivation order: explicit Title field, then the first
+// H1 heading in the body, then the file's base name (without extension).
+func (n Note) GetOrDeriveTitle(relPath string) string {
+	if n.Title != "" {
+		return n.Title
 	}
+	if title := ExtractH1Title(n.Body); title != "" {
+		return title
+	}
+	return strings.TrimSuffix(filepath.Base(relPath), ".md")
+}
 
-	switch typed := value.(type) {
-	case int:
-		return time.Unix(int64(typed), 0).UTC(), nil
-	case int64:
-		return time.Unix(typed, 0).UTC(), nil
-	default:
-		return time.Time{}, newTimeFieldError(key, fmt.Errorf("must be a Unix timestamp as an integer, got %T", value))
+// GetOrDeriveSlug returns the note's slug, deriving it dynamically when the
+// YAML slug is absent. Derivation uses Slugify on the derived title; if that
+// fails (e.g. non-ASCII input), a local cleanup fallback lowercases the
+// filename and replaces any non-alphanumeric characters with "-".
+func (n Note) GetOrDeriveSlug(relPath string) string {
+	if n.Slug != "" {
+		return n.Slug
 	}
+	derived, err := slug.Slugify(n.GetOrDeriveTitle(relPath))
+	if err == nil && derived != "" {
+		return derived
+	}
+	return slugFromBaseName(relPath)
+}
+
+// slugFromBaseName produces a best-effort slug from a file's base name by
+// stripping the extension and lowercasing. Used when Slugify rejects the
+// title (e.g. non-ASCII input).
+func slugFromBaseName(relPath string) string {
+	base := strings.TrimSuffix(filepath.Base(relPath), ".md")
+	base = strings.ToLower(base)
+	var b strings.Builder
+	for _, r := range base {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('-')
+		}
+	}
+	return strings.Trim(b.String(), "-")
 }

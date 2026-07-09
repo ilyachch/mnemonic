@@ -7,8 +7,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/ilyachch/mnemonic/internal/format/markdown"
+	mnemonicfs "github.com/ilyachch/mnemonic/internal/platform/fs"
 	"github.com/ilyachch/mnemonic/internal/platform/parallel"
 	"github.com/ilyachch/mnemonic/internal/store/markdownstore"
 )
@@ -91,9 +93,9 @@ func scanOneNote(root, relPath string) (NoteDoc, error) {
 	if err != nil {
 		return NoteDoc{}, fmt.Errorf("%s: read note: %w", relPath, err)
 	}
-	st, err := os.Stat(abs)
+	btime, mtime, err := mnemonicfs.GetFileTimes(abs)
 	if err != nil {
-		return NoteDoc{}, fmt.Errorf("%s: stat note: %w", relPath, err)
+		return NoteDoc{}, fmt.Errorf("%s: stat note times: %w", relPath, err)
 	}
 	note, err := markdown.ParseNote(data)
 	if err != nil {
@@ -101,28 +103,38 @@ func scanOneNote(root, relPath string) (NoteDoc, error) {
 	}
 	info := NoteDoc{
 		NoteID:       note.MnemonicNoteID,
-		Slug:         note.EffectiveSlug(),
-		Title:        note.Title,
+		Slug:         note.GetOrDeriveSlug(relPath),
+		Title:        note.GetOrDeriveTitle(relPath),
 		RelPath:      relPath,
 		Frontmatter:  note.Frontmatter,
 		BodyMarkdown: string(note.Body),
 		BodyText:     string(note.Body),
 		ContentHash:  markdownstore.HashBytes(data),
-		FileMTimeNS:  st.ModTime().UnixNano(),
-		FileSize:     st.Size(),
+		FileMTimeNS:  mtime.UnixNano(),
+		FileSize:     int64(len(data)),
 	}
-	populateNoteDocData(&info, note, data)
+	populateNoteDocData(&info, note, data, btime, mtime)
 	return info, nil
 }
 
-func populateNoteDocData(info *NoteDoc, note markdown.Note, data []byte) {
+func populateNoteDocData(info *NoteDoc, note markdown.Note, data []byte, btime, mtime time.Time) {
 	info.Summary = note.Summary
 	info.Aliases = note.Aliases
-	if !note.CreatedAt.IsZero() {
-		info.CreatedAt = note.CreatedAt.Unix()
+
+	// CreatedAt: YAML value -> system btime -> system mtime.
+	if ca, ok := frontmatterUnixTime(note.Frontmatter, "created_at"); ok && ca > 0 {
+		info.CreatedAt = ca
+	} else if !btime.IsZero() {
+		info.CreatedAt = btime.Unix()
+	} else {
+		info.CreatedAt = mtime.Unix()
 	}
-	if !note.UpdatedAt.IsZero() {
-		info.UpdatedAt = note.UpdatedAt.Unix()
+
+	// UpdatedAt: YAML value -> system mtime.
+	if ua, ok := frontmatterUnixTime(note.Frontmatter, "updated_at"); ok && ua > 0 {
+		info.UpdatedAt = ua
+	} else {
+		info.UpdatedAt = mtime.Unix()
 	}
 	info.Tags = append(info.Tags, tagRow{Source: "frontmatter"})
 	for _, t := range note.Tags {
@@ -177,4 +189,23 @@ func normalizeTitleSlug(s string) string {
 		}
 	}
 	return strings.Trim(b.String(), "-")
+}
+
+// frontmatterUnixTime extracts a Unix epoch integer from raw frontmatter.
+// YAML unmarshals integers as `int` (or `int64`); both are accepted.
+func frontmatterUnixTime(fm map[string]any, key string) (int64, bool) {
+	if fm == nil {
+		return 0, false
+	}
+	value, ok := fm[key]
+	if !ok || value == nil {
+		return 0, false
+	}
+	switch v := value.(type) {
+	case int:
+		return int64(v), true
+	case int64:
+		return v, true
+	}
+	return 0, false
 }
