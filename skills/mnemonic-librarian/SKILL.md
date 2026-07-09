@@ -74,13 +74,9 @@ Why this information matters.
 ## Details
 
 Durable facts, reasoning, examples, or implementation notes.
-
-## Related Notes
-
-- [[related-slug|Related Note]]
 ```
 
-Do not force empty sections. The H1 is required for newly authored notes; other sections depend on content.
+Do not force empty sections. The H1 is required for newly authored notes; other sections depend on content. Add a `Related Notes` section only after verifying both the target notes and the project's configured link style.
 
 ### 4. Write a Summary
 

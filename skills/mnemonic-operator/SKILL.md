@@ -204,7 +204,7 @@ Run from the skill root:
 bash scripts/repair-loop.sh PROJECT [MAX_PASSES]
 ```
 
-The script repeatedly runs CLI diagnostics and delegates repairs to `MNEMONIC_REPAIR_HOOK`. It never selects candidates and never reindexes automatically.
+The script repeatedly runs CLI diagnostics and delegates repairs to `MNEMONIC_REPAIR_HOOK`. It never selects candidates and never reindexes automatically. The CLI command returns only its default diagnostic page and exposes no cursor option, so one pass processes one returned page. Increase `MAX_PASSES` for large issue sets, or use MCP `diagnose_notes` when explicit pagination is required.
 
 The hook receives:
 

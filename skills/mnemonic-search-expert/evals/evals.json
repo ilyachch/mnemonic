@@ -9,18 +9,20 @@
         "The first search_notes call contains at least three semantically distinct query variants",
         "The search uses updated_since set to 7d",
         "The first search does not use tags unless list_tags previously confirmed the tag",
+        "The initial search does not set include_related unless graph context becomes necessary",
         "The agent batch-reads selected notes before presenting their content"
       ]
     },
     {
       "id": 2,
-      "prompt": "Find my recent deployment notes under the ops tag, even if the first search is empty.",
-      "expected_output": "The agent starts with diverse queries and the requested tag, removes the tag after an empty result, preserves the stated recency constraint, and checks available tags for alternatives.",
+      "prompt": "Find my deployment notes updated during the last 30 days under the ops tag, even if the first search is empty.",
+      "expected_output": "The agent starts with diverse queries, the requested ops tag, and updated_since set to 30d; after an empty result it removes the tag, preserves the 30-day window, and checks available tags for alternatives.",
       "assertions": [
         "The initial search uses multiple semantically distinct queries",
         "The initial search applies the requested ops tag",
+        "The initial search uses updated_since set to 30d",
         "After an empty result the next search removes the tag filter",
-        "The agent preserves the user-provided recency window",
+        "The expanded search preserves updated_since set to 30d",
         "The agent calls list_tags before substituting an alternative tag"
       ]
     },

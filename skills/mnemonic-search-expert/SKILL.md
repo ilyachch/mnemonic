@@ -93,8 +93,7 @@ For "everything I wrote about Go architecture during the last week", start witho
     "ports adapters hexagonal architecture Go"
   ],
   "updated_since": "7d",
-  "limit": 30,
-  "include_related": true
+  "limit": 30
 }
 ```
 

@@ -104,7 +104,7 @@ mnemonic --json project reindex PROJECT
 mnemonic project sync PROJECT
 ```
 
-The CLI diagnostic command does not expose candidate suggestions. Use MCP `diagnose_notes` when suggestions are required.
+The CLI diagnostic command does not expose `limit`, `cursor`, or candidate-suggestion flags. It therefore returns the service's default first page, currently up to 50 issues. Use MCP `diagnose_notes` when explicit pagination or suggestions are required.
 
 ## CLI Diagnostic JSON Contract Used by `repair-loop.sh`
 
@@ -121,8 +121,9 @@ Kind-filtered `mnemonic --json project doctor` output is expected to contain:
 - `issues` is always an array.
 - `total_count` is the total matching issue count.
 - `next_cursor` is omitted or zero when pagination is complete.
+- A nonzero `next_cursor` indicates that more matching issues exist, but the current CLI command cannot request that cursor directly.
 
-The script validates the object and `issues` array before invoking a repair hook.
+The script validates the object and `issues` array before invoking a repair hook. Each pass gives the hook only the returned page. After those issues are repaired, the next pass reruns diagnostics and surfaces remaining issues from the new first page. Increase `MAX_PASSES` for large repositories.
 
 ## Raw-File Fallback
 

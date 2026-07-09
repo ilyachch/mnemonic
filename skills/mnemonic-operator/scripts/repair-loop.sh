@@ -12,8 +12,10 @@ MNEMONIC_REPAIR_HOOK. The hook receives:
   2. The path to the current JSON diagnostic report.
 
 The script never selects repair candidates and never rebuilds the index.
-Without a hook, it copies the report to the current directory and exits without
-modifying notes.
+The CLI diagnostic command returns one page and exposes no cursor flag, so each
+pass processes only the returned page. Increase MAX_PASSES for large issue sets.
+Without a hook, the script copies the report to the current directory and exits
+without modifying notes.
 
 Requirements: mnemonic, jq, Bash 4+
 USAGE
@@ -75,8 +77,15 @@ for ((pass = 1; pass <= max_passes; pass++)); do
   fi
 
   issue_count=$(jq -r '.total_count // (.issues | length)' "$report")
+  returned_count=$(jq -r '.issues | length' "$report")
+  next_cursor=$(jq -r '.next_cursor // 0' "$report")
   [[ "$issue_count" =~ ^[0-9]+$ ]] || fail "unexpected total_count in diagnostic JSON"
-  printf 'Found %s issue(s).\n' "$issue_count"
+  [[ "$returned_count" =~ ^[0-9]+$ ]] || fail "unexpected issues length in diagnostic JSON"
+  [[ "$next_cursor" =~ ^[0-9]+$ ]] || fail "unexpected next_cursor in diagnostic JSON"
+  printf 'Found %s issue(s); current CLI page contains %s.\n' "$issue_count" "$returned_count"
+  if [[ "$next_cursor" != "0" ]]; then
+    printf 'More issues exist after this page (next_cursor=%s). Later passes will surface them after returned issues are repaired.\n' "$next_cursor" >&2
+  fi
 
   if [[ "$issue_count" == "0" ]]; then
     final_doctor="$workdir/final-doctor.json"
