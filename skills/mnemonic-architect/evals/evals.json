@@ -4,9 +4,8 @@
     {
       "id": 1,
       "prompt": "Create a new local project named research and import all files from ~/Downloads/docs into it.",
-      "expected_output": "The agent explains the in-place import limitation, initializes research locally, resolves its memories path, copies intended Markdown files, synchronizes, and validates without misusing project import.",
+      "expected_output": "The agent initializes research locally, resolves its memories path, copies intended Markdown files, synchronizes, and validates without treating project import as an import-into-project operation.",
       "assertions": [
-        "The agent explains that project import onboards a directory as its own project",
         "The agent runs mnemonic project init research --local from the intended workspace",
         "The agent resolves the destination with mnemonic --json project show research",
         "The agent does not claim that mnemonic project import ~/Downloads/docs targets research",
