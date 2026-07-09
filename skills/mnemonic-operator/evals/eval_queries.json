@@ -1,0 +1,74 @@
+[
+  {
+    "query": "Run a health check on my mnemonic knowledge base and repair broken links.",
+    "should_trigger": true
+  },
+  {
+    "query": "Doctor says duplicate_slug. Resolve it safely.",
+    "should_trigger": true
+  },
+  {
+    "query": "Search reports an invalid index; rebuild and verify it.",
+    "should_trigger": true
+  },
+  {
+    "query": "Delete this obsolete note, but check whether anything links to it first.",
+    "should_trigger": true
+  },
+  {
+    "query": "Find all malformed frontmatter and make a repair plan.",
+    "should_trigger": true
+  },
+  {
+    "query": "Validate the whole repository for unresolved and ambiguous links.",
+    "should_trigger": true
+  },
+  {
+    "query": "The repair script should iterate until diagnostics are clean.",
+    "should_trigger": true
+  },
+  {
+    "query": "read_notes says a file is corrupted; repair its raw YAML safely.",
+    "should_trigger": true
+  },
+  {
+    "query": "Add a section about empty interfaces to my Go note.",
+    "should_trigger": false
+  },
+  {
+    "query": "Create a new note about Redis sessions.",
+    "should_trigger": false
+  },
+  {
+    "query": "Find everything I wrote about project architecture last week.",
+    "should_trigger": false
+  },
+  {
+    "query": "Initialize a central project called personal.",
+    "should_trigger": false
+  },
+  {
+    "query": "Import this Markdown directory as a project.",
+    "should_trigger": false
+  },
+  {
+    "query": "List notes related to PostgreSQL recovery conflicts.",
+    "should_trigger": false
+  },
+  {
+    "query": "Rewrite this note to be clearer and add a summary.",
+    "should_trigger": false
+  },
+  {
+    "query": "Register an existing mnemonic.toml project.",
+    "should_trigger": false
+  },
+  {
+    "query": "Explain the difference between wiki links and regular Markdown links.",
+    "should_trigger": false
+  },
+  {
+    "query": "Add the tag django to three ordinary notes.",
+    "should_trigger": false
+  }
+]

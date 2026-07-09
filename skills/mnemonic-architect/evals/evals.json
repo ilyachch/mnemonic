@@ -1,0 +1,50 @@
+{
+  "skill_name": "mnemonic-architect",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Create a new local project named research and import all files from ~/Downloads/docs into it.",
+      "expected_output": "The agent explains the in-place import limitation, initializes research locally, resolves its memories path, copies intended Markdown files, synchronizes, and validates without misusing project import.",
+      "assertions": [
+        "The agent explains that project import onboards a directory as its own project",
+        "The agent runs mnemonic project init research --local from the intended workspace",
+        "The agent resolves the destination with mnemonic --json project show research",
+        "The agent does not claim that mnemonic project import ~/Downloads/docs targets research",
+        "The agent copies Markdown files without overwriting mnemonic.toml",
+        "The agent runs project sync and project doctor for research",
+        "An explicit project reindex is conditional rather than automatic"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Register ~/Downloads/docs itself as a mnemonic project and hydrate its Markdown files.",
+      "expected_output": "The agent previews and then performs in-place project import for the directory.",
+      "assertions": [
+        "The agent first runs mnemonic project import ~/Downloads/docs --dry-run",
+        "After review the agent runs mnemonic project import ~/Downloads/docs",
+        "The agent does not initialize a separate destination project"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Unregister the research project but keep all note files.",
+      "expected_output": "The agent removes the registry entry and derived state without wiping Markdown files.",
+      "assertions": [
+        "The command is mnemonic project remove research",
+        "The command does not include --wipe",
+        "The agent states that note files are retained"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "I moved my local mnemonic project to ~/Projects/new-location. Reconnect it without losing its identity.",
+      "expected_output": "The agent removes the stale pointer without wipe, verifies the existing manifest, adds the moved project, and runs doctor.",
+      "assertions": [
+        "The stale registry entry is removed without --wipe",
+        "The existing mnemonic.toml and project_id are preserved",
+        "The project is registered with mnemonic project add ~/Projects/new-location",
+        "The agent runs project doctor after re-registration"
+      ]
+    }
+  ]
+}

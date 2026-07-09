@@ -5,13 +5,15 @@ usage() {
   cat <<'USAGE'
 Usage: repair-loop.sh PROJECT [MAX_PASSES]
 
-Runs repeated mnemonic diagnostic passes. Actual repairs are delegated to the
-command named by MNEMONIC_REPAIR_HOOK. The hook receives:
+Runs repeated mnemonic note-diagnostic passes. Actual repairs are delegated to
+MNEMONIC_REPAIR_HOOK. The hook receives:
 
   1. The project selector.
   2. The path to the current JSON diagnostic report.
 
-Without a hook, this script writes a report and exits without modifying notes.
+The script never selects repair candidates and never rebuilds the index.
+Without a hook, it copies the report to the current directory and exits without
+modifying notes.
 
 Requirements: mnemonic, jq, Bash 4+
 USAGE
@@ -69,24 +71,26 @@ for ((pass = 1; pass <= max_passes; pass++)); do
   mnemonic --json project doctor "$project" "${kind_args[@]}" >"$report"
 
   if ! jq -e 'type == "object" and (.issues | type == "array")' "$report" >/dev/null; then
-    fail "unexpected diagnostic JSON; report preserved only until script exit: $report"
+    fail "unexpected diagnostic JSON schema"
   fi
 
   issue_count=$(jq -r '.total_count // (.issues | length)' "$report")
+  [[ "$issue_count" =~ ^[0-9]+$ ]] || fail "unexpected total_count in diagnostic JSON"
   printf 'Found %s issue(s).\n' "$issue_count"
 
   if [[ "$issue_count" == "0" ]]; then
-    printf 'No note diagnostics remain. Rebuilding the index for final reconciliation.\n'
-    mnemonic --json project reindex "$project" >"$workdir/reindex.json"
-    mnemonic --json project doctor "$project" >"$workdir/final-doctor.json"
-    jq . "$workdir/final-doctor.json"
+    final_doctor="$workdir/final-doctor.json"
+    mnemonic --json project doctor "$project" >"$final_doctor"
+    printf 'Note diagnostics are clean. Broad doctor result:\n'
+    jq . "$final_doctor"
     exit 0
   fi
 
   jq . "$report"
 
   if [[ -z ${MNEMONIC_REPAIR_HOOK:-} ]]; then
-    output="${PWD}/mnemonic-diagnostics-${project}.json"
+    safe_project=${project//[^a-zA-Z0-9._-]/_}
+    output="${PWD}/mnemonic-diagnostics-${safe_project}.json"
     cp "$report" "$output"
     printf 'No MNEMONIC_REPAIR_HOOK is configured. No changes were made.\n' >&2
     printf 'Diagnostic report: %s\n' "$output" >&2

@@ -1,0 +1,66 @@
+{
+  "skill_name": "mnemonic-operator",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Check whether my knowledge base has broken links and fix them.",
+      "expected_output": "The agent runs a broad health check, diagnoses unresolved links with suggestions, safely edits only unambiguous cases using fresh hashes, and revalidates.",
+      "assertions": [
+        "The first maintenance action is doctor",
+        "diagnose_notes is called with kinds containing only unresolved_link for the focused pass",
+        "include_suggestions is true",
+        "Each edited source note is read with content_hash before edit_note",
+        "Every edit_note call includes if_match_hash",
+        "Ambiguous suggestions are not selected automatically",
+        "The agent reruns diagnostics and doctor after repairs"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Delete the obsolete deployment note.",
+      "expected_output": "The agent checks backlinks and a fresh content hash, warns about affected notes, and prefers trash deletion.",
+      "assertions": [
+        "list_backlinks is called before delete_note",
+        "read_notes obtains content_hash before deletion",
+        "The agent warns when backlinks exist",
+        "hard_delete is false unless permanent deletion was explicitly confirmed",
+        "delete_note includes if_match_hash"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Search fails because the mnemonic index is invalid. Repair it.",
+      "expected_output": "The agent verifies the failure with doctor, rebuilds the index once, and runs doctor again without rewriting notes unless source diagnostics require it.",
+      "assertions": [
+        "doctor runs before rebuild_index",
+        "rebuild_index is called once",
+        "doctor runs again after rebuilding",
+        "No source note is edited without a source-note diagnostic"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Fix the duplicate slug reported for my two deployment notes.",
+      "expected_output": "The agent inspects both notes and backlinks, chooses or requests a canonical identity, changes a noncanonical slug through merge_frontmatter with a fresh hash, updates inbound links, and revalidates.",
+      "assertions": [
+        "Both colliding notes are read with content_hash",
+        "Backlinks are inspected before changing a slug",
+        "The slug change uses edit_note merge_frontmatter with a slug key",
+        "The slug change includes if_match_hash",
+        "The agent rechecks duplicate_slug and link diagnostics"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "The doctor reports invalid frontmatter, and read_notes says the note is corrupted. Fix it.",
+      "expected_output": "The agent stops MCP mutation for the unparseable note and uses a backed-up raw-file repair workflow before synchronizing and revalidating.",
+      "assertions": [
+        "The agent does not call edit_note on the corrupted unreadable note",
+        "The agent requires filesystem inspection of the diagnostic path",
+        "The raw file is backed up before editing",
+        "The repair preserves the body and mnemonic_note_id when recoverable",
+        "The agent synchronizes or reindexes and reruns doctor afterward"
+      ]
+    }
+  ]
+}

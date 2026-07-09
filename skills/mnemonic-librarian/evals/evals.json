@@ -1,0 +1,49 @@
+{
+  "skill_name": "mnemonic-librarian",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Add information about the empty interface to the note about Go interfaces.",
+      "expected_output": "The agent resolves the target if needed, reads its body and current hash, integrates the information in the appropriate section, edits with optimistic concurrency, and verifies the result.",
+      "assertions": [
+        "The agent searches only if the target selector is uncertain",
+        "read_notes requests body and content_hash before editing",
+        "edit_note includes identifier and if_match_hash",
+        "The agent verifies the final note with read_notes"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Create a note about optimistic concurrency in mnemonic.",
+      "expected_output": "The agent checks existing tags, creates a structured note with a matching H1, lets mnemonic generate identity, adds a concise summary using the creation hash, and verifies the note.",
+      "assertions": [
+        "list_tags is called before selecting non-authoritative tags",
+        "The created body starts with an H1 matching the title",
+        "create_note is used without an invented mnemonic_note_id or slug",
+        "The summary is added by edit_note using the hash returned from create_note",
+        "The final frontmatter and body are read for verification"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Update this note, but another process changed it after you read it.",
+      "expected_output": "The agent treats the hash mismatch as a concurrency conflict, rereads the note, rebases the intended change, and retries with the new hash.",
+      "assertions": [
+        "The stale hash is not reused",
+        "The note is reread after the mismatch",
+        "The intended change is rebased onto the new content",
+        "The retry uses the new content_hash"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Add a related-note link, but the project link style is not available in the MCP instructions.",
+      "expected_output": "The agent does not guess the link syntax; it obtains project configuration or omits the nonessential link.",
+      "assertions": [
+        "The agent does not invent wiki or regular link style",
+        "The agent either obtains the project link style or omits the optional link",
+        "Any added link uses a verified target slug"
+      ]
+    }
+  ]
+}

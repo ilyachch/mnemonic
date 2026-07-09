@@ -1,0 +1,74 @@
+[
+  {
+    "query": "Create a mnemonic note about optimistic concurrency.",
+    "should_trigger": true
+  },
+  {
+    "query": "Add a section about empty interfaces to my Go interfaces note.",
+    "should_trigger": true
+  },
+  {
+    "query": "Rewrite this note summary so it reflects the new scope.",
+    "should_trigger": true
+  },
+  {
+    "query": "Add the existing tags django and redis to this note.",
+    "should_trigger": true
+  },
+  {
+    "query": "Link this note to the verified architecture decision.",
+    "should_trigger": true
+  },
+  {
+    "query": "Restructure the deployment note without losing unrelated sections.",
+    "should_trigger": true
+  },
+  {
+    "query": "Create a concise note from these durable project decisions.",
+    "should_trigger": true
+  },
+  {
+    "query": "Update the aliases on this mnemonic note safely.",
+    "should_trigger": true
+  },
+  {
+    "query": "Check the whole knowledge base for broken links.",
+    "should_trigger": false
+  },
+  {
+    "query": "Rebuild the invalid search index.",
+    "should_trigger": false
+  },
+  {
+    "query": "Delete an obsolete note and inspect backlinks.",
+    "should_trigger": false
+  },
+  {
+    "query": "Resolve duplicate slugs across the repository.",
+    "should_trigger": false
+  },
+  {
+    "query": "Initialize a local research project.",
+    "should_trigger": false
+  },
+  {
+    "query": "Import ~/Downloads/docs into mnemonic.",
+    "should_trigger": false
+  },
+  {
+    "query": "Find my note about Redis migration.",
+    "should_trigger": false
+  },
+  {
+    "query": "Move a registered project to another directory.",
+    "should_trigger": false
+  },
+  {
+    "query": "Repair an unparseable YAML frontmatter file.",
+    "should_trigger": false
+  },
+  {
+    "query": "Run project doctor across all registered projects.",
+    "should_trigger": false
+  }
+]
