@@ -1,0 +1,38 @@
+version: 1
+skill: mnemonic-librarian
+cases:
+  - name: edit-go-interfaces
+    prompt: Add information about the empty interface to the note about Go interfaces.
+    expected:
+      sequence:
+        - tool: search_notes
+          condition: Run when the target selector is not already certain.
+        - tool: read_notes
+          arguments:
+            fields_must_include:
+              - body
+              - content_hash
+        - tool: edit_note
+          arguments:
+            must_include:
+              - identifier
+              - if_match_hash
+        - tool: read_notes
+          purpose: Verify the final note.
+  - name: create-structured-note
+    prompt: Create a note about optimistic concurrency in mnemonic.
+    expected:
+      behavior:
+        - Call list_tags before selecting tags.
+        - Create a body with a matching H1.
+        - Use create_note and accept the generated note ID and slug.
+        - Add a concise summary with edit_note using the creation hash.
+        - Verify the final frontmatter and body.
+  - name: stale-hash
+    prompt: Update a note, but another process changed it after it was read.
+    expected:
+      behavior:
+        - Do not retry with the stale hash.
+        - Reread the note.
+        - Rebase the intended change.
+        - Submit with the new hash.

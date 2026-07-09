@@ -1,0 +1,38 @@
+version: 1
+skill: mnemonic-operator
+cases:
+  - name: find-and-fix-broken-links
+    prompt: Check whether my knowledge base has broken links and fix them.
+    expected:
+      initial_tool: doctor
+      diagnostic_call:
+        tool: diagnose_notes
+        arguments:
+          kinds:
+            equals:
+              - unresolved_link
+          include_suggestions:
+            equals: true
+      mutation_safety:
+        - Read each affected note with content_hash before editing.
+        - Use if_match_hash in edit_note.
+        - Do not guess when suggestions are ambiguous.
+      final_validation:
+        - diagnose_notes
+        - doctor
+  - name: safe-delete-with-backlinks
+    prompt: Delete the obsolete deployment note.
+    expected:
+      behavior:
+        - Call list_backlinks before delete_note.
+        - Read content_hash before deletion.
+        - Warn when backlinks exist.
+        - Prefer trash deletion.
+  - name: invalid-index
+    prompt: Search fails because the mnemonic index is invalid. Repair it.
+    expected:
+      behavior:
+        - Run doctor.
+        - Run rebuild_index once when justified.
+        - Run doctor again.
+        - Do not rewrite notes without a source-note diagnostic.
