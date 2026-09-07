@@ -2,8 +2,10 @@ package cli
 
 import (
 	"os"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -23,8 +25,11 @@ func writeTaggedNote(t *testing.T, path, noteID, title, slug string, tags []stri
 		}
 		content += contentSb19.String()
 	}
-	content += "created_at: 1780403696\n"
-	content += "updated_at: 1780403696\n"
+	// Dynamic timestamp: hardcoded values would eventually fall outside
+	// relative time-filter windows (e.g. --created-since 1000h).
+	now := time.Now().UTC().Unix()
+	content += "created_at: " + strconv.FormatInt(now, 10) + "\n"
+	content += "updated_at: " + strconv.FormatInt(now, 10) + "\n"
 	content += "---\n"
 	content += body
 
