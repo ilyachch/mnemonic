@@ -44,10 +44,10 @@ build-macos: _mkdir_bin build-cli-docs
 build: clean build-linux build-macos
 
 archive-linux: _mkdir_dist build-linux
-	tar --exclude='skills/*/evals' -czf ./dist/mnemonic_{{ VERSION }}_linux_amd64.tar.gz README* LICENSE* PROMPTS* skills -C ./bin/linux mnemonic
+	tar -czf ./dist/mnemonic_{{ VERSION }}_linux_amd64.tar.gz README* LICENSE* PROMPTS* skills -C ./bin/linux mnemonic
 
 archive-macos: _mkdir_dist build-macos
-	tar --exclude='skills/*/evals' -czf ./dist/mnemonic_{{ VERSION }}_darwin_arm64.tar.gz README* LICENSE* PROMPTS* skills -C ./bin/macos mnemonic
+	tar -czf ./dist/mnemonic_{{ VERSION }}_darwin_arm64.tar.gz README* LICENSE* PROMPTS* skills -C ./bin/macos mnemonic
 
 archive: archive-linux archive-macos
 
