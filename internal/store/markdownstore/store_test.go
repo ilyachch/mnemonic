@@ -52,6 +52,25 @@ func TestStoreCreateEditAndDelete(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEqual(t, created.ContentHash, edited.ContentHash)
 
+	edited, err = store.Edit(EditInput{
+		Selector: created.Slug,
+		Set: map[string]string{
+			"summary": "Plan for migrating auth system",
+		},
+		Now: func() time.Time {
+			return time.Date(2026, time.June, 2, 12, 36, 56, 0, time.UTC)
+		},
+	})
+	require.NoError(t, err)
+
+	showSummary, err := store.Show(created.Slug)
+	require.NoError(t, err)
+	assert.Equal(t, "Plan for migrating auth system", showSummary.Note.Summary)
+
+	summaryData, err := os.ReadFile(filepath.Join(root, "auth-migration.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(summaryData), "summary: Plan for migrating auth system\n")
+
 	show, err := store.Show(created.Slug)
 	require.NoError(t, err)
 	assert.Equal(t, "Auth migration", show.Note.Title)

@@ -848,6 +848,9 @@ func applyEditSet(note *markdown.Note, set map[string]string) error {
 		case "type":
 			note.Type = value
 			note.Frontmatter[key] = value
+		case "summary":
+			note.Summary = value
+			note.Frontmatter[key] = value
 		default:
 			note.Frontmatter[key] = value
 		}
